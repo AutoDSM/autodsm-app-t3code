@@ -1,62 +1,49 @@
-# AutoDSM — AI Provider Integration
+# AI Provider Integration
 
-## Provider Hierarchy
+<!-- AGENT_CONTEXT
+type: features
+scope: ai-providers
+relates_to:
+  - ./core-features.md
+  - ../architecture/process-model.md
+providers:
+  - claude-cli: Claude Code CLI (preferred)
+  - codex-cli: OpenAI Codex CLI
+  - cursor-cli: Cursor Agent CLI
+  - anthropic-api: Anthropic API (BYOT)
+  - openai-api: OpenAI API (BYOT)
+-->
 
-AutoDSM supports multiple AI providers in a 4-tier hierarchy:
+## Quick Reference
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    PROVIDER RESOLUTION                           │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  Tier 1: Claude Code CLI (Preferred)                             │
-│  ─────────────────────────────────────                          │
-│  Binary: claude                                                  │
-│  Auth: User's Claude Code subscription                           │
-│  Pros: Full agent capabilities, permission controls              │
-│                                                                  │
-│  Tier 2: OpenAI Codex CLI                                        │
-│  ─────────────────────────────                                  │
-│  Binary: codex                                                   │
-│  Auth: User's Codex CLI subscription                             │
-│  Pros: OpenAI ecosystem, sandbox support                         │
-│                                                                  │
-│  Tier 3: Cursor Agent CLI                                        │
-│  ──────────────────────────                                     │
-│  Binary: cursor-agent                                            │
-│  Auth: User's Cursor subscription                                │
-│  Pros: Cursor ecosystem, editor integration                      │
-│                                                                  │
-│  Tier 4: Direct API (BYOT)                                       │
-│  ──────────────────────────                                     │
-│  • Anthropic API (ANTHROPIC_API_KEY)                             │
-│  • OpenAI API (OPENAI_API_KEY)                                   │
-│  Auth: User's API keys                                           │
-│  Pros: Full control, any model                                   │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
+| Priority | Provider      | Auth Source              |
+| -------- | ------------- | ------------------------ |
+| 1        | Claude CLI    | Claude Code subscription |
+| 2        | Codex CLI     | Codex CLI subscription   |
+| 3        | Cursor CLI    | Cursor subscription      |
+| 4        | Anthropic API | ANTHROPIC_API_KEY        |
+| 5        | OpenAI API    | OPENAI_API_KEY           |
 
-## Resolution Flow
+## Provider Resolution
 
 ```typescript
 async function resolveProvider(): Promise<Provider> {
-  // Check Tier 1: Claude CLI
-  if (await binaryExists('claude')) {
+  // Tier 1: Claude CLI
+  if (await binaryExists("claude")) {
     return new ClaudeCliProvider();
   }
 
-  // Check Tier 2: Codex CLI
-  if (await binaryExists('codex')) {
+  // Tier 2: Codex CLI
+  if (await binaryExists("codex")) {
     return new CodexCliProvider();
   }
 
-  // Check Tier 3: Cursor CLI
-  if (await binaryExists('cursor-agent')) {
+  // Tier 3: Cursor CLI
+  if (await binaryExists("cursor-agent")) {
     return new CursorCliProvider();
   }
 
-  // Check Tier 4: API keys
+  // Tier 4: API keys
   if (process.env.ANTHROPIC_API_KEY) {
     return new AnthropicApiProvider();
   }
@@ -64,7 +51,6 @@ async function resolveProvider(): Promise<Provider> {
     return new OpenAiApiProvider();
   }
 
-  // No provider available
   throw new NoProviderError();
 }
 ```
@@ -80,7 +66,7 @@ claude -p "<prompt>" \
   --cwd <project-path>
 ```
 
-**Output format:** JSON lines with event types
+**Output:** JSON lines
 
 ```json
 {"type": "thinking", "content": "Analyzing component structure..."}
@@ -99,14 +85,12 @@ codex exec \
   --ephemeral
 ```
 
-**Output format:** Structured JSON response
+**Output:** Structured JSON
 
 ```json
 {
   "status": "success",
-  "files": [
-    {"path": "src/Button.tsx", "action": "modify", "content": "..."}
-  ],
+  "files": [{ "path": "src/Button.tsx", "action": "modify", "content": "..." }],
   "summary": "Updated Button component"
 }
 ```
@@ -119,16 +103,14 @@ cursor-agent -p "<prompt>" \
   --cwd <project-path>
 ```
 
-**Output format:** JSON lines (similar to Claude)
-
 ### Direct API (Anthropic)
 
 ```typescript
 const response = await anthropic.messages.create({
-  model: 'claude-sonnet-4-20250514',
+  model: "claude-sonnet-4-20250514",
   max_tokens: 8192,
   system: buildSystemPrompt(context),
-  messages: [{ role: 'user', content: prompt }],
+  messages: [{ role: "user", content: prompt }],
 });
 ```
 
@@ -136,18 +118,16 @@ const response = await anthropic.messages.create({
 
 ```typescript
 const response = await openai.chat.completions.create({
-  model: 'gpt-4o',
+  model: "gpt-4o",
   max_tokens: 8192,
   messages: [
-    { role: 'system', content: buildSystemPrompt(context) },
-    { role: 'user', content: prompt },
+    { role: "system", content: buildSystemPrompt(context) },
+    { role: "user", content: prompt },
   ],
 });
 ```
 
 ## Context Payload
-
-For every prompt, AutoDSM assembles a rich context:
 
 ```typescript
 interface AgentContext {
@@ -156,7 +136,7 @@ interface AgentContext {
     path: string;
     source: string;
     props: PropDefinition[];
-    colocatedFiles: string[];  // CSS, types, tests
+    colocatedFiles: string[];
   };
 
   // System context
@@ -185,14 +165,14 @@ interface AgentContext {
     classnamePattern: string;
   };
 
-  // History (for coherence)
+  // History
   recentChangeSets: ChangeSetSummary[];
 }
 ```
 
 ## AGENTS.md Generation
 
-AutoDSM generates an `AGENTS.md` file from `BrandProfile` that external CLIs can consume:
+AutoDSM generates `AGENTS.md` from `BrandProfile`:
 
 ```markdown
 # Component System Context
@@ -200,120 +180,69 @@ AutoDSM generates an `AGENTS.md` file from `BrandProfile` that external CLIs can
 ## Design Tokens
 
 ### Colors
+
 - `primary-600`: #2952CC (use for primary actions)
 - `primary-700`: #1E3A8A (use for hover states)
-- `neutral-100`: #F5F5F5 (use for backgrounds)
 
 ### Spacing
+
 - `sm`: 8px
 - `md`: 16px
 - `lg`: 24px
-- `xl`: 32px
-
-### Typography
-- `heading-1`: 32px / 1.2 / 700
-- `body`: 16px / 1.5 / 400
 
 ## Conventions
 
 ### File Naming
+
 - Components: PascalCase (`Button.tsx`)
-- Hooks: camelCase with `use` prefix (`useTheme.ts`)
-- Utils: camelCase (`formatDate.ts`)
+- Hooks: camelCase with `use` prefix
 
 ### Import Order
+
 1. React
 2. Third-party libraries
 3. Internal components
-4. Internal utils
-5. Styles
+4. Styles
 
 ### Classnames
+
 - Use Tailwind utilities
 - Prefer design tokens over arbitrary values
-- Group by: layout, spacing, typography, colors
-
-## Provider Chain
-- ThemeProvider (required)
-- QueryClientProvider (optional)
-- RouterProvider (auto-stubbed in preview)
 
 ## Protected Patterns
-- Never modify files in `node_modules/`
+
+- Never modify `node_modules/`
 - Never modify `.env*` files
 - Always use tokens instead of hardcoded values
 ```
 
-## Error Handling
-
-### Provider Not Found
-
-```typescript
-class NoProviderError extends Error {
-  suggestions = [
-    'Install Claude Code: https://claude.ai/claude-code',
-    'Install Codex CLI: https://codex.openai.com',
-    'Set ANTHROPIC_API_KEY or OPENAI_API_KEY',
-  ];
-}
-```
-
-### Provider Auth Failed
-
-```typescript
-class ProviderAuthError extends Error {
-  provider: string;
-  suggestions = [
-    'Run `claude auth login` to authenticate',
-    'Check your API key is valid',
-  ];
-}
-```
-
-### Generation Failed
-
-```typescript
-class GenerationError extends Error {
-  provider: string;
-  stage: 'parsing' | 'validation' | 'application';
-  partialResult?: Partial<GenerationPlan>;
-  suggestions: string[];
-}
-```
-
 ## PATH Gauntlet
 
-CLI binaries must be discoverable. AutoDSM uses a PATH gauntlet:
+CLI binaries must be discoverable:
 
 ```typescript
 async function findBinary(name: string): Promise<string | null> {
-  // 1. Check standard locations
+  // 1. Standard locations
   const standardPaths = [
-    '/usr/local/bin',
-    '/opt/homebrew/bin',
+    "/usr/local/bin",
+    "/opt/homebrew/bin",
     `${process.env.HOME}/.local/bin`,
     `${process.env.HOME}/.cargo/bin`,
   ];
 
   for (const dir of standardPaths) {
     const path = `${dir}/${name}`;
-    if (await exists(path)) {
-      return path;
-    }
+    if (await exists(path)) return path;
   }
 
   // 2. Check PATH
   const which = await exec(`which ${name}`);
-  if (which.stdout.trim()) {
-    return which.stdout.trim();
-  }
+  if (which.stdout.trim()) return which.stdout.trim();
 
-  // 3. Try fix-path (for macOS GUI apps)
+  // 3. fix-path for macOS GUI apps
   await fixPath();
   const which2 = await exec(`which ${name}`);
-  if (which2.stdout.trim()) {
-    return which2.stdout.trim();
-  }
+  if (which2.stdout.trim()) return which2.stdout.trim();
 
   return null;
 }
@@ -321,42 +250,75 @@ async function findBinary(name: string): Promise<string | null> {
 
 ## User Override
 
-Users can override provider selection per-project:
-
 ```json
 // .autodsm/settings.json
 {
   "preferredProvider": "codex",
   "providerConfig": {
-    "claude": {
-      "model": "claude-sonnet-4-20250514"
-    },
-    "openai": {
-      "model": "gpt-4o",
-      "temperature": 0.7
-    }
+    "claude": { "model": "claude-sonnet-4-20250514" },
+    "openai": { "model": "gpt-4o", "temperature": 0.7 }
   }
 }
 ```
 
 ## Model Selection
 
-Available models by provider:
-
-| Provider | Models |
-|----------|--------|
-| Claude CLI | claude-sonnet-4-20250514, claude-opus-4-20250514 |
-| Codex CLI | codex-1, codex-2 |
-| Cursor CLI | cursor-fast, cursor-pro |
+| Provider      | Available Models                                 |
+| ------------- | ------------------------------------------------ |
+| Claude CLI    | claude-sonnet-4-20250514, claude-opus-4-20250514 |
+| Codex CLI     | codex-1, codex-2                                 |
+| Cursor CLI    | cursor-fast, cursor-pro                          |
 | Anthropic API | claude-sonnet-4-20250514, claude-opus-4-20250514 |
-| OpenAI API | gpt-4o, gpt-4o-mini |
+| OpenAI API    | gpt-4o, gpt-4o-mini                              |
+
+## Error Handling
+
+### NoProviderError
+
+```typescript
+class NoProviderError extends Error {
+  suggestions = [
+    "Install Claude Code: https://claude.ai/claude-code",
+    "Install Codex CLI: https://codex.openai.com",
+    "Set ANTHROPIC_API_KEY or OPENAI_API_KEY",
+  ];
+}
+```
+
+### ProviderAuthError
+
+```typescript
+class ProviderAuthError extends Error {
+  provider: string;
+  suggestions = ["Run `claude auth login` to authenticate", "Check your API key is valid"];
+}
+```
+
+### GenerationError
+
+```typescript
+class GenerationError extends Error {
+  provider: string;
+  stage: "parsing" | "validation" | "application";
+  partialResult?: Partial<GenerationPlan>;
+  suggestions: string[];
+}
+```
 
 ## Tier Gating
 
-| Feature | Free | Pro |
-|---------|------|-----|
-| BYOT (API keys) | ✓ | ✓ |
-| CLI providers | ✓ | ✓ |
-| Hosted AI credits | — | ✓ |
-| Priority models | — | ✓ |
-| Generation runs/mo | 10 | Unlimited |
+| Feature            | Free | Pro       |
+| ------------------ | ---- | --------- |
+| BYOT (API keys)    | Yes  | Yes       |
+| CLI providers      | Yes  | Yes       |
+| Hosted AI credits  | No   | Yes       |
+| Priority models    | No   | Yes       |
+| Generation runs/mo | 10   | Unlimited |
+
+---
+
+<!-- AGENT_ACTIONS
+to_add_provider: Implement Provider interface in apps/desktop/src/main/services/providers/
+to_test_provider: Create fixture in apps/desktop/src/test/fixtures/
+cli_binary_locations: /usr/local/bin, /opt/homebrew/bin, ~/.local/bin
+-->

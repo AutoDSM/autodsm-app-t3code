@@ -1,4 +1,28 @@
-# AutoDSM — Phase Acceptance Criteria
+# Phase Acceptance Criteria
+
+<!-- AGENT_CONTEXT
+type: acceptance-criteria
+scope: all-phases
+relates_to:
+  - ./roadmap.md
+  - ../architecture/security-model.md
+  - ../architecture/process-model.md
+key_phases:
+  - Phase 3: Render
+  - Phase 6: Agent
+  - Phase 7: Ship
+  - Phase 8: Publish
+verification_method: Test matrices + regression gates
+-->
+
+## Quick Reference
+
+| Phase | Key Gate                        | Success Metric |
+| ----- | ------------------------------- | -------------- |
+| 3     | 80%+ fixture components render  | Render rate    |
+| 6     | All 5 providers work end-to-end | Agent success  |
+| 7     | All 4 credential setups work    | Merge flow     |
+| 8     | Hosted snapshot < 2s load       | Publish time   |
 
 ## Phase 3: Render
 
@@ -19,11 +43,11 @@
 
 ### Test Matrix
 
-| Fixture | Library | Expected |
-|---------|---------|----------|
-| shadcn-starter | shadcn/ui | All components render |
-| mui-dashboard | MUI | All components render |
-| chakra-app | Chakra UI | All components render |
+| Fixture        | Library      | Expected              |
+| -------------- | ------------ | --------------------- |
+| shadcn-starter | shadcn/ui    | All components render |
+| mui-dashboard  | MUI          | All components render |
+| chakra-app     | Chakra UI    | All components render |
 | tailwind-basic | Tailwind CSS | All components render |
 
 ---
@@ -46,13 +70,13 @@
 
 ### Test Matrix
 
-| Provider | Prompt | Expected |
-|----------|--------|----------|
-| claude-cli | "Make button rounded" | ChangeSet with border-radius change |
-| codex-cli | "Add hover state" | ChangeSet with hover styles |
-| cursor-cli | "Use primary-600 color" | ChangeSet with token reference |
-| anthropic-api | "Add loading spinner" | ChangeSet with spinner component |
-| openai-api | "Increase padding" | ChangeSet with spacing change |
+| Provider      | Prompt                  | Expected                            |
+| ------------- | ----------------------- | ----------------------------------- |
+| claude-cli    | "Make button rounded"   | ChangeSet with border-radius change |
+| codex-cli     | "Add hover state"       | ChangeSet with hover styles         |
+| cursor-cli    | "Use primary-600 color" | ChangeSet with token reference      |
+| anthropic-api | "Add loading spinner"   | ChangeSet with spinner component    |
+| openai-api    | "Increase padding"      | ChangeSet with spacing change       |
 
 ---
 
@@ -75,16 +99,16 @@
 
 ### Test Matrix
 
-| Scenario | Expected Merge Button State |
-|----------|----------------------------|
-| Checks pending | "Waiting for checks…" (disabled) |
-| Checks failed | "Checks failed" (disabled) |
-| Needs 2 approvals, has 0 | "Needs 2 approval(s)" (disabled) |
-| Needs 2 approvals, has 1 | "Needs 1 approval(s)" (disabled) |
-| Needs 2 approvals, has 2, behind base | "Update branch" (action) |
-| All green | "Merge" (enabled) |
-| Unsigned commits required | "Configure signing" (link) |
-| No merge permission | "Merge in GitHub" (link) |
+| Scenario                              | Expected Merge Button State      |
+| ------------------------------------- | -------------------------------- |
+| Checks pending                        | "Waiting for checks…" (disabled) |
+| Checks failed                         | "Checks failed" (disabled)       |
+| Needs 2 approvals, has 0              | "Needs 2 approval(s)" (disabled) |
+| Needs 2 approvals, has 1              | "Needs 1 approval(s)" (disabled) |
+| Needs 2 approvals, has 2, behind base | "Update branch" (action)         |
+| All green                             | "Merge" (enabled)                |
+| Unsigned commits required             | "Configure signing" (link)       |
+| No merge permission                   | "Merge in GitHub" (link)         |
 
 ---
 
@@ -99,12 +123,12 @@
 
 ### Test Matrix
 
-| User Tier | Action | Expected |
-|-----------|--------|----------|
-| Free | Publish local | Zip file + HTML viewer |
-| Pro | Publish hosted | Live at autodsm.dev/handle |
-| Pro | Diff two snapshots | Side-by-side comparison |
-| Team | Custom domain | Live at custom.domain.com |
+| User Tier | Action             | Expected                   |
+| --------- | ------------------ | -------------------------- |
+| Free      | Publish local      | Zip file + HTML viewer     |
+| Pro       | Publish hosted     | Live at autodsm.dev/handle |
+| Pro       | Diff two snapshots | Side-by-side comparison    |
+| Team      | Custom domain      | Live at custom.domain.com  |
 
 ---
 
@@ -152,11 +176,21 @@ Before any release:
 
 ## Metrics to Track
 
-| Metric | Target | Source |
-|--------|--------|--------|
-| Render success rate | >80% | Fixture suite |
-| First render time | <3s | Telemetry |
-| HMR update time | <500ms | Telemetry |
-| Agent run success rate | >90% | Telemetry |
-| Merge flow completion | >95% | Telemetry |
-| Crash rate | <1% | Sentry (opt-in) |
+| Metric                 | Target | Source          |
+| ---------------------- | ------ | --------------- |
+| Render success rate    | >80%   | Fixture suite   |
+| First render time      | <3s    | Telemetry       |
+| HMR update time        | <500ms | Telemetry       |
+| Agent run success rate | >90%   | Telemetry       |
+| Merge flow completion  | >95%   | Telemetry       |
+| Crash rate             | <1%    | Sentry (opt-in) |
+
+---
+
+<!-- AGENT_ACTIONS
+to_verify_phase: Check all items in phase section
+to_verify_security: Check Cross-Phase Criteria > Security
+to_verify_performance: Check Cross-Phase Criteria > Performance
+to_run_regression: Follow Regression Gates checklist
+test_matrix_format: | Scenario | Expected |
+-->

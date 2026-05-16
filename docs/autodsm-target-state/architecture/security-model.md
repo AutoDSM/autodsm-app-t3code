@@ -1,4 +1,20 @@
-# AutoDSM — Security Model
+# Security Model
+
+<!-- AGENT_CONTEXT
+type: architecture
+scope: security
+criticality: high
+relates_to:
+  - ./system-overview.md
+  - ./process-model.md
+key_rules:
+  - Local-first is non-negotiable
+  - contextIsolation: true always
+  - nodeIntegration: false always
+  - sandbox: true always
+  - Tokens never logged
+  - Agent output never auto-executed
+-->
 
 ## Core Principle
 
@@ -6,31 +22,37 @@
 >
 > Source code, secrets, and AST scans never leave the machine unless the user explicitly publishes a snapshot.
 
----
+## Quick Reference
+
+| Rule                     | Enforcement                 |
+| ------------------------ | --------------------------- |
+| No source exfiltration   | Local indexing only         |
+| No secret transmission   | Never read, logged, or sent |
+| No long-term credentials | Passthrough only            |
+| No auto-execution        | ChangeSet review required   |
+| Sandbox everything       | Chromium sandbox enabled    |
 
 ## Threat Model
 
-### What We Protect
+### Assets We Protect
 
-| Asset | Protection |
-|-------|------------|
-| Source code | Never transmitted; local indexing only |
-| API keys / secrets | Never read, logged, or transmitted |
-| Git credentials | Passthrough only; never stored long-term |
-| GitHub tokens | In-memory only; Keychain only for device flow |
-| User preferences | Local storage only |
+| Asset              | Protection                                    |
+| ------------------ | --------------------------------------------- |
+| Source code        | Never transmitted; local indexing only        |
+| API keys / secrets | Never read, logged, or transmitted            |
+| Git credentials    | Passthrough only; never stored long-term      |
+| GitHub tokens      | In-memory only; Keychain only for device flow |
+| User preferences   | Local storage only                            |
 
-### What We Don't Trust
+### Sources We Don't Trust
 
-| Source | Mitigation |
-|--------|------------|
-| Renderer process | Sandboxed, no Node.js access |
-| Iframe content | `<iframe sandbox>` with strict CSP |
-| IPC messages | Zod validation at both ends |
-| External CLIs | Output parsed, not evaluated |
-| Agent output | Never auto-executed; ChangeSet review required |
-
----
+| Source           | Mitigation                                     |
+| ---------------- | ---------------------------------------------- |
+| Renderer process | Sandboxed, no Node.js access                   |
+| Iframe content   | `<iframe sandbox>` with strict CSP             |
+| IPC messages     | Zod validation at both ends                    |
+| External CLIs    | Output parsed, not evaluated                   |
+| Agent output     | Never auto-executed; ChangeSet review required |
 
 ## Electron Security Configuration
 
@@ -39,13 +61,13 @@
 ```typescript
 const window = new BrowserWindow({
   webPreferences: {
-    contextIsolation: true,      // Isolate preload from renderer
-    nodeIntegration: false,      // No Node.js in renderer
-    sandbox: true,               // Full Chromium sandbox
-    preload: preloadPath,        // Typed bridge only
-    webSecurity: true,           // Enforce same-origin
+    contextIsolation: true, // Isolate preload from renderer
+    nodeIntegration: false, // No Node.js in renderer
+    sandbox: true, // Full Chromium sandbox
+    preload: preloadPath, // Typed bridge only
+    webSecurity: true, // Enforce same-origin
     allowRunningInsecureContent: false,
-  }
+  },
 });
 ```
 
@@ -53,17 +75,17 @@ const window = new BrowserWindow({
 
 ```typescript
 // preload.ts — Only expose typed API
-contextBridge.exposeInMainWorld('autodsm', {
+contextBridge.exposeInMainWorld("autodsm", {
   project: {
-    open: (path: string) => ipcRenderer.invoke('project:open', path),
-    close: (id: string) => ipcRenderer.invoke('project:close', id),
+    open: (path: string) => ipcRenderer.invoke("project:open", path),
+    close: (id: string) => ipcRenderer.invoke("project:close", id),
     // ... typed methods only
   },
-  // ... other service facades
 });
 ```
 
 **Rules:**
+
 - No raw `ipcRenderer` exposed
 - Every method is typed
 - No dynamic channel names
@@ -73,26 +95,18 @@ contextBridge.exposeInMainWorld('autodsm', {
 
 ```typescript
 // Main window CSP
-session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-  callback({
-    responseHeaders: {
-      ...details.responseHeaders,
-      'Content-Security-Policy': [
-        "default-src 'self'",
-        "script-src 'self'",
-        "style-src 'self' 'unsafe-inline'",  // Required for Tailwind
-        "connect-src 'self' http://localhost:5180-5189",  // Vite sidecar
-        "frame-src http://localhost:5180-5189",  // Preview iframe
-      ].join('; ')
-    }
-  });
-});
+'Content-Security-Policy': [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",  // Required for Tailwind
+  "connect-src 'self' http://localhost:5180-5189",  // Vite sidecar
+  "frame-src http://localhost:5180-5189",  // Preview iframe
+].join('; ')
 ```
 
 ### Preview Iframe CSP
 
 ```html
-<!-- Even stricter for component preview -->
 <iframe
   sandbox="allow-scripts"
   src="http://localhost:5180/preview/..."
@@ -106,20 +120,17 @@ session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
 ></iframe>
 ```
 
----
-
 ## IPC Security
 
 ### Validation Pattern
 
 ```typescript
-// Every IPC handler validates input
-ipcMain.handle('project:open', async (event, raw) => {
+ipcMain.handle("project:open", async (event, raw) => {
   // 1. Validate input
   const parsed = ProjectOpenSchema.safeParse(raw);
   if (!parsed.success) {
-    console.error('IPC validation failed:', parsed.error);
-    throw new Error('Invalid request');
+    console.error("IPC validation failed:", parsed.error);
+    throw new Error("Invalid request");
   }
 
   // 2. Process request
@@ -131,71 +142,23 @@ ipcMain.handle('project:open', async (event, raw) => {
 });
 ```
 
-### Channel Audit
+### Channel Audit Checklist
 
-All channels are defined in `src/shared/ipc/channels.ts`:
-
-```typescript
-export const IPC_CHANNELS = {
-  PROJECT_OPEN: 'project:open',
-  PROJECT_CLOSE: 'project:close',
-  // ... exhaustive list
-} as const;
-
-// Type-safe channel access
-type ChannelName = typeof IPC_CHANNELS[keyof typeof IPC_CHANNELS];
-```
-
-**Audit checklist:**
 - [ ] All channels defined in central registry
 - [ ] All handlers use Zod validation
 - [ ] No dynamic channel construction
 - [ ] No `eval` or `Function` in handlers
 - [ ] No shell command injection vectors
 
----
-
 ## Credential Handling
 
-### GitHub Token Flow
+### GitHub Token Resolution
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    CREDENTIAL RESOLUTION                         │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  Priority 1: Environment Variable                                │
-│  ─────────────────────────────────                              │
-│  if (process.env.AUTODSM_GITHUB_TOKEN) {                        │
-│    return process.env.AUTODSM_GITHUB_TOKEN;  // Never logged    │
-│  }                                                               │
-│                                                                  │
-│  Priority 2: GitHub CLI                                          │
-│  ─────────────────────────                                      │
-│  const token = await exec('gh auth token');                      │
-│  if (token) {                                                    │
-│    return token.trim();  // Output captured, never logged        │
-│  }                                                               │
-│                                                                  │
-│  Priority 3: Git Credential Helper                               │
-│  ──────────────────────────────────                             │
-│  const cred = await exec('git credential fill', {                │
-│    input: 'protocol=https\nhost=github.com\n'                    │
-│  });                                                             │
-│  if (cred.password) {                                            │
-│    return cred.password;  // From osxkeychain, 1password, etc.   │
-│  }                                                               │
-│                                                                  │
-│  Priority 4: Keychain (Device Flow Only)                         │
-│  ────────────────────────────────────────                       │
-│  const token = await keytar.getPassword('autodsm', 'github');    │
-│  if (token) {                                                    │
-│    return token;  // Only set by device-flow OAuth               │
-│  }                                                               │
-│                                                                  │
-│  → Prompt user to authenticate                                   │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
+Priority 1: AUTODSM_GITHUB_TOKEN (env)     → Never logged
+Priority 2: gh auth token                   → Output captured, never logged
+Priority 3: git credential fill             → From osxkeychain, 1password, etc.
+Priority 4: Keychain (autodsm/github-token) → Device flow only
 ```
 
 ### Token Security Rules
@@ -209,9 +172,8 @@ type ChannelName = typeof IPC_CHANNELS[keyof typeof IPC_CHANNELS];
 ### Keychain Usage
 
 ```typescript
-// Only used for device-flow OAuth
-const KEYCHAIN_SERVICE = 'autodsm';
-const KEYCHAIN_ACCOUNT = 'github-token';
+const KEYCHAIN_SERVICE = "autodsm";
+const KEYCHAIN_ACCOUNT = "github-token";
 
 // Store (device flow success only)
 await keytar.setPassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, token);
@@ -222,8 +184,6 @@ const token = await keytar.getPassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT);
 // Delete (on sign out)
 await keytar.deletePassword(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT);
 ```
-
----
 
 ## Agent Security
 
@@ -241,23 +201,24 @@ interface ChangeSet {
   sessionId: string;
   summary: string;
   files: FileChange[];
-  protectedPaths: string[];    // Never auto-written
+  protectedPaths: string[]; // Never auto-written
   generatedBy: ProviderId;
   validation: ValidationReport;
   createdAt: string;
 }
 
 interface ValidationReport {
-  typeCheck: ValidationResult;  // tsc --noEmit
-  lint: ValidationResult;       // eslint/oxlint
-  scan: ValidationResult;       // AutoDSM scanner
-  conflicts: ConflictResult;    // git merge-base
+  typeCheck: ValidationResult; // tsc --noEmit
+  lint: ValidationResult; // eslint/oxlint
+  scan: ValidationResult; // AutoDSM scanner
+  conflicts: ConflictResult; // git merge-base
 }
 ```
 
 ### Protected Paths
 
 Never auto-written by agents:
+
 - `.env*` — Environment secrets
 - `**/credentials*` — Credential files
 - `**/*.pem`, `**/*.key` — Private keys
@@ -269,8 +230,8 @@ Never auto-written by agents:
 ```typescript
 // Agent output is parsed, never evaluated
 const events = [];
-for (const line of stdout.split('\n')) {
-  if (line.startsWith('{')) {
+for (const line of stdout.split("\n")) {
+  if (line.startsWith("{")) {
     try {
       const parsed = AgentEventSchema.safeParse(JSON.parse(line));
       if (parsed.success) {
@@ -283,8 +244,6 @@ for (const line of stdout.split('\n')) {
 }
 ```
 
----
-
 ## Safe-Runtime Patches
 
 ### Purpose
@@ -293,37 +252,14 @@ Prevent component renders from executing side effects.
 
 ### Patched APIs
 
-```typescript
-// fetch — no-op, returns empty response
-window.fetch = async () => new Response('{}', { status: 200 });
-
-// XHR — no-op, returns empty response
-class SafeXHR {
-  open() {}
-  send() { this.onload?.({ target: { response: '{}' } }); }
-}
-
-// localStorage — in-memory only
-const safeStorage = {
-  _data: {},
-  getItem(key) { return this._data[key] ?? null; },
-  setItem(key, value) { this._data[key] = value; },
-  removeItem(key) { delete this._data[key]; },
-  clear() { this._data = {}; },
-};
-
-// WebSocket — no-op
-class SafeWebSocket {
-  constructor() {}
-  send() {}
-  close() {}
-}
-
-// useEffect — runs synchronously, no cleanup
-const safeUseEffect = (effect) => {
-  effect();  // Run immediately, ignore cleanup
-};
-```
+| API              | Patch                          |
+| ---------------- | ------------------------------ |
+| `fetch`          | No-op, returns empty response  |
+| `XMLHttpRequest` | No-op, returns empty response  |
+| `localStorage`   | In-memory only                 |
+| `sessionStorage` | In-memory only                 |
+| `WebSocket`      | No-op                          |
+| `useEffect`      | Runs synchronously, no cleanup |
 
 ### Toggle
 
@@ -337,14 +273,11 @@ if (settings.safeMode === false) {
 }
 ```
 
----
-
 ## Crash Reports
 
 ### Default: Off
 
 ```typescript
-// Crash reports are local-only by default
 const crashReporter = {
   enabled: false,
   uploadToServer: false,
@@ -355,8 +288,7 @@ const crashReporter = {
 ### Opt-in Sentry
 
 ```typescript
-// User must explicitly enable
-if (settings.crashReports === 'sentry') {
+if (settings.crashReports === "sentry") {
   Sentry.init({
     dsn: SENTRY_DSN,
     beforeSend(event) {
@@ -366,22 +298,17 @@ if (settings.crashReports === 'sentry') {
       delete event.contexts?.device;
 
       // Strip tokens from breadcrumbs
-      event.breadcrumbs = event.breadcrumbs?.filter(b =>
-        !b.message?.includes('token') &&
-        !b.message?.includes('credential')
+      event.breadcrumbs = event.breadcrumbs?.filter(
+        (b) => !b.message?.includes("token") && !b.message?.includes("credential"),
       );
 
       return event;
-    }
+    },
   });
 }
 ```
 
----
-
-## Audit Checklist
-
-### Pre-Release Security Review
+## Pre-Release Audit Checklist
 
 - [ ] All BrowserWindows have correct security settings
 - [ ] Preload exposes only typed bridge
@@ -396,31 +323,23 @@ if (settings.crashReports === 'sentry') {
 - [ ] No dynamic `require` or `import`
 - [ ] No shell command injection vectors
 
-### Runtime Monitoring
+## Enterprise Compliance
 
-- Log IPC validation failures (not the payload)
-- Log iframe sandbox violations
-- Log CSP violations
-- Alert on unexpected network requests
+| Requirement           | Implementation                                |
+| --------------------- | --------------------------------------------- |
+| No data exfiltration  | Local-first architecture; opt-in publish only |
+| Credential protection | Passthrough only; no long-term storage        |
+| Audit trail           | All actions logged locally (git commits)      |
+| Access control        | User's git/GitHub permissions enforced        |
+| Code signing          | Apple Developer ID signing                    |
+| Notarization          | Apple notarization for Gatekeeper             |
 
 ---
 
-## Compliance Considerations
-
-### Enterprise Requirements
-
-| Requirement | Implementation |
-|-------------|----------------|
-| No data exfiltration | Local-first architecture; opt-in publish only |
-| Credential protection | Passthrough only; no long-term storage |
-| Audit trail | All actions logged locally (git commits) |
-| Access control | User's git/GitHub permissions enforced |
-| Code signing | Apple Developer ID signing |
-| Notarization | Apple notarization for Gatekeeper |
-
-### VPAT / Accessibility (Future)
-
-- Keyboard navigation throughout
-- Screen reader support
-- Color contrast compliance
-- Motion reduction support
+<!-- AGENT_ACTIONS
+before_implementing: Review this security model
+when_adding_ipc: Add Zod validation both sides
+when_adding_preload: Use typed bridge only
+when_handling_tokens: Never log, never store long-term
+when_handling_agent_output: Parse only, never evaluate
+-->

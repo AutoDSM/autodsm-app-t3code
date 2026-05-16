@@ -1,12 +1,32 @@
-# AutoDSM — Process Model
+# Process Model
 
-## Overview
+<!-- AGENT_CONTEXT
+type: architecture
+scope: process-model
+relates_to:
+  - ./system-overview.md
+  - ./security-model.md
+key_services:
+  - ProjectService
+  - Indexer
+  - RenderRuntime
+  - Scanner
+  - AgentSupervisor
+  - GitEngine
+  - CredentialResolver
+  - SettingsStore
+-->
 
-AutoDSM runs as a **macOS Electron application** with three distinct process types:
+## Quick Reference
 
-1. **Main Process** — Node.js backend, service orchestration
-2. **Renderer Process** — React UI in BrowserWindow
-3. **Sidecar Process** — Vite preview server for component rendering
+| Process  | Runtime        | Responsibility                      |
+| -------- | -------------- | ----------------------------------- |
+| Main     | Node.js        | Service orchestration, IPC handling |
+| Renderer | Chromium       | React UI, user interaction          |
+| Sidecar  | Node.js (Vite) | Component preview, HMR              |
+| Workers  | Node.js        | AST scanning, drift detection       |
+
+## Architecture Diagram
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -20,65 +40,42 @@ AutoDSM runs as a **macOS Electron application** with three distinct process typ
 │  │  ┌───────────────────────┐  │      │  ┌────────────────────────┐  │   │
 │  │  │ ProjectService        │  │      │  │ React App Shell        │  │   │
 │  │  │ • Open/close projects │  │      │  │ • Component Workbench  │  │   │
-│  │  │ • File watching       │  │◄────►│  │ • Preview Canvas       │  │   │
-│  │  └───────────────────────┘  │ IPC  │  │ • DiffSlideOver        │  │   │
-│  │                             │      │  │ • Issues Panel         │  │   │
-│  │  ┌───────────────────────┐  │      │  │ • Sidebar              │  │   │
+│  │  └───────────────────────┘  │ IPC  │  │ • Preview Canvas       │  │   │
+│  │                             │◄────►│  │ • DiffSlideOver        │  │   │
+│  │  ┌───────────────────────┐  │      │  │ • Issues Panel         │  │   │
 │  │  │ Indexer (Worker)      │  │      │  └────────────────────────┘  │   │
 │  │  │ • AST scanning        │  │      │                              │   │
 │  │  │ • Registry building   │  │      │  ┌────────────────────────┐  │   │
-│  │  │ • Token extraction    │  │      │  │ Preview Iframe         │  │   │
-│  │  └───────────────────────┘  │      │  │ • <iframe sandbox>     │  │   │
-│  │                             │      │  │ • Loads from Vite      │  │   │
+│  │  └───────────────────────┘  │      │  │ Preview Iframe         │  │   │
+│  │                             │      │  │ • <iframe sandbox>     │  │   │
 │  │  ┌───────────────────────┐  │      │  │ • postMessage bridge   │  │   │
 │  │  │ RenderRuntime         │  │      │  └────────────────────────┘  │   │
 │  │  │ • Vite management     │  │      │                              │   │
-│  │  │ • Port allocation     │  │      └─────────────────────────────┘   │
-│  │  │ • Health monitoring   │  │                     │                   │
-│  │  └───────────────────────┘  │                     │ HTTP              │
+│  │  └───────────────────────┘  │      └─────────────────────────────┘   │
 │  │                             │                     │                   │
-│  │  ┌───────────────────────┐  │                     ▼                   │
-│  │  │ Scanner (Worker)      │  │      ┌─────────────────────────────┐   │
-│  │  │ • Drift detection     │  │      │     Sidecar Vite            │   │
-│  │  │ • axe-core a11y       │  │      │     (Port 5180-5189)        │   │
-│  │  └───────────────────────┘  │      │                              │   │
-│  │                             │      │  • Virtual modules          │   │
-│  │  ┌───────────────────────┐  │      │  • Provider composition     │   │
-│  │  │ AgentSupervisor       │  │      │  • Safe-runtime patches     │   │
-│  │  │ • CLI orchestration   │  │      │  • HMR on ChangeSet apply   │   │
-│  │  │ • Stream handling     │  │      │                              │   │
+│  │  ┌───────────────────────┐  │                     │ HTTP              │
+│  │  │ AgentSupervisor       │  │                     ▼                   │
+│  │  │ • CLI orchestration   │  │      ┌─────────────────────────────┐   │
+│  │  └───────────────────────┘  │      │     Sidecar Vite            │   │
+│  │                             │      │     (Port 5180-5189)        │   │
+│  │  ┌───────────────────────┐  │      │  • Virtual modules          │   │
+│  │  │ GitEngine             │  │      │  • Provider composition     │   │
+│  │  │ • Branch management   │  │      │  • HMR on ChangeSet apply   │   │
 │  │  └───────────────────────┘  │      └─────────────────────────────┘   │
 │  │                             │                                         │
-│  │  ┌───────────────────────┐  │                                         │
-│  │  │ GitEngine             │  │                                         │
-│  │  │ • Branch management   │  │      ┌─────────────────────────────┐   │
-│  │  │ • Commit/push         │  │      │     External CLIs           │   │
-│  │  │ • PR creation         │──┼─────►│                              │   │
-│  │  └───────────────────────┘  │      │  • claude (Claude Code)     │   │
-│  │                             │      │  • codex (OpenAI)           │   │
-│  │  ┌───────────────────────┐  │      │  • cursor-agent (Cursor)    │   │
-│  │  │ CredentialResolver    │  │      │  • git (native binary)      │   │
-│  │  │ • gh auth token       │  │      │                              │   │
-│  │  │ • Keychain access     │  │      └─────────────────────────────┘   │
-│  │  │ • Env variable        │  │                                         │
-│  │  └───────────────────────┘  │      ┌─────────────────────────────┐   │
-│  │                             │      │     GitHub API              │   │
-│  │  ┌───────────────────────┐  │      │     (api.github.com)        │   │
-│  │  │ SettingsStore         │──┼─────►│                              │   │
-│  │  │ • User preferences    │  │      │  • Octokit.pulls.create     │   │
-│  │  │ • Project overrides   │  │      │  • Octokit.pulls.merge      │   │
-│  │  └───────────────────────┘  │      │  • Check runs polling       │   │
-│  │                             │      │                              │   │
-│  └─────────────────────────────┘      └─────────────────────────────┘   │
-│                                                                           │
+│  └─────────────────────────────┘      ┌─────────────────────────────┐   │
+│                                        │     External CLIs           │   │
+│                                        │  • claude (Claude Code)     │   │
+│                                        │  • codex (OpenAI)           │   │
+│                                        │  • git (native binary)      │   │
+│                                        └─────────────────────────────┘   │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
-
----
 
 ## Main Process Services
 
 ### ProjectService
+
 **Purpose:** Project lifecycle management
 
 ```typescript
@@ -90,16 +87,22 @@ interface ProjectService {
 }
 ```
 
+**Location:** `apps/desktop/src/main/services/ProjectService.ts`
+
 ### Indexer (Worker Thread)
+
 **Purpose:** AST scanning and artifact generation
 
-- Runs in a dedicated worker thread (never blocks main)
+- Runs in dedicated worker thread (never blocks main)
 - Generates `BrandProfile` from token sources
 - Generates `ComponentRegistry` from AST analysis
 - Infers provider chains from entry points
 - Watches files and re-indexes on change (debounced)
 
+**Location:** `apps/desktop/src/main/workers/indexer.worker.ts`
+
 ### RenderRuntime
+
 **Purpose:** Vite sidecar management
 
 - Spawns Vite in `.autodsm/runtime/`
@@ -107,15 +110,21 @@ interface ProjectService {
 - Monitors health with watchdogs
 - Provides restart capability
 
+**Location:** `apps/desktop/src/main/services/RenderRuntime.ts`
+
 ### Scanner (Worker Thread)
+
 **Purpose:** Drift detection and accessibility scanning
 
-- Runs in a dedicated worker thread
+- Runs in dedicated worker thread
 - Generates `ScanArtifact` from component analysis
 - Integrates axe-core for accessibility
 - Detects token drift, provider drift, prop misuse
 
+**Location:** `apps/desktop/src/main/workers/scanner.worker.ts`
+
 ### AgentSupervisor
+
 **Purpose:** AI provider orchestration
 
 - Resolves provider from 4-tier hierarchy
@@ -123,7 +132,10 @@ interface ProjectService {
 - Streams agent output
 - Converts `GenerationPlan` to `ChangeSet`
 
+**Location:** `apps/desktop/src/main/services/AgentSupervisor.ts`
+
 ### GitEngine
+
 **Purpose:** Version control operations
 
 - Shells out to native `git` binary
@@ -132,61 +144,64 @@ interface ProjectService {
 - Pushes with credential passthrough
 - Creates PRs via Octokit
 
+**Location:** `apps/desktop/src/main/services/GitEngine.ts`
+
 ### CredentialResolver
+
 **Purpose:** GitHub authentication passthrough
 
 Priority order:
+
 1. `AUTODSM_GITHUB_TOKEN` environment variable
 2. `gh auth token` output
 3. `git credential fill` helper
 4. Keychain (`autodsm/github-token`)
 
+**Location:** `apps/desktop/src/main/services/CredentialResolver.ts`
+
 ### SettingsStore
+
 **Purpose:** Preference persistence
 
 - Stores user preferences in `~/.autodsm/settings.json`
 - Stores project overrides in project profile
 - Provides reactive subscription for UI
 
----
+**Location:** `apps/desktop/src/main/services/SettingsStore.ts`
 
 ## Renderer Process
 
 ### React App Shell
-- TanStack Router for navigation
-- Zustand for state management
-- Tailwind CSS for styling
 
-### Component Workbench
-- Component browser (sidebar)
-- Preview canvas (center)
-- Inspector panel (right)
-- Prompt box (bottom)
-- Agent chip (status)
+| Technology      | Purpose          |
+| --------------- | ---------------- |
+| TanStack Router | Navigation       |
+| Zustand         | State management |
+| Tailwind CSS    | Styling          |
 
-### Preview Iframe
-- `<iframe sandbox>` with strict CSP
-- Loads from Vite sidecar
-- Communicates via `postMessage`
-- Receives `RenderManifest` updates
+### Key Components
 
-### DiffSlideOver
-- Opens on agent chip click
-- Monaco-based diff viewer
-- Per-hunk approve/reject
-- PR status card
-
----
+| Component         | Location                   | Purpose                      |
+| ----------------- | -------------------------- | ---------------------------- |
+| ComponentSidebar  | `apps/web/src/components/` | Folder-based component tree  |
+| ComponentCanvas   | `apps/web/src/components/` | Preview area with iframe     |
+| PropControlsPanel | `apps/web/src/components/` | Auto-generated prop controls |
+| PromptBar         | `apps/web/src/components/` | AI prompt input              |
+| DiffSlideOver     | `apps/web/src/components/` | Monaco diff viewer           |
 
 ## Sidecar Vite Process
 
 ### Virtual Modules
-- `virtual:autodsm/manifest` — Current RenderManifest
-- `virtual:autodsm/component` — Target component
-- `virtual:autodsm/providers` — Composed provider tree
-- `virtual:autodsm/safe-runtime` — Runtime patches
+
+| Module                         | Content                |
+| ------------------------------ | ---------------------- |
+| `virtual:autodsm/manifest`     | Current RenderManifest |
+| `virtual:autodsm/component`    | Target component       |
+| `virtual:autodsm/providers`    | Composed provider tree |
+| `virtual:autodsm/safe-runtime` | Runtime patches        |
 
 ### Safe-Runtime Patches
+
 ```typescript
 // Patched APIs (no-op or safe stubs)
 window.fetch = safeFetch;
@@ -197,27 +212,15 @@ window.WebSocket = SafeWebSocket;
 React.useEffect = safeUseEffect;
 ```
 
-### Provider Composition
-- Builds provider tree from adapter + BrandProfile
-- Wraps component in theme, router, query, i18n stubs
-- Handles missing context gracefully
+## IPC Communication Pattern
 
-### HMR Integration
-- On ChangeSet apply → Vite HMR update
-- Target: <500ms from approve to visible change
-
----
-
-## IPC Communication
-
-### Channel Pattern
 ```typescript
 // Main process handler
-ipcMain.handle('channel:name', async (event, payload) => {
+ipcMain.handle("channel:name", async (event, payload) => {
   const parsed = schema.safeParse(payload);
   if (!parsed.success) {
-    console.error('IPC validation failed', parsed.error);
-    return { error: 'validation_failed' };
+    console.error("IPC validation failed", parsed.error);
+    return { error: "validation_failed" };
   }
   // Handle request...
 });
@@ -226,77 +229,18 @@ ipcMain.handle('channel:name', async (event, payload) => {
 const result = await window.autodsm.channel.name(payload);
 ```
 
-### Message Flow
-```
-Renderer                     Main
-   │                           │
-   ├── invoke(channel, data) ──►
-   │                           │
-   │                    ┌──────┴──────┐
-   │                    │ zod.parse   │
-   │                    │ handle req  │
-   │                    │ zod.parse   │
-   │                    └──────┬──────┘
-   │                           │
-   ◄── response ───────────────┤
-   │                           │
-```
-
----
-
-## External Process Communication
-
-### CLI Agents
-```typescript
-// Spawn with structured I/O
-const proc = spawn('claude', [
-  '-p', prompt,
-  '--output-format', 'stream-json',
-  '--permission-mode', 'acceptEdits',
-  '--cwd', projectPath
-], {
-  env: { ...process.env, ...agentEnv }
-});
-
-// Stream stdout for events
-proc.stdout.on('data', (chunk) => {
-  const events = parseStreamJson(chunk);
-  events.forEach(handleAgentEvent);
-});
-```
-
-### Git Binary
-```typescript
-// Always use native git (preserves hooks, signing, helpers)
-const result = await execAsync('git', ['commit', '-m', message], {
-  cwd: projectPath,
-  env: process.env  // Inherit user's git config
-});
-```
-
-### GitHub API
-```typescript
-// Octokit with resolved token
-const token = await credentialResolver.getToken();
-const octokit = new Octokit({ auth: token });
-
-await octokit.pulls.create({
-  owner, repo, title, body, head, base
-});
-```
-
----
-
 ## Lifecycle Events
 
-### Startup
+### Startup Sequence
+
 1. Main process initializes
 2. Settings loaded from disk
 3. Recent projects list restored
 4. Renderer window created
 5. Welcome screen or last project opened
 
-### Project Open
+### Project Open Sequence
+
 1. `ProjectService.open(path)` called
 2. Indexer worker spawned
 3. `ProjectProfile` generated
@@ -304,34 +248,43 @@ await octokit.pulls.create({
 5. `BrandProfile` + `ComponentRegistry` indexed
 6. UI populated with component tree
 
-### Shutdown
+### Shutdown Sequence
+
 1. Vite sidecar terminated
 2. Worker threads stopped
 3. Settings persisted
 4. Windows closed
 5. Main process exits
 
----
-
 ## Error Handling
 
-### Principle
-**Never show a bare stack trace to the user.**
+### Structured Error Type
 
-### Error Types
 ```typescript
 type StructuredError = {
-  code: string;           // Machine-readable
-  message: string;        // User-friendly
-  details?: object;       // Diagnostic info
+  code: string; // Machine-readable
+  message: string; // User-friendly
+  details?: object; // Diagnostic info
   suggestions?: string[]; // Recovery actions
-  stack?: string;         // Dev-only, opt-in
+  stack?: string; // Dev-only, opt-in
 };
 ```
 
 ### Error Surfaces
-- **RenderFailureCard** — Component render errors
-- **HookFailureSurface** — Git hook failures
-- **AgentErrorCard** — AI generation errors
-- **ScanErrorBanner** — Scanner failures
-- **Toast** — Transient errors
+
+| Surface            | Use Case                |
+| ------------------ | ----------------------- |
+| RenderFailureCard  | Component render errors |
+| HookFailureSurface | Git hook failures       |
+| AgentErrorCard     | AI generation errors    |
+| ScanErrorBanner    | Scanner failures        |
+| Toast              | Transient errors        |
+
+---
+
+<!-- AGENT_ACTIONS
+to_create_service: Create in apps/desktop/src/main/services/
+to_create_worker: Create in apps/desktop/src/main/workers/
+to_create_component: Create in apps/web/src/components/
+to_add_ipc_channel: Define in src/shared/ipc/channels.ts
+-->

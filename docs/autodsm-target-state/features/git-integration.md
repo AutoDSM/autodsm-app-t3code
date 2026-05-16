@@ -1,82 +1,87 @@
-# AutoDSM — Git & GitHub Integration
+# Git & GitHub Integration
+
+<!-- AGENT_CONTEXT
+type: features
+scope: git-integration
+relates_to:
+  - ./core-features.md
+  - ../architecture/process-model.md
+  - ../architecture/security-model.md
+key_services:
+  - GitEngine
+  - CredentialResolver
+trust_rules:
+  - Auth passthrough only
+  - Branch-per-session
+  - Native git binary
+  - Native GitHub API
+-->
+
+## Quick Reference
+
+| Commitment         | Implementation                 |
+| ------------------ | ------------------------------ |
+| Auth passthrough   | No long-lived credentials      |
+| Branch-per-session | `autodsm/<slug>-<date>-<time>` |
+| Native git         | Shell to `git` binary          |
+| Native GitHub      | Octokit REST API               |
 
 ## Trust Commitments
 
 ### 1. Auth Passthrough
+
 No long-lived credentials held by AutoDSM. Every `git push` rides the user's git config; GitHub API calls fetch a token at the moment of use.
 
 ### 2. Branch-Per-Session
+
 Every prompt session creates one branch under `autodsm/<slug>-<yyyy-mm-dd>-<hhmm>`. The default branch is **never** edited directly.
 
 ### 3. Native Git, Native GitHub
-Shell out to `git` (preserves credential helpers, SSH agent, hooks, signing). Call GitHub via `@octokit/rest`. No isomorphic-git, no scraping, no policy bypass.
 
----
+Shell out to `git` (preserves credential helpers, SSH agent, hooks, signing). Call GitHub via `@octokit/rest`. No isomorphic-git, no policy bypass.
 
-## The Full Prompt-to-Merge Loop
+## Prompt-to-Merge Flow
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    PROMPT TO MERGE FLOW                          │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  1. Open Project                                                 │
-│     └─► GitEngine.openProject()                                 │
-│         • Validate repo exists                                   │
-│         • Detect remote (origin)                                │
-│         • Detect default branch (main/master)                   │
-│         • Check signing config                                   │
-│                                                                  │
-│  2. First Prompt                                                 │
-│     └─► GitEngine.createSessionBranch(componentSlug)            │
-│         • Branch: autodsm/button-2024-03-15-1430                │
-│         • Checkout new branch                                    │
-│         • Track remote: origin/autodsm/...                      │
-│                                                                  │
-│  3. Agent Edits                                                  │
-│     └─► ChangeSet applied to working tree                       │
-│         • Vite HMR re-renders canvas live                       │
-│                                                                  │
-│  4. Click +/- Chip                                               │
-│     └─► DiffSlideOver opens                                     │
-│         • Shows StructuredDiff                                   │
-│         • Per-hunk approve/reject                               │
-│                                                                  │
-│  5. Click "Commit"                                               │
-│     └─► Agent generates conventional commit message             │
-│         • User can edit message                                  │
-│         • git commit -m "<message>"                             │
-│         • Pre-commit hooks run (husky, lint-staged)             │
-│         • GPG signing if configured                             │
-│                                                                  │
-│  6. Click "Open PR"                                              │
-│     └─► git push -u origin <branch>                             │
-│         • Uses user's SSH/HTTPS credentials                     │
-│     └─► CredentialResolver.getToken()                           │
-│     └─► Octokit.pulls.create({                                  │
-│           owner, repo, title, body, head, base                  │
-│         })                                                       │
-│                                                                  │
-│  7. Polling (while PR view focused)                              │
-│     └─► Every 15s:                                              │
-│         • Check runs status                                      │
-│         • Review status                                          │
-│         • Mergeability status                                    │
-│                                                                  │
-│  8. Click "Merge"                                                │
-│     └─► Octokit.pulls.merge({                                   │
-│           pull_number, sha, merge_method                        │
-│         })                                                       │
-│     └─► On success:                                             │
-│         • Archive session                                        │
-│         • Delete local branch                                    │
-│         • Optionally delete remote branch                       │
-│         • Return to default branch                              │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
+1. Open Project
+   └─► GitEngine.openProject()
+       • Validate repo exists
+       • Detect remote (origin)
+       • Detect default branch
+       • Check signing config
 
----
+2. First Prompt
+   └─► GitEngine.createSessionBranch(componentSlug)
+       • Branch: autodsm/button-2024-03-15-1430
+       • Checkout new branch
+
+3. Agent Edits
+   └─► ChangeSet applied to working tree
+       • Vite HMR re-renders canvas
+
+4. Click +/- Chip
+   └─► DiffSlideOver opens
+       • Shows StructuredDiff
+       • Per-hunk approve/reject
+
+5. Click "Commit"
+   └─► git commit -m "<message>"
+       • Pre-commit hooks run
+       • GPG signing if configured
+
+6. Click "Open PR"
+   └─► git push -u origin <branch>
+   └─► Octokit.pulls.create()
+
+7. Polling (every 15s)
+   └─► Check runs, reviews, mergeability
+
+8. Click "Merge"
+   └─► Octokit.pulls.merge()
+   └─► Archive session
+   └─► Delete local branch
+   └─► Return to default branch
+```
 
 ## Credential Resolution
 
@@ -84,30 +89,29 @@ Shell out to `git` (preserves credential helpers, SSH agent, hooks, signing). Ca
 
 ```typescript
 async function resolveGitHubToken(): Promise<string> {
-  // Priority 1: Environment variable (power-user override)
+  // Priority 1: Environment variable
   if (process.env.AUTODSM_GITHUB_TOKEN) {
     return process.env.AUTODSM_GITHUB_TOKEN;
   }
 
-  // Priority 2: GitHub CLI (preferred for most users)
-  const ghToken = await exec('gh auth token');
+  // Priority 2: GitHub CLI
+  const ghToken = await exec("gh auth token");
   if (ghToken.stdout.trim()) {
     return ghToken.stdout.trim();
   }
 
-  // Priority 3: Git credential helper (HTTPS)
-  const cred = await gitCredentialFill('https://github.com');
+  // Priority 3: Git credential helper
+  const cred = await gitCredentialFill("https://github.com");
   if (cred?.password) {
     return cred.password;
   }
 
   // Priority 4: Keychain (device flow only)
-  const keychainToken = await keytar.getPassword('autodsm', 'github-token');
+  const keychainToken = await keytar.getPassword("autodsm", "github-token");
   if (keychainToken) {
     return keychainToken;
   }
 
-  // No token available - prompt user
   throw new NoGitHubTokenError();
 }
 ```
@@ -117,15 +121,15 @@ async function resolveGitHubToken(): Promise<string> {
 ```typescript
 async function gitCredentialFill(url: string): Promise<Credential | null> {
   const parsed = new URL(url);
-  const input = `protocol=${parsed.protocol.replace(':', '')}\nhost=${parsed.host}\n`;
+  const input = `protocol=${parsed.protocol.replace(":", "")}\nhost=${parsed.host}\n`;
 
-  const result = await exec('git credential fill', { input });
+  const result = await exec("git credential fill", { input });
   if (result.exitCode !== 0) return null;
 
-  const lines = result.stdout.split('\n');
+  const lines = result.stdout.split("\n");
   const cred: Record<string, string> = {};
   for (const line of lines) {
-    const [key, value] = line.split('=');
+    const [key, value] = line.split("=");
     if (key && value) cred[key] = value;
   }
 
@@ -133,11 +137,9 @@ async function gitCredentialFill(url: string): Promise<Credential | null> {
 }
 ```
 
----
-
 ## Branch Management
 
-### Session Branch Naming
+### Naming Convention
 
 ```
 autodsm/<component-slug>-<yyyy-mm-dd>-<hhmm>
@@ -152,16 +154,11 @@ Examples:
 
 ```typescript
 async function createSessionBranch(componentSlug: string): Promise<string> {
-  const timestamp = format(new Date(), 'yyyy-MM-dd-HHmm');
+  const timestamp = format(new Date(), "yyyy-MM-dd-HHmm");
   const branchName = `autodsm/${componentSlug}-${timestamp}`;
 
-  // Ensure we're on the default branch
   await exec(`git checkout ${defaultBranch}`);
-
-  // Pull latest
   await exec(`git pull --ff-only origin ${defaultBranch}`);
-
-  // Create and checkout new branch
   await exec(`git checkout -b ${branchName}`);
 
   return branchName;
@@ -171,24 +168,15 @@ async function createSessionBranch(componentSlug: string): Promise<string> {
 ### Branch Cleanup
 
 ```typescript
-async function cleanupSessionBranch(
-  branchName: string,
-  deleteRemote: boolean
-): Promise<void> {
-  // Return to default branch
+async function cleanupSessionBranch(branchName: string, deleteRemote: boolean): Promise<void> {
   await exec(`git checkout ${defaultBranch}`);
-
-  // Delete local branch
   await exec(`git branch -D ${branchName}`);
 
-  // Optionally delete remote branch
   if (deleteRemote) {
     await exec(`git push origin --delete ${branchName}`);
   }
 }
 ```
-
----
 
 ## Commit Flow
 
@@ -196,8 +184,8 @@ async function cleanupSessionBranch(
 
 ```typescript
 async function generateCommitMessage(changeSet: ChangeSet): Promise<string> {
-  const type = inferCommitType(changeSet);  // feat, fix, refactor, etc.
-  const scope = extractScope(changeSet);     // component name
+  const type = inferCommitType(changeSet); // feat, fix, refactor
+  const scope = extractScope(changeSet); // component name
   const subject = summarizeChanges(changeSet);
 
   return `${type}(${scope}): ${subject}`;
@@ -209,52 +197,23 @@ async function generateCommitMessage(changeSet: ChangeSet): Promise<string> {
 // refactor(modal): extract overlay component
 ```
 
-### Hook Execution
-
-```typescript
-async function commit(message: string): Promise<CommitResult> {
-  try {
-    // Git commit runs all configured hooks
-    const result = await exec(`git commit -m "${escapeMessage(message)}"`);
-    return { success: true, sha: extractSha(result.stdout) };
-  } catch (error) {
-    if (isHookFailure(error)) {
-      return {
-        success: false,
-        hookName: extractHookName(error),
-        stderr: error.stderr,
-      };
-    }
-    throw error;
-  }
-}
-```
-
 ### Hook Failure Surface
-
-When a pre-commit hook fails:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  ⚠️ Pre-commit hook failed                                       │
+│  ⚠️ Pre-commit hook failed                                        │
 ├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
 │  Hook: lint-staged                                               │
 │                                                                  │
 │  Error output:                                                   │
 │  ┌────────────────────────────────────────────────────────────┐ │
 │  │ src/Button.tsx                                              │ │
-│  │   12:5  error  'unused' is defined but never used  no-unused│ │
-│  │                                                             │ │
-│  │ ✖ 1 problem (1 error, 0 warnings)                          │ │
+│  │   12:5  error  'unused' is defined but never used           │ │
 │  └────────────────────────────────────────────────────────────┘ │
 │                                                                  │
-│  [Fix with AI]  [Edit Manually]  [Skip Hook (not recommended)]  │
-│                                                                  │
+│  [Fix with AI]  [Edit Manually]  [Skip Hook]                    │
 └─────────────────────────────────────────────────────────────────┘
 ```
-
----
 
 ## Pull Request Flow
 
@@ -262,14 +221,11 @@ When a pre-commit hook fails:
 
 ```typescript
 async function createPullRequest(options: PROptions): Promise<PR> {
-  // Push branch to remote
   await exec(`git push -u origin ${currentBranch}`);
 
-  // Get GitHub token
   const token = await resolveGitHubToken();
   const octokit = new Octokit({ auth: token });
 
-  // Create PR
   const { data: pr } = await octokit.pulls.create({
     owner: options.owner,
     repo: options.repo,
@@ -287,119 +243,65 @@ async function createPullRequest(options: PROptions): Promise<PR> {
 
 ```markdown
 ## What changed
+
 - `src/components/Button.tsx` (modified)
-- `src/components/Button.module.css` (modified)
 
 ## Why
+
 > make button rounded and use @primary-600
-> also bump the size lg to be 48px
 
 ## Commits
+
 - `feat(button): round corners, swap to primary-600` (a3f29c1)
-- `feat(button): bump lg size to 48px` (b1c44de)
 
 ## Tokens referenced
-| Token | Value | Usage |
-|-------|-------|-------|
+
+| Token               | Value   | Usage             |
+| ------------------- | ------- | ----------------- |
 | `color.primary.600` | #2952CC | Button background |
-| `spacing.lg` | 48px | Button height |
-| `radius.md` | 8px | Border radius |
+| `radius.md`         | 8px     | Border radius     |
 
 ## Scan results
+
 ✅ No token drift detected
 ✅ No accessibility issues
-✅ No provider drift
 
 ---
-*Generated by AutoDSM. The author reviewed and approved this change before opening this PR.*
+
+_Generated by AutoDSM. The author reviewed and approved this change._
 ```
-
----
 
 ## Merge Button State Machine
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    MERGE BUTTON STATES                           │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  State: checks_pending                                           │
-│  ───────────────────                                            │
-│  Display: "Waiting for checks…"                                  │
-│  Button: Disabled                                                │
-│  Reason: CI checks are still running                             │
-│                                                                  │
-│  State: checks_failed                                            │
-│  ──────────────────                                             │
-│  Display: "Checks failed"                                        │
-│  Button: Disabled                                                │
-│  Reason: One or more required checks failed                      │
-│                                                                  │
-│  State: needs_approvals                                          │
-│  ─────────────────────                                          │
-│  Display: "Needs N approval(s)"                                  │
-│  Button: Disabled                                                │
-│  Reason: Branch protection requires more reviews                 │
-│                                                                  │
-│  State: needs_update                                             │
-│  ──────────────────                                             │
-│  Display: "Update branch"                                        │
-│  Button: Action (updates branch)                                 │
-│  Reason: Branch is behind base and requireUpToDate is set        │
-│                                                                  │
-│  State: needs_signing                                            │
-│  ───────────────────                                            │
-│  Display: "Configure signing"                                    │
-│  Button: Link to docs                                            │
-│  Reason: Commits must be signed but aren't                       │
-│                                                                  │
-│  State: no_permission                                            │
-│  ───────────────────                                            │
-│  Display: "Merge in GitHub"                                      │
-│  Button: Link to PR                                              │
-│  Reason: User lacks merge permission                             │
-│                                                                  │
-│  State: ready                                                    │
-│  ────────────                                                   │
-│  Display: "Merge"                                                │
-│  Button: Enabled (green)                                         │
-│  Reason: All requirements met                                    │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
+| State           | Display               | Button   |
+| --------------- | --------------------- | -------- |
+| checks_pending  | "Waiting for checks…" | Disabled |
+| checks_failed   | "Checks failed"       | Disabled |
+| needs_approvals | "Needs N approval(s)" | Disabled |
+| needs_update    | "Update branch"       | Action   |
+| needs_signing   | "Configure signing"   | Link     |
+| no_permission   | "Merge in GitHub"     | Link     |
+| ready           | "Merge"               | Enabled  |
 
 ### State Resolution
 
 ```typescript
 function resolveMergeState(pr: PullRequest, protection: BranchProtection): MergeState {
-  // Check CI status
   const checksStatus = getChecksStatus(pr.checks);
-  if (checksStatus === 'pending') return 'checks_pending';
-  if (checksStatus === 'failure') return 'checks_failed';
+  if (checksStatus === "pending") return "checks_pending";
+  if (checksStatus === "failure") return "checks_failed";
 
-  // Check approvals
   const approvals = countApprovals(pr.reviews);
   const required = protection.required_approving_review_count ?? 0;
-  if (approvals < required) return { type: 'needs_approvals', needed: required - approvals };
+  if (approvals < required) return { type: "needs_approvals", needed: required - approvals };
 
-  // Check up-to-date requirement
-  if (protection.require_up_to_date && pr.behind_by > 0) {
-    return 'needs_update';
-  }
+  if (protection.require_up_to_date && pr.behind_by > 0) return "needs_update";
+  if (protection.require_signed_commits && !pr.commits_are_signed) return "needs_signing";
+  if (!pr.viewer_can_merge) return "no_permission";
 
-  // Check signing requirement
-  if (protection.require_signed_commits && !pr.commits_are_signed) {
-    return 'needs_signing';
-  }
-
-  // Check merge permission
-  if (!pr.viewer_can_merge) return 'no_permission';
-
-  return 'ready';
+  return "ready";
 }
 ```
-
----
 
 ## Session Persistence
 
@@ -411,7 +313,7 @@ interface GitSession {
   projectId: string;
   componentSlug: string;
   branchName: string;
-  status: 'editing' | 'committed' | 'pr_open' | 'merged' | 'archived';
+  status: "editing" | "committed" | "pr_open" | "merged" | "archived";
   commits: CommitSummary[];
   prNumber?: number;
   prUrl?: string;
@@ -425,86 +327,37 @@ interface GitSession {
 ```typescript
 async function resumeSession(sessionId: string): Promise<void> {
   const session = await loadSession(sessionId);
-
-  // Restore branch
   await exec(`git checkout ${session.branchName}`);
-
-  // Restore UI state
   await restoreWorkbenchState(session);
 
-  // Resume polling if PR is open
-  if (session.status === 'pr_open') {
+  if (session.status === "pr_open") {
     startPRPolling(session.prNumber);
   }
 }
 ```
 
----
-
-## Security Considerations
-
-### No Token Logging
-
-```typescript
-// NEVER do this
-console.log(`Token: ${token}`);  // ❌
-
-// Instead
-console.log('Token resolved successfully');  // ✓
-```
-
-### Keychain Entry
-
-Only one Keychain entry is ever created:
-
-- **Service:** `autodsm`
-- **Account:** `github-token`
-- **Created by:** Device-flow OAuth only
-
-### SSH vs HTTPS
-
-AutoDSM respects the user's git configuration:
-
-```typescript
-// Detect remote type
-const remoteUrl = await exec('git remote get-url origin');
-const isSSH = remoteUrl.startsWith('git@') || remoteUrl.includes('ssh://');
-
-// Push uses native git (SSH or HTTPS)
-await exec('git push -u origin ' + branchName);
-// Git handles SSH agent or credential helper automatically
-```
-
----
-
 ## Error Handling
 
-### Common Errors
+| Error               | Cause               | Resolution                 |
+| ------------------- | ------------------- | -------------------------- |
+| NoGitHubTokenError  | No token source     | Prompt for `gh auth login` |
+| PushRejectedError   | Branch protection   | Show blocking rule         |
+| MergeConflictError  | Conflicts with base | Show conflict files        |
+| HookFailureError    | Hook failed         | Show hook output           |
+| BranchNotFoundError | Remote deleted      | Offer to re-push           |
 
-| Error | Cause | Resolution |
-|-------|-------|------------|
-| `NoGitHubTokenError` | No token source available | Prompt for `gh auth login` or device flow |
-| `PushRejectedError` | Branch protection violation | Show specific protection rule that blocked |
-| `MergeConflictError` | Conflicts with base branch | Show conflict files, offer resolution UI |
-| `HookFailureError` | Pre-commit/pre-push hook failed | Show hook output, offer fix options |
-| `BranchNotFoundError` | Remote branch deleted | Offer to re-push |
+## Security Rules
 
-### Recovery Flows
+- **No token logging** — Never console.log, file, or error report
+- **Keychain limit** — At most one entry (`autodsm/github-token`)
+- **SSH passthrough** — Git handles SSH agent automatically
+- **HTTPS passthrough** — Git uses credential helpers
 
-```typescript
-// Hook failure recovery
-if (error instanceof HookFailureError) {
-  const action = await showHookFailureDialog(error);
-  switch (action) {
-    case 'fix':
-      await runAgentFix(error.lintErrors);
-      break;
-    case 'skip':
-      await exec('git commit --no-verify -m "..."');
-      break;
-    case 'edit':
-      await openInEditor(error.files);
-      break;
-  }
-}
-```
+---
+
+<!-- AGENT_ACTIONS
+to_implement_git: Create GitEngine in apps/desktop/src/main/services/
+to_implement_credentials: Create CredentialResolver in apps/desktop/src/main/services/
+to_test_git_flow: Test with SSH remote + gh, HTTPS + osxkeychain, device flow
+branch_naming: autodsm/<component-slug>-<yyyy-mm-dd>-<hhmm>
+-->

@@ -1,96 +1,83 @@
-# AutoDSM — System Architecture Overview
+# System Architecture Overview
+
+<!-- AGENT_CONTEXT
+type: architecture
+scope: system-overview
+relates_to:
+  - ./process-model.md
+  - ./security-model.md
+  - ../features/core-features.md
+key_concepts:
+  - Three-process Electron model
+  - IPC channel taxonomy
+  - Sidecar Vite runtime
+  - Credential resolution
+-->
+
+## Quick Reference
+
+| Component    | Technology           | Purpose                  |
+| ------------ | -------------------- | ------------------------ |
+| Main Process | Node.js              | Service orchestration    |
+| Renderer     | React + Chromium     | UI shell                 |
+| Sidecar      | Vite                 | Component preview server |
+| IPC          | Typed channels + Zod | Process communication    |
 
 ## Process Model
 
 ```
-┌─────────────────────────────────┐     ┌──────────────────────────────────┐
-│  Electron Main Process          │     │  Renderer (BrowserWindow)        │
-│  ───────────────────────────────│     │  ────────────────────────────────│
-│  • ProjectService               │ IPC │  • App shell                     │
-│  • Indexer (worker)             │◄───►│  • Component workbench           │
-│  • RenderRuntime                │     │  • PreviewCanvas (iframe)        │
-│  • Scanner (worker)             │     │  • DiffSlideOver                 │
-│  • AgentSupervisor              │     │  • SubmitChangesButton           │
-│  • GitEngine                    │     │  • Issues panel                  │
-│  • SettingsStore                │     │  • Sidebar drawers               │
-│  • CredentialResolver           │     │                                  │
-└─────────────────────────────────┘     └──────────────────────────────────┘
+┌─────────────────────────────┐     ┌──────────────────────────────────┐
+│  Electron Main Process      │     │  Renderer (BrowserWindow)        │
+│  ───────────────────────────│     │  ────────────────────────────────│
+│  • ProjectService           │ IPC │  • App shell                     │
+│  • Indexer (worker)         │◄───►│  • Component workbench           │
+│  • RenderRuntime            │     │  • PreviewCanvas (iframe)        │
+│  • Scanner (worker)         │     │  • DiffSlideOver                 │
+│  • AgentSupervisor          │     │  • SubmitChangesButton           │
+│  • GitEngine                │     │  • Issues panel                  │
+│  • SettingsStore            │     │  • Sidebar drawers               │
+│  • CredentialResolver       │     │                                  │
+└─────────────────────────────┘     └──────────────────────────────────┘
             │
             ├── Sidecar Vite preview server (port 5180–5189)
             ├── User's git binary (spawn child_process)
             ├── User's CLI agents (claude/codex/cursor)
-            ├── Octokit.rest → api.github.com (token, in-memory)
-            └── keytar → macOS Keychain (only when device-flow OAuth used)
+            ├── Octokit.rest → api.github.com
+            └── keytar → macOS Keychain
 ```
-
-## Electron Security Defaults (Non-Negotiable)
-
-| Setting | Value | Rationale |
-|---------|-------|-----------|
-| `contextIsolation` | `true` | Isolate renderer from Node.js |
-| `nodeIntegration` | `false` | No direct Node access in renderer |
-| `sandbox` | `true` | Full Chromium sandbox |
-| Preload bridge | Typed `window.autodsm.*` | No raw `ipcRenderer` |
-| IPC validation | `zod.safeParse` both sides | Mismatch → log + drop |
-| Iframe preview | `<iframe sandbox>` | Strict CSP |
-| Token handling | Never logged/echoed | No stderr, no error reports |
-| Crash reports | Default off | Opt-in only |
-
-**Any deviation from these rules kills enterprise sales.**
 
 ## IPC Channel Taxonomy
 
-Channels defined in `src/shared/ipc/channels.ts`:
+### Channel Definitions
 
-### ProjectChannels
-- `project:open` — Open local folder
-- `project:close` — Close project
-- `project:list` — List recent projects
-- `project:watch` — File system watcher
+All channels defined in `src/shared/ipc/channels.ts`:
 
-### IndexerChannels
-- `indexer:status` — Indexing progress
-- `indexer:registry-diff` — ComponentRegistry changes
-- `indexer:brand-diff` — BrandProfile changes
+| Namespace     | Channels                                            | Direction       |
+| ------------- | --------------------------------------------------- | --------------- |
+| `project:*`   | open, close, list, watch                            | Renderer ↔ Main |
+| `indexer:*`   | status, registry-diff, brand-diff                   | Main → Renderer |
+| `render:*`    | status, request, result                             | Renderer ↔ Main |
+| `scanner:*`   | run, results, diff                                  | Renderer ↔ Main |
+| `agent:*`     | generate, cancel, stream, progress, complete, error | Renderer ↔ Main |
+| `changeset:*` | create, preview, apply, rollback                    | Renderer ↔ Main |
+| `git:*`       | status, create-branch, commit, create-pr, auth-\*   | Renderer ↔ Main |
+| `settings:*`  | get, set, subscribe                                 | Renderer ↔ Main |
 
-### RenderChannels
-- `render:status` — Runtime status (idle/loading/ready/error)
-- `render:request` — Request component render
-- `render:result` — Render result with manifest
+### Message Pattern
 
-### ScannerChannels
-- `scanner:run` — Trigger scan
-- `scanner:results` — Scan violations
-- `scanner:diff` — Scan delta
+```typescript
+// Main process handler
+ipcMain.handle("channel:name", async (event, payload) => {
+  const parsed = schema.safeParse(payload);
+  if (!parsed.success) return { error: "validation_failed" };
+  // Handle request...
+});
 
-### AgentChannels
-- `agent:generate` — Start generation
-- `agent:cancel` — Cancel current run
-- `agent:stream` — Stream events
-- `agent:progress` — Progress updates
-- `agent:complete` — Generation complete
-- `agent:error` — Generation failed
+// Renderer invocation
+const result = await window.autodsm.channel.name(payload);
+```
 
-### ChangesetChannels
-- `changeset:create` — Create from GenerationPlan
-- `changeset:preview` — Preview diff
-- `changeset:apply` — Write to disk
-- `changeset:rollback` — Undo changes
-
-### GitChannels
-- `git:status` — Repository status
-- `git:create-branch` — Create session branch
-- `git:commit` — Commit with message
-- `git:create-pr` — Open pull request
-- `git:auth-start` — Begin auth flow
-- `git:auth-status` — Auth state
-
-### SettingsChannels
-- `settings:get` — Read preferences
-- `settings:set` — Write preferences
-- `settings:subscribe` — Watch changes
-
-## The Iframe-Bootstrap Render Path
+## Iframe-Bootstrap Render Path
 
 ```
 Renderer creates <iframe src="http://localhost:5180/preview/<componentId>">
@@ -99,33 +86,29 @@ Renderer creates <iframe src="http://localhost:5180/preview/<componentId>">
 Vite sidecar resolves /preview/<componentId>
    │
    ▼
-Preview-route plugin emits an HTML shell that imports:
+Preview-route plugin emits HTML shell importing:
    - virtual:autodsm/manifest      → RenderManifest
    - virtual:autodsm/providers     → Composed provider tree
    - virtual:autodsm/component     → The component itself
    - virtual:autodsm/safe-runtime  → fetch/XHR/storage/useEffect patches
    │
    ▼
-React renders the component inside the provider chain
+React renders component inside provider chain
    │
    ▼
-Bootstrap posts `autodsm:ready` to the host (via postMessage)
+Bootstrap posts `autodsm:ready` to host (postMessage)
    │
    ▼
-Host clears the watchdog; renderer marks status `ready`
+Host clears watchdog; renderer marks status `ready`
 ```
 
-### Failure Handling
+### Failure Events
 
-Failures caught at every step with structured `RenderHostMessage` events:
-
-| Event | Trigger | User Surface |
-|-------|---------|--------------|
-| `render:error` | Component throws | RenderFailureCard with diagnosis |
-| `render:timeout` | 8s watchdog fires | Timeout card with retry option |
-| `render:unhandled` | Uncaught exception | Structured error with stack |
-
-**Never show a bare stack trace.**
+| Event              | Trigger            | Surface                          |
+| ------------------ | ------------------ | -------------------------------- |
+| `render:error`     | Component throws   | RenderFailureCard with diagnosis |
+| `render:timeout`   | 8s watchdog fires  | Timeout card with retry          |
+| `render:unhandled` | Uncaught exception | Structured error with stack      |
 
 ## Directory Structure
 
@@ -152,102 +135,81 @@ Failures caught at every step with structured `RenderHostMessage` events:
 ## Data Flow: Prompt to Merge
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                          PROMPT TO MERGE FLOW                            │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  1. User types prompt in ComponentPromptBox                              │
-│     │                                                                    │
-│     ▼                                                                    │
-│  2. AgentSupervisor resolves provider (claude → codex → cursor → API)   │
-│     │                                                                    │
-│     ▼                                                                    │
-│  3. Context payload assembled:                                           │
-│     • Component source + colocated files                                 │
-│     • Prop-table from ComponentRegistry                                  │
-│     • Provider chain from inference                                      │
-│     • Relevant BrandProfile tokens                                       │
-│     • Convention rules                                                   │
-│     • Recent ChangeSets for coherence                                    │
-│     │                                                                    │
-│     ▼                                                                    │
-│  4. CLI invoked with structured prompt                                   │
-│     │                                                                    │
-│     ▼                                                                    │
-│  5. Agent streams GenerationPlan                                         │
-│     │                                                                    │
-│     ▼                                                                    │
-│  6. ChangeSet validated (type-check, lint, scan)                         │
-│     │                                                                    │
-│     ▼                                                                    │
-│  7. AgentRunChip lights up: +12 / −4                                     │
-│     │                                                                    │
-│     ▼                                                                    │
-│  8. User clicks chip → DiffSlideOver opens                               │
-│     │                                                                    │
-│     ├─── [Reject] → Discard ChangeSet, untouched                        │
-│     │                                                                    │
-│     └─── [Approve] ─────────────────────────────────────────┐            │
-│                                                              │            │
-│  9. ChangeSet written to disk                                │            │
-│     │                                                        │            │
-│     ▼                                                        │            │
-│  10. Vite HMR re-renders canvas (<500ms)                     │            │
-│     │                                                        │            │
-│     ▼                                                        │            │
-│  11. User clicks "Commit"                                    │            │
-│     │                                                        │            │
-│     ▼                                                        │            │
-│  12. Agent generates commit message → user edits             │            │
-│     │                                                        │            │
-│     ▼                                                        │            │
-│  13. git commit (user's hooks run: husky, gpg sign)          │            │
-│     │                                                        │            │
-│     ▼                                                        │            │
-│  14. User clicks "Open PR"                                   │            │
-│     │                                                        │            │
-│     ▼                                                        │            │
-│  15. git push -u origin <branch>                             │            │
-│     │                                                        │            │
-│     ▼                                                        │            │
-│  16. CredentialResolver.getToken() → Octokit.pulls.create    │            │
-│     │                                                        │            │
-│     ▼                                                        │            │
-│  17. PR polling (every 15s): checks, reviews, mergeability   │            │
-│     │                                                        │            │
-│     ▼                                                        │            │
-│  18. User clicks "Merge" (when state machine allows)         │            │
-│     │                                                        │            │
-│     ▼                                                        │            │
-│  19. Octokit.pulls.merge with sha guard                      │            │
-│     │                                                        │            │
-│     ▼                                                        │            │
-│  20. Archive session, delete local branch, return to default │            │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
+1. User types prompt in ComponentPromptBox
+   │
+   ▼
+2. AgentSupervisor resolves provider (claude → codex → cursor → API)
+   │
+   ▼
+3. Context payload assembled:
+   • Component source + colocated files
+   • Prop-table from ComponentRegistry
+   • Provider chain from inference
+   • Relevant BrandProfile tokens
+   • Convention rules
+   • Recent ChangeSets for coherence
+   │
+   ▼
+4. CLI invoked with structured prompt
+   │
+   ▼
+5. Agent streams GenerationPlan
+   │
+   ▼
+6. ChangeSet validated (type-check, lint, scan)
+   │
+   ▼
+7. AgentRunChip lights up: +12 / −4
+   │
+   ▼
+8. User clicks chip → DiffSlideOver opens
+   │
+   ├─ [Reject] → Discard ChangeSet, untouched
+   │
+   └─ [Approve] → Write to disk → Vite HMR → Re-render
+                        │
+                        ▼
+              9. User clicks "Commit" → git commit (hooks run)
+                        │
+                        ▼
+              10. User clicks "Open PR" → push → Octokit.pulls.create
+                        │
+                        ▼
+              11. Polling: checks, reviews, mergeability
+                        │
+                        ▼
+              12. User clicks "Merge" → Octokit.pulls.merge
+                        │
+                        ▼
+              13. Archive session, delete branch, return to default
 ```
 
 ## Credential Resolution (4-Source Priority)
 
 ```
-1. AUTODSM_GITHUB_TOKEN (workspace env)    ← Power-user override
-2. gh auth token                            ← Preferred for most users
-3. git credential fill (HTTPS helper)       ← osxkeychain, 1password-cli
-4. Keychain { service:'autodsm', account:'github-token' }  ← Device flow only
+1. AUTODSM_GITHUB_TOKEN (env)      ← Power-user override
+2. gh auth token                    ← Preferred for most users
+3. git credential fill (HTTPS)      ← osxkeychain, 1password-cli
+4. Keychain (autodsm/github-token)  ← Device flow only
 ```
 
 ## Merge Button State Machine
 
-```
-checks: pending                      → "Waiting for checks…"  (disabled)
-checks: failure                      → "Checks failed"        (disabled)
-checks: success
-  approvals < required               → "Needs N approval(s)"  (disabled)
-  approvals ≥ required
-    requireUpToDate && behind base   → "Update branch"        (action)
-    requireSignedCommits && unsigned → "Configure signing"    (link)
-    user lacks merge permission      → "Merge in GitHub"      (link)
-    everything green                 → "Merge"                (enabled)
-```
+| Condition                        | Button State                     |
+| -------------------------------- | -------------------------------- |
+| checks: pending                  | "Waiting for checks…" (disabled) |
+| checks: failure                  | "Checks failed" (disabled)       |
+| approvals < required             | "Needs N approval(s)" (disabled) |
+| requireUpToDate && behind        | "Update branch" (action)         |
+| requireSignedCommits && unsigned | "Configure signing" (link)       |
+| user lacks merge permission      | "Merge in GitHub" (link)         |
+| everything green                 | "Merge" (enabled)                |
 
-**The user never sees an enabled merge button that will fail.**
+---
+
+<!-- AGENT_ACTIONS
+to_understand_services: Read ./process-model.md
+to_understand_security: Read ./security-model.md
+to_implement_ipc: Define channels in src/shared/ipc/channels.ts
+to_implement_service: Create service in apps/desktop/src/main/services/
+-->
