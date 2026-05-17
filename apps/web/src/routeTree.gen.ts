@@ -20,6 +20,11 @@ import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
 import { Route as SettingsDiagnosticsRouteImport } from './routes/settings.diagnostics'
 import { Route as SettingsConnectionsRouteImport } from './routes/settings.connections'
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
+import { Route as ChatPreviewComponentsSandboxRouteImport } from './routes/_chat.preview-components-sandbox'
+import { Route as ChatHomeRouteImport } from './routes/_chat.home'
+import { Route as ChatDesignTokensRouteImport } from './routes/_chat.design-tokens'
+import { Route as ChatDesignComponentsRouteImport } from './routes/_chat.design-components'
+import { Route as ChatComponentPreviewRuntimeRouteImport } from './routes/_chat.component-preview-runtime'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
 
@@ -77,6 +82,33 @@ const SettingsArchivedRoute = SettingsArchivedRouteImport.update({
   path: '/archived',
   getParentRoute: () => SettingsRoute,
 } as any)
+const ChatPreviewComponentsSandboxRoute =
+  ChatPreviewComponentsSandboxRouteImport.update({
+    id: '/preview-components-sandbox',
+    path: '/preview-components-sandbox',
+    getParentRoute: () => ChatRoute,
+  } as any)
+const ChatHomeRoute = ChatHomeRouteImport.update({
+  id: '/home',
+  path: '/home',
+  getParentRoute: () => ChatRoute,
+} as any)
+const ChatDesignTokensRoute = ChatDesignTokensRouteImport.update({
+  id: '/design-tokens',
+  path: '/design-tokens',
+  getParentRoute: () => ChatRoute,
+} as any)
+const ChatDesignComponentsRoute = ChatDesignComponentsRouteImport.update({
+  id: '/design-components',
+  path: '/design-components',
+  getParentRoute: () => ChatRoute,
+} as any)
+const ChatComponentPreviewRuntimeRoute =
+  ChatComponentPreviewRuntimeRouteImport.update({
+    id: '/component-preview-runtime',
+    path: '/component-preview-runtime',
+    getParentRoute: () => ChatRoute,
+  } as any)
 const ChatDraftDraftIdRoute = ChatDraftDraftIdRouteImport.update({
   id: '/draft/$draftId',
   path: '/draft/$draftId',
@@ -93,6 +125,11 @@ export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/component-preview-runtime': typeof ChatComponentPreviewRuntimeRoute
+  '/design-components': typeof ChatDesignComponentsRoute
+  '/design-tokens': typeof ChatDesignTokensRoute
+  '/home': typeof ChatHomeRoute
+  '/preview-components-sandbox': typeof ChatPreviewComponentsSandboxRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
@@ -106,6 +143,11 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/component-preview-runtime': typeof ChatComponentPreviewRuntimeRoute
+  '/design-components': typeof ChatDesignComponentsRoute
+  '/design-tokens': typeof ChatDesignTokensRoute
+  '/home': typeof ChatHomeRoute
+  '/preview-components-sandbox': typeof ChatPreviewComponentsSandboxRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
@@ -122,6 +164,11 @@ export interface FileRoutesById {
   '/_chat': typeof ChatRouteWithChildren
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/_chat/component-preview-runtime': typeof ChatComponentPreviewRuntimeRoute
+  '/_chat/design-components': typeof ChatDesignComponentsRoute
+  '/_chat/design-tokens': typeof ChatDesignTokensRoute
+  '/_chat/home': typeof ChatHomeRoute
+  '/_chat/preview-components-sandbox': typeof ChatPreviewComponentsSandboxRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
@@ -139,6 +186,11 @@ export interface FileRouteTypes {
     | '/'
     | '/pair'
     | '/settings'
+    | '/component-preview-runtime'
+    | '/design-components'
+    | '/design-tokens'
+    | '/home'
+    | '/preview-components-sandbox'
     | '/settings/archived'
     | '/settings/connections'
     | '/settings/diagnostics'
@@ -152,6 +204,11 @@ export interface FileRouteTypes {
   to:
     | '/pair'
     | '/settings'
+    | '/component-preview-runtime'
+    | '/design-components'
+    | '/design-tokens'
+    | '/home'
+    | '/preview-components-sandbox'
     | '/settings/archived'
     | '/settings/connections'
     | '/settings/diagnostics'
@@ -167,6 +224,11 @@ export interface FileRouteTypes {
     | '/_chat'
     | '/pair'
     | '/settings'
+    | '/_chat/component-preview-runtime'
+    | '/_chat/design-components'
+    | '/_chat/design-tokens'
+    | '/_chat/home'
+    | '/_chat/preview-components-sandbox'
     | '/settings/archived'
     | '/settings/connections'
     | '/settings/diagnostics'
@@ -264,6 +326,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsArchivedRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/_chat/preview-components-sandbox': {
+      id: '/_chat/preview-components-sandbox'
+      path: '/preview-components-sandbox'
+      fullPath: '/preview-components-sandbox'
+      preLoaderRoute: typeof ChatPreviewComponentsSandboxRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/home': {
+      id: '/_chat/home'
+      path: '/home'
+      fullPath: '/home'
+      preLoaderRoute: typeof ChatHomeRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/design-tokens': {
+      id: '/_chat/design-tokens'
+      path: '/design-tokens'
+      fullPath: '/design-tokens'
+      preLoaderRoute: typeof ChatDesignTokensRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/design-components': {
+      id: '/_chat/design-components'
+      path: '/design-components'
+      fullPath: '/design-components'
+      preLoaderRoute: typeof ChatDesignComponentsRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/_chat/component-preview-runtime': {
+      id: '/_chat/component-preview-runtime'
+      path: '/component-preview-runtime'
+      fullPath: '/component-preview-runtime'
+      preLoaderRoute: typeof ChatComponentPreviewRuntimeRouteImport
+      parentRoute: typeof ChatRoute
+    }
     '/_chat/draft/$draftId': {
       id: '/_chat/draft/$draftId'
       path: '/draft/$draftId'
@@ -282,12 +379,22 @@ declare module '@tanstack/react-router' {
 }
 
 interface ChatRouteChildren {
+  ChatComponentPreviewRuntimeRoute: typeof ChatComponentPreviewRuntimeRoute
+  ChatDesignComponentsRoute: typeof ChatDesignComponentsRoute
+  ChatDesignTokensRoute: typeof ChatDesignTokensRoute
+  ChatHomeRoute: typeof ChatHomeRoute
+  ChatPreviewComponentsSandboxRoute: typeof ChatPreviewComponentsSandboxRoute
   ChatIndexRoute: typeof ChatIndexRoute
   ChatEnvironmentIdThreadIdRoute: typeof ChatEnvironmentIdThreadIdRoute
   ChatDraftDraftIdRoute: typeof ChatDraftDraftIdRoute
 }
 
 const ChatRouteChildren: ChatRouteChildren = {
+  ChatComponentPreviewRuntimeRoute: ChatComponentPreviewRuntimeRoute,
+  ChatDesignComponentsRoute: ChatDesignComponentsRoute,
+  ChatDesignTokensRoute: ChatDesignTokensRoute,
+  ChatHomeRoute: ChatHomeRoute,
+  ChatPreviewComponentsSandboxRoute: ChatPreviewComponentsSandboxRoute,
   ChatIndexRoute: ChatIndexRoute,
   ChatEnvironmentIdThreadIdRoute: ChatEnvironmentIdThreadIdRoute,
   ChatDraftDraftIdRoute: ChatDraftDraftIdRoute,

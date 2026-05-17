@@ -24,6 +24,9 @@ import {
   OrchestrationGetSnapshotError,
   OrchestrationGetTurnDiffError,
   ORCHESTRATION_WS_METHODS,
+  ProjectAnalyzeReactComponentError,
+  ProjectBuildComponentPreviewError,
+  ProjectReadFileError,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
   OrchestrationReplayEventsError,
@@ -57,7 +60,10 @@ import { redactServerSettingsForClient, ServerSettingsService } from "./serverSe
 import { TerminalManager } from "./terminal/Services/Manager.ts";
 import { WorkspaceEntries } from "./workspace/Services/WorkspaceEntries.ts";
 import { WorkspaceFileSystem } from "./workspace/Services/WorkspaceFileSystem.ts";
-import { WorkspacePathOutsideRootError } from "./workspace/Services/WorkspacePaths.ts";
+import {
+  WorkspacePathOutsideRootError,
+  WorkspacePaths,
+} from "./workspace/Services/WorkspacePaths.ts";
 import { VcsStatusBroadcaster } from "./vcs/VcsStatusBroadcaster.ts";
 import { VcsProvisioningService } from "./vcs/VcsProvisioningService.ts";
 import { GitWorkflowService } from "./git/GitWorkflowService.ts";
@@ -68,6 +74,8 @@ import { ServerAuth } from "./auth/Services/ServerAuth.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
+import { analyzeReactComponentFile } from "./componentPreview/analyzeReactComponent.ts";
+import { bundleComponentPreview } from "./componentPreview/bundleComponentPreview.ts";
 import * as SourceControlDiscoveryLayer from "./sourceControl/SourceControlDiscovery.ts";
 import { SourceControlRepositoryService } from "./sourceControl/SourceControlRepositoryService.ts";
 import * as AzureDevOpsCli from "./sourceControl/AzureDevOpsCli.ts";
@@ -75,6 +83,7 @@ import * as BitbucketApi from "./sourceControl/BitbucketApi.ts";
 import * as GitHubCli from "./sourceControl/GitHubCli.ts";
 import * as GitLabCli from "./sourceControl/GitLabCli.ts";
 import * as SourceControlProviderRegistry from "./sourceControl/SourceControlProviderRegistry.ts";
+import { isWorkspaceSrcComponentsUiRelativePath } from "./workspace/componentPreviewPaths.ts";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "./vcs/VcsDriverRegistry.ts";
 import * as VcsProjectConfig from "./vcs/VcsProjectConfig.ts";
@@ -90,6 +99,8 @@ import {
 import { respondToAuthError } from "./auth/http.ts";
 const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchCommandError);
 const isWorkspacePathOutsideRootError = Schema.is(WorkspacePathOutsideRootError);
+const isProjectAnalyzeReactComponentError = Schema.is(ProjectAnalyzeReactComponentError);
+const isProjectBuildComponentPreviewError = Schema.is(ProjectBuildComponentPreviewError);
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
@@ -177,6 +188,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const startup = yield* ServerRuntimeStartup;
       const workspaceEntries = yield* WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem;
+      const workspacePaths = yield* WorkspacePaths;
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner;
       const repositoryIdentityResolver = yield* RepositoryIdentityResolver;
       const serverEnvironment = yield* ServerEnvironment;
@@ -975,6 +987,123 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                   message,
                   cause,
                 });
+              }),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsReadFile]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsReadFile,
+            workspaceFileSystem.readFile(input).pipe(
+              Effect.mapError((cause) => {
+                const message = isWorkspacePathOutsideRootError(cause)
+                  ? "Workspace file path must stay within the project root."
+                  : "Failed to read workspace file";
+                return new ProjectReadFileError({
+                  message,
+                  cause,
+                });
+              }),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsAnalyzeReactComponent]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsAnalyzeReactComponent,
+            Effect.gen(function* () {
+              if (!isWorkspaceSrcComponentsUiRelativePath(input.relativePath)) {
+                return yield* Effect.fail(
+                  new ProjectAnalyzeReactComponentError({
+                    message:
+                      "Preview analysis is limited to workspace .tsx/.jsx files under …/src/components/.",
+                  }),
+                );
+              }
+              const target = yield* workspacePaths.resolveRelativePathWithinRoot({
+                workspaceRoot: input.cwd,
+                relativePath: input.relativePath,
+              });
+              const manifest = analyzeReactComponentFile({
+                absolutePath: target.absolutePath,
+                cwd: input.cwd,
+                relativePathPosix: target.relativePath,
+              });
+              return { manifest };
+            }).pipe(
+              Effect.catch((cause: unknown) => {
+                if (isProjectAnalyzeReactComponentError(cause)) {
+                  return Effect.fail(cause);
+                }
+                if (isWorkspacePathOutsideRootError(cause)) {
+                  return Effect.fail(
+                    new ProjectAnalyzeReactComponentError({
+                      message: "Workspace file path must stay within the project root.",
+                      cause,
+                    }),
+                  );
+                }
+                return Effect.fail(
+                  new ProjectAnalyzeReactComponentError({
+                    message: "Failed to analyze React component.",
+                    cause,
+                  }),
+                );
+              }),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsBuildComponentPreview]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsBuildComponentPreview,
+            Effect.gen(function* () {
+              if (!isWorkspaceSrcComponentsUiRelativePath(input.relativePath)) {
+                return yield* Effect.fail(
+                  new ProjectBuildComponentPreviewError({
+                    message:
+                      "Preview bundling is limited to workspace .tsx/.jsx files under …/src/components/.",
+                  }),
+                );
+              }
+              const target = yield* workspacePaths.resolveRelativePathWithinRoot({
+                workspaceRoot: input.cwd,
+                relativePath: input.relativePath,
+              });
+              return yield* Effect.tryPromise({
+                try: () =>
+                  bundleComponentPreview({
+                    cwd: input.cwd,
+                    absoluteComponentPath: target.absolutePath,
+                    relativePathPosix: target.relativePath,
+                    exportName: input.exportName,
+                  }),
+                catch: (cause) =>
+                  new ProjectBuildComponentPreviewError({
+                    message:
+                      cause instanceof Error
+                        ? cause.message
+                        : "Failed to bundle component preview.",
+                    cause,
+                  }),
+              });
+            }).pipe(
+              Effect.catch((cause: unknown) => {
+                if (isProjectBuildComponentPreviewError(cause)) {
+                  return Effect.fail(cause);
+                }
+                if (isWorkspacePathOutsideRootError(cause)) {
+                  return Effect.fail(
+                    new ProjectBuildComponentPreviewError({
+                      message: "Workspace file path must stay within the project root.",
+                      cause,
+                    }),
+                  );
+                }
+                return Effect.fail(
+                  new ProjectBuildComponentPreviewError({
+                    message: "Failed to bundle component preview.",
+                    cause,
+                  }),
+                );
               }),
             ),
             { "rpc.aggregate": "workspace" },

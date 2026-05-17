@@ -86,6 +86,7 @@ interface GitActionsControlProps {
   gitCwd: string | null;
   activeThreadRef: ScopedThreadRef | null;
   draftId?: DraftId;
+  toolbarStack?: boolean;
 }
 
 interface PendingDefaultBranchAction {
@@ -949,6 +950,7 @@ export default function GitActionsControl({
   gitCwd,
   activeThreadRef,
   draftId,
+  toolbarStack = false,
 }: GitActionsControlProps) {
   const activeEnvironmentId = activeThreadRef?.environmentId ?? null;
   const threadToastData = useMemo(
@@ -1621,14 +1623,22 @@ export default function GitActionsControl({
       {!isRepo ? (
         <Button
           variant="outline"
-          size="xs"
+          size={toolbarStack ? "sm" : "xs"}
+          className={cn(
+            toolbarStack &&
+              "h-auto min-h-9 w-full min-w-0 justify-start gap-2 px-3 py-2 whitespace-normal shadow-xs/5",
+          )}
           disabled={initMutation.isPending}
           onClick={() => initMutation.mutate()}
         >
           {initMutation.isPending ? "Initializing..." : "Initialize Git"}
         </Button>
       ) : (
-        <Group aria-label="Git actions" className="shrink-0">
+        <Group
+          aria-label="Git actions"
+          className={cn("shrink-0", toolbarStack && "w-full")}
+          orientation={toolbarStack ? "vertical" : "horizontal"}
+        >
           {quickActionDisabledReason ? (
             <Popover>
               <PopoverTrigger
@@ -1636,8 +1646,13 @@ export default function GitActionsControl({
                 render={
                   <Button
                     aria-disabled="true"
-                    className="cursor-not-allowed rounded-e-none border-e-0 opacity-64 before:rounded-e-none"
-                    size="xs"
+                    className={cn(
+                      "cursor-not-allowed opacity-64",
+                      toolbarStack
+                        ? "h-auto min-h-9 w-full min-w-0 justify-start gap-2 px-3 py-2 whitespace-normal shadow-xs/5"
+                        : "rounded-e-none border-e-0 before:rounded-e-none",
+                    )}
+                    size={toolbarStack ? "sm" : "xs"}
                     variant="outline"
                   />
                 }
@@ -1646,7 +1661,13 @@ export default function GitActionsControl({
                   quickAction={quickAction}
                   SourceControlIcon={SourceControlIcon}
                 />
-                <span className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5">
+                <span
+                  className={cn(
+                    toolbarStack
+                      ? "min-w-0 truncate text-left text-xs font-medium"
+                      : "sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5",
+                  )}
+                >
                   {quickAction.label}
                 </span>
               </PopoverTrigger>
@@ -1657,12 +1678,22 @@ export default function GitActionsControl({
           ) : (
             <Button
               variant="outline"
-              size="xs"
+              size={toolbarStack ? "sm" : "xs"}
+              className={cn(
+                toolbarStack &&
+                  "h-auto min-h-9 w-full min-w-0 justify-start gap-2 px-3 py-2 whitespace-normal shadow-xs/5",
+              )}
               disabled={isGitActionRunning || quickAction.disabled}
               onClick={runQuickAction}
             >
               <GitQuickActionIcon quickAction={quickAction} SourceControlIcon={SourceControlIcon} />
-              <span className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5">
+              <span
+                className={cn(
+                  toolbarStack
+                    ? "min-w-0 truncate text-left text-xs font-medium"
+                    : "sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5",
+                )}
+              >
                 {quickAction.label}
               </span>
             </Button>
@@ -1679,12 +1710,30 @@ export default function GitActionsControl({
             }}
           >
             <MenuTrigger
-              render={<Button aria-label="Git action options" size="icon-xs" variant="outline" />}
+              render={
+                <Button
+                  aria-label="Git action options"
+                  size={toolbarStack ? "sm" : "icon-xs"}
+                  variant="outline"
+                  className={cn(
+                    toolbarStack &&
+                      "h-auto min-h-9 w-full min-w-0 justify-between gap-2 px-3 py-2 whitespace-normal shadow-xs/5",
+                  )}
+                />
+              }
               disabled={isGitActionRunning}
             >
-              <ChevronDownIcon aria-hidden="true" className="size-4" />
+              {toolbarStack ? (
+                <span className="min-w-0 truncate text-xs text-muted-foreground">
+                  More git actions...
+                </span>
+              ) : null}
+              <ChevronDownIcon aria-hidden="true" className="size-4 shrink-0" />
             </MenuTrigger>
-            <MenuPopup align="end" className="w-full">
+            <MenuPopup
+              align={toolbarStack ? "start" : "end"}
+              className={cn(toolbarStack ? "min-w-56" : "w-full")}
+            >
               {gitActionMenuItems.map((item) => {
                 const disabledReason = getMenuActionDisabledReason({
                   item,

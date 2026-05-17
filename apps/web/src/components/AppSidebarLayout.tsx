@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 
+import { TempTestingSingleProjectHarness } from "./_temp-testing/single-project";
 import ThreadSidebar from "./Sidebar";
 import { Sidebar, SidebarProvider, SidebarRail } from "./ui/sidebar";
 import {
@@ -70,6 +71,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         <SidebarRail />
       </Sidebar>
       {children}
+      {import.meta.env.DEV ? <TempTestingSingleProjectHarness /> : null}
     </SidebarProvider>
   );
 }

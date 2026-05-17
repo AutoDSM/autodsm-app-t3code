@@ -29,17 +29,17 @@ T3 Code is a minimal web GUI for coding agents (Codex, Claude, OpenCode). It pro
 
 ### Key Technologies
 
-| Component | Technology |
-|-----------|------------|
-| Desktop App | Electron 41.5.0 |
-| Backend | Node.js/Bun + Effect.js |
-| Frontend | React 19.2.6 + Vite 8.0 |
-| State Management | Zustand + Effect.js Atoms |
-| Styling | Tailwind CSS v4 |
-| Database | SQLite (native Node.js bindings) |
-| Terminal | node-pty + xterm.js |
-| Package Manager | Bun 1.3.11 |
-| Build System | Turbo + tsdown |
+| Component        | Technology                       |
+| ---------------- | -------------------------------- |
+| Desktop App      | Electron 41.5.0                  |
+| Backend          | Node.js/Bun + Effect.js          |
+| Frontend         | React 19.2.6 + Vite 8.0          |
+| State Management | Zustand + Effect.js Atoms        |
+| Styling          | Tailwind CSS v4                  |
+| Database         | SQLite (native Node.js bindings) |
+| Terminal         | node-pty + xterm.js              |
+| Package Manager  | Bun 1.3.11                       |
+| Build System     | Turbo + tsdown                   |
 
 ---
 
@@ -205,16 +205,16 @@ t3code/
 
 ### HTTP Routes
 
-| Route | Method | Purpose |
-|-------|--------|---------|
-| `/.well-known/t3/environment` | GET | Server environment descriptor |
-| `/api/observability/v1/traces` | POST | OTLP trace proxy |
-| `/api/attachments/*` | GET | File attachment downloads |
-| `/api/project-favicon` | GET | Project favicon resolution |
-| `/auth/bootstrap` | POST | Exchange bootstrap credential |
-| `/auth/pairing-links` | GET/POST/DELETE | Pairing code management |
-| `/auth/clients` | GET/DELETE | Session management |
-| `/auth/ws-token` | POST | WebSocket token issuance |
+| Route                          | Method          | Purpose                       |
+| ------------------------------ | --------------- | ----------------------------- |
+| `/.well-known/t3/environment`  | GET             | Server environment descriptor |
+| `/api/observability/v1/traces` | POST            | OTLP trace proxy              |
+| `/api/attachments/*`           | GET             | File attachment downloads     |
+| `/api/project-favicon`         | GET             | Project favicon resolution    |
+| `/auth/bootstrap`              | POST            | Exchange bootstrap credential |
+| `/auth/pairing-links`          | GET/POST/DELETE | Pairing code management       |
+| `/auth/clients`                | GET/DELETE      | Session management            |
+| `/auth/ws-token`               | POST            | WebSocket token issuance      |
 
 ### WebSocket RPC Methods
 
@@ -222,48 +222,48 @@ t3code/
 // From packages/contracts/src/rpc.ts
 
 // Orchestration Methods
-orchestration.dispatchCommand    // Send orchestration command
-orchestration.getTurnDiff        // Get diff for a turn
-orchestration.getFullThreadDiff  // Get all diffs for thread
-orchestration.replayEvents       // Replay events from sequence
+orchestration.dispatchCommand; // Send orchestration command
+orchestration.getTurnDiff; // Get diff for a turn
+orchestration.getFullThreadDiff; // Get all diffs for thread
+orchestration.replayEvents; // Replay events from sequence
 
 // Project Methods
-projects.list                    // List all projects
-projects.add                     // Add new project
-projects.remove                  // Remove project
-projects.searchEntries           // Search project files
-projects.writeFile               // Write file to project
+projects.list; // List all projects
+projects.add; // Add new project
+projects.remove; // Remove project
+projects.searchEntries; // Search project files
+projects.writeFile; // Write file to project
 
 // Terminal Methods
-terminal.open                    // Open new terminal
-terminal.write                   // Send input to terminal
-terminal.resize                  // Resize terminal
-terminal.clear                   // Clear terminal
-terminal.restart                 // Restart terminal
-terminal.close                   // Close terminal
+terminal.open; // Open new terminal
+terminal.write; // Send input to terminal
+terminal.resize; // Resize terminal
+terminal.clear; // Clear terminal
+terminal.restart; // Restart terminal
+terminal.close; // Close terminal
 
 // VCS Methods
-vcs.pull                         // Pull changes
-vcs.listRefs                     // List branches/tags
-vcs.createWorktree               // Create git worktree
-vcs.createRef                    // Create branch/tag
-vcs.switchRef                    // Switch branch
-vcs.init                         // Initialize repo
+vcs.pull; // Pull changes
+vcs.listRefs; // List branches/tags
+vcs.createWorktree; // Create git worktree
+vcs.createRef; // Create branch/tag
+vcs.switchRef; // Switch branch
+vcs.init; // Initialize repo
 
 // Server Methods
-server.getConfig                 // Get server configuration
-server.refreshProviders          // Refresh provider statuses
-server.updateProvider            // Update provider config
-server.updateKeybindings         // Update keybindings
-server.updateSettings            // Update settings
+server.getConfig; // Get server configuration
+server.refreshProviders; // Refresh provider statuses
+server.updateProvider; // Update provider config
+server.updateKeybindings; // Update keybindings
+server.updateSettings; // Update settings
 
 // Subscription Streams
-server.subscribeConfig           // Config updates stream
-server.subscribeLifecycle        // Lifecycle events stream
-server.subscribeShellSnapshot    // All threads metadata stream
-server.subscribeThreadDetail     // Active thread detail stream
-terminal.subscribeEvents         // Terminal output stream
-vcs.subscribeStatus              // VCS status stream
+server.subscribeConfig; // Config updates stream
+server.subscribeLifecycle; // Lifecycle events stream
+server.subscribeShellSnapshot; // All threads metadata stream
+server.subscribeThreadDetail; // Active thread detail stream
+terminal.subscribeEvents; // Terminal output stream
+vcs.subscribeStatus; // VCS status stream
 ```
 
 ### Orchestration Engine (Event Sourcing)
@@ -565,22 +565,22 @@ CREATE TABLE AuthAccessManagement (
 
 ### IPC Channel Reference
 
-| Channel | Type | Purpose |
-|---------|------|---------|
-| `desktop:get-app-branding` | Sync | Get app branding info |
-| `desktop:get-local-environment-bootstrap` | Sync | Get bootstrap config |
-| `desktop:pick-folder` | Async | Native folder picker |
-| `desktop:confirm` | Async | Native confirm dialog |
-| `desktop:set-theme` | Async | Set light/dark theme |
-| `desktop:context-menu` | Async | Show context menu |
-| `desktop:open-external` | Async | Open URL in browser |
-| `desktop:get-client-settings` | Async | Get client settings |
-| `desktop:set-client-settings` | Async | Save client settings |
-| `desktop:get-server-exposure-state` | Async | Get network exposure |
-| `desktop:set-server-exposure-mode` | Async | Set network mode |
-| `desktop:update-check` | Async | Check for updates |
-| `desktop:update-download` | Async | Download update |
-| `desktop:update-install` | Async | Install update |
+| Channel                                   | Type  | Purpose               |
+| ----------------------------------------- | ----- | --------------------- |
+| `desktop:get-app-branding`                | Sync  | Get app branding info |
+| `desktop:get-local-environment-bootstrap` | Sync  | Get bootstrap config  |
+| `desktop:pick-folder`                     | Async | Native folder picker  |
+| `desktop:confirm`                         | Async | Native confirm dialog |
+| `desktop:set-theme`                       | Async | Set light/dark theme  |
+| `desktop:context-menu`                    | Async | Show context menu     |
+| `desktop:open-external`                   | Async | Open URL in browser   |
+| `desktop:get-client-settings`             | Async | Get client settings   |
+| `desktop:set-client-settings`             | Async | Save client settings  |
+| `desktop:get-server-exposure-state`       | Async | Get network exposure  |
+| `desktop:set-server-exposure-mode`        | Async | Set network mode      |
+| `desktop:update-check`                    | Async | Check for updates     |
+| `desktop:update-download`                 | Async | Download update       |
+| `desktop:update-install`                  | Async | Install update        |
 
 ---
 
@@ -643,7 +643,7 @@ export * from "./git";
 export * from "./shell";
 
 // Network Utilities
-export * from "./Net";  // Port checking
+export * from "./Net"; // Port checking
 
 // Worker Utilities
 export * from "./DrainableWorker";
@@ -1059,7 +1059,7 @@ export const builtInDrivers = [
   CodexDriver,
   OpenCodeDriver,
   CursorDriver,
-  NewProviderDriver,  // Add here
+  NewProviderDriver, // Add here
 ];
 ```
 
@@ -1286,13 +1286,13 @@ bun run dist:desktop:win:x64      # Windows x64
 
 ### Deployment Targets
 
-| Target | Command | Output |
-|--------|---------|--------|
-| macOS DMG | `dist:desktop:dmg` | `.dmg` installer |
-| Linux AppImage | `dist:desktop:linux` | `.AppImage` |
-| Windows NSIS | `dist:desktop:win` | `.exe` installer |
-| Web (hosted) | `build:marketing` | Static site |
-| NPM (CLI) | `npm publish` | `npx t3` |
+| Target         | Command              | Output           |
+| -------------- | -------------------- | ---------------- |
+| macOS DMG      | `dist:desktop:dmg`   | `.dmg` installer |
+| Linux AppImage | `dist:desktop:linux` | `.AppImage`      |
+| Windows NSIS   | `dist:desktop:win`   | `.exe` installer |
+| Web (hosted)   | `build:marketing`    | Static site      |
+| NPM (CLI)      | `npm publish`        | `npx t3`         |
 
 ---
 
@@ -1325,18 +1325,18 @@ bun run dist:desktop:win:x64      # Windows x64
 
 ### Key Files for Customization
 
-| Purpose | File Path |
-|---------|-----------|
-| Add RPC method | `packages/contracts/src/rpc.ts` |
-| Server routes | `apps/server/src/http.ts` |
-| WebSocket handlers | `apps/server/src/ws.ts` |
-| Event sourcing | `apps/server/src/orchestration/decider.ts` |
-| Providers | `apps/server/src/provider/Drivers/` |
-| React routes | `apps/web/src/routes/` |
-| Global state | `apps/web/src/store.ts` |
-| UI components | `apps/web/src/components/` |
-| Desktop IPC | `apps/desktop/src/ipc/` |
-| Settings | `apps/server/src/serverSettings.ts` |
+| Purpose            | File Path                                  |
+| ------------------ | ------------------------------------------ |
+| Add RPC method     | `packages/contracts/src/rpc.ts`            |
+| Server routes      | `apps/server/src/http.ts`                  |
+| WebSocket handlers | `apps/server/src/ws.ts`                    |
+| Event sourcing     | `apps/server/src/orchestration/decider.ts` |
+| Providers          | `apps/server/src/provider/Drivers/`        |
+| React routes       | `apps/web/src/routes/`                     |
+| Global state       | `apps/web/src/store.ts`                    |
+| UI components      | `apps/web/src/components/`                 |
+| Desktop IPC        | `apps/desktop/src/ipc/`                    |
+| Settings           | `apps/server/src/serverSettings.ts`        |
 
 ---
 
@@ -1344,11 +1344,11 @@ bun run dist:desktop:win:x64      # Windows x64
 
 ### Port Defaults
 
-| Service | Port | Notes |
-|---------|------|-------|
-| Backend Server | 13773 | Web mode |
-| Backend Server | 3773 | Desktop mode |
-| Web Dev Server | 5733 | Vite dev |
+| Service        | Port  | Notes        |
+| -------------- | ----- | ------------ |
+| Backend Server | 13773 | Web mode     |
+| Backend Server | 3773  | Desktop mode |
+| Web Dev Server | 5733  | Vite dev     |
 
 ### Environment Variables
 
@@ -1366,17 +1366,17 @@ T3_LOG_LEVEL=info
 
 ### Key Dependencies
 
-| Package | Version | Purpose |
-|---------|---------|---------|
-| `effect` | 4.0.0-beta.59 | Functional effects |
-| `electron` | 41.5.0 | Desktop app |
-| `react` | 19.2.6 | UI framework |
-| `vite` | 8.0.0 | Build tool |
-| `@tanstack/react-router` | 1.160.2 | Routing |
-| `zustand` | 5.0.11 | State management |
-| `xterm` | 5.x | Terminal emulation |
-| `node-pty` | - | PTY support |
+| Package                  | Version       | Purpose            |
+| ------------------------ | ------------- | ------------------ |
+| `effect`                 | 4.0.0-beta.59 | Functional effects |
+| `electron`               | 41.5.0        | Desktop app        |
+| `react`                  | 19.2.6        | UI framework       |
+| `vite`                   | 8.0.0         | Build tool         |
+| `@tanstack/react-router` | 1.160.2       | Routing            |
+| `zustand`                | 5.0.11        | State management   |
+| `xterm`                  | 5.x           | Terminal emulation |
+| `node-pty`               | -             | PTY support        |
 
 ---
 
-*This documentation was generated to help developers understand and extend T3 Code. For the latest updates, refer to the source code and official documentation.*
+_This documentation was generated to help developers understand and extend T3 Code. For the latest updates, refer to the source code and official documentation._

@@ -594,3 +594,8 @@ label:has(> select#reasoning-effort) select {
 .dark .model-picker-list::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.15);
 }
+
+body[data-companion-agent-split-dragging="1"] {
+  cursor: col-resize !important;
+  user-select: none;
+}

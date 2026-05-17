@@ -33,6 +33,12 @@ import {
   setUpdateChannel,
 } from "./methods/updates.ts";
 import {
+  attachComponentPreview,
+  detachComponentPreview,
+  primeComponentPreview,
+  setComponentPreviewBounds,
+} from "./methods/componentPreview.ts";
+import {
   confirm,
   getAppBranding,
   getLocalEnvironmentBootstrap,
@@ -75,6 +81,11 @@ export const installDesktopIpcHandlers = Effect.gen(function* () {
   yield* ipc.handle(setTheme);
   yield* ipc.handle(showContextMenu);
   yield* ipc.handle(openExternal);
+
+  yield* ipc.handle(attachComponentPreview);
+  yield* ipc.handle(detachComponentPreview);
+  yield* ipc.handle(setComponentPreviewBounds);
+  yield* ipc.handle(primeComponentPreview);
 
   yield* ipc.handle(getUpdateState);
   yield* ipc.handle(setUpdateChannel);

@@ -20,6 +20,12 @@ import type {
 } from "./git.ts";
 import type { FilesystemBrowseInput, FilesystemBrowseResult } from "./filesystem.ts";
 import type {
+  ProjectAnalyzeReactComponentInput,
+  ProjectAnalyzeReactComponentResult,
+  ProjectBuildComponentPreviewInput,
+  ProjectBuildComponentPreviewResult,
+  ProjectReadFileInput,
+  ProjectReadFileResult,
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
   ProjectWriteFileInput,
@@ -421,6 +427,36 @@ export interface DesktopBridge {
   downloadUpdate: () => Promise<DesktopUpdateActionResult>;
   installUpdate: () => Promise<DesktopUpdateActionResult>;
   onUpdateState: (listener: (state: DesktopUpdateState) => void) => () => void;
+
+  /**
+   * Optional Electron-only: embed a native `WebContentsView` for component previews.
+   * Browser builds omit these methods.
+   */
+  attachComponentPreview?: (input: {
+    readonly viewId: string;
+    readonly url: string;
+    readonly bounds: {
+      readonly x: number;
+      readonly y: number;
+      readonly width: number;
+      readonly height: number;
+    };
+  }) => Promise<boolean>;
+  detachComponentPreview?: (viewId: string) => Promise<void>;
+  setComponentPreviewBounds?: (input: {
+    readonly viewId: string;
+    readonly bounds: {
+      readonly x: number;
+      readonly y: number;
+      readonly width: number;
+      readonly height: number;
+    };
+  }) => Promise<void>;
+  primeComponentPreview?: (input: {
+    readonly viewId: string;
+    readonly javascript: string;
+    readonly propsJson: string;
+  }) => Promise<void>;
 }
 
 /**
@@ -506,6 +542,13 @@ export interface EnvironmentApi {
   projects: {
     searchEntries: (input: ProjectSearchEntriesInput) => Promise<ProjectSearchEntriesResult>;
     writeFile: (input: ProjectWriteFileInput) => Promise<ProjectWriteFileResult>;
+    readFile: (input: ProjectReadFileInput) => Promise<ProjectReadFileResult>;
+    analyzeReactComponent: (
+      input: ProjectAnalyzeReactComponentInput,
+    ) => Promise<ProjectAnalyzeReactComponentResult>;
+    buildComponentPreview: (
+      input: ProjectBuildComponentPreviewInput,
+    ) => Promise<ProjectBuildComponentPreviewResult>;
   };
   filesystem: {
     browse: (input: FilesystemBrowseInput) => Promise<FilesystemBrowseResult>;

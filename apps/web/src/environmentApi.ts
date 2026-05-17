@@ -19,6 +19,9 @@ export function createEnvironmentApi(rpcClient: WsRpcClient): EnvironmentApi {
     projects: {
       searchEntries: rpcClient.projects.searchEntries,
       writeFile: rpcClient.projects.writeFile,
+      readFile: rpcClient.projects.readFile,
+      analyzeReactComponent: rpcClient.projects.analyzeReactComponent,
+      buildComponentPreview: rpcClient.projects.buildComponentPreview,
     },
     filesystem: {
       browse: rpcClient.filesystem.browse,

@@ -947,7 +947,7 @@ function SidebarMenuSubButton({
   className,
   render,
   ...props
-}: useRender.ComponentProps<"a"> & {
+}: useRender.ComponentProps<"button"> & {
   size?: "sm" | "md";
   isActive?: boolean;
 }) {
@@ -964,11 +964,12 @@ function SidebarMenuSubButton({
     "data-sidebar": "menu-sub-button",
     "data-size": size,
     "data-slot": "sidebar-menu-sub-button",
+    type: render ? undefined : ("button" as const),
   };
 
   return useRender({
-    defaultTagName: "a",
-    props: mergeProps<"a">(defaultProps, props),
+    defaultTagName: "button",
+    props: mergeProps<"button">(defaultProps, props),
     render,
   });
 }

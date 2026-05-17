@@ -69,6 +69,9 @@ export interface WsRpcClient {
   readonly projects: {
     readonly searchEntries: RpcUnaryMethod<typeof WS_METHODS.projectsSearchEntries>;
     readonly writeFile: RpcUnaryMethod<typeof WS_METHODS.projectsWriteFile>;
+    readonly readFile: RpcUnaryMethod<typeof WS_METHODS.projectsReadFile>;
+    readonly analyzeReactComponent: RpcUnaryMethod<typeof WS_METHODS.projectsAnalyzeReactComponent>;
+    readonly buildComponentPreview: RpcUnaryMethod<typeof WS_METHODS.projectsBuildComponentPreview>;
   };
   readonly filesystem: {
     readonly browse: RpcUnaryMethod<typeof WS_METHODS.filesystemBrowse>;
@@ -181,6 +184,12 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
         transport.request((client) => client[WS_METHODS.projectsSearchEntries](input)),
       writeFile: (input) =>
         transport.request((client) => client[WS_METHODS.projectsWriteFile](input)),
+      readFile: (input) =>
+        transport.request((client) => client[WS_METHODS.projectsReadFile](input)),
+      analyzeReactComponent: (input) =>
+        transport.request((client) => client[WS_METHODS.projectsAnalyzeReactComponent](input)),
+      buildComponentPreview: (input) =>
+        transport.request((client) => client[WS_METHODS.projectsBuildComponentPreview](input)),
     },
     filesystem: {
       browse: (input) => transport.request((client) => client[WS_METHODS.filesystemBrowse](input)),

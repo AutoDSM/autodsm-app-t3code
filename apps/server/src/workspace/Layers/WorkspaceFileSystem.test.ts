@@ -5,11 +5,13 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 
+import { PROJECT_READ_FILE_MAX_BYTES } from "@t3tools/contracts";
+
 import { ServerConfig } from "../../config.ts";
 import * as VcsDriverRegistry from "../../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../../vcs/VcsProcess.ts";
 import { WorkspaceEntries } from "../Services/WorkspaceEntries.ts";
-import { WorkspaceFileSystem } from "../Services/WorkspaceFileSystem.ts";
+import { WorkspaceFileSystem, WorkspaceFileSystemError } from "../Services/WorkspaceFileSystem.ts";
 import { WorkspaceEntriesLive } from "./WorkspaceEntries.ts";
 import { WorkspaceFileSystemLive } from "./WorkspaceFileSystem.ts";
 import { WorkspacePathsLive } from "./WorkspacePaths.ts";
@@ -134,6 +136,75 @@ it.layer(TestLayer)("WorkspaceFileSystemLive", (it) => {
           .stat(escapedPath)
           .pipe(Effect.catch(() => Effect.succeed(null)));
         expect(escapedStat).toBeNull();
+      }),
+    );
+  });
+
+  describe("readFile", () => {
+    it.effect("reads utf-8 workspace files", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem;
+        const cwd = yield* makeTempDir;
+        yield* writeTextFile(cwd, "docs/readme.txt", "hello\n");
+        const result = yield* workspaceFileSystem.readFile({
+          cwd,
+          relativePath: "docs/readme.txt",
+        });
+
+        expect(result).toEqual({
+          relativePath: "docs/readme.txt",
+          contents: "hello\n",
+          truncated: false,
+        });
+      }),
+    );
+
+    it.effect("rejects reads outside the workspace root", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem;
+        const cwd = yield* makeTempDir;
+        const error = yield* workspaceFileSystem
+          .readFile({ cwd, relativePath: "../secret.txt" })
+          .pipe(Effect.flip);
+
+        expect(error.message).toContain(
+          "Workspace file path must be relative to the project root: ../secret.txt",
+        );
+      }),
+    );
+
+    it.effect("rejects directory paths", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem;
+        const cwd = yield* makeTempDir;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        yield* fileSystem
+          .makeDirectory(path.join(cwd, "empty-dir"), { recursive: true })
+          .pipe(Effect.orDie);
+
+        const error = yield* workspaceFileSystem
+          .readFile({ cwd, relativePath: "empty-dir" })
+          .pipe(Effect.flip);
+
+        expect(error).toBeInstanceOf(WorkspaceFileSystemError);
+        expect((error as WorkspaceFileSystemError).detail).toContain("not a regular file");
+      }),
+    );
+
+    it.effect("rejects files larger than PROJECT_READ_FILE_MAX_BYTES", () =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem;
+        const cwd = yield* makeTempDir;
+        const huge = "x".repeat(PROJECT_READ_FILE_MAX_BYTES + 1);
+        yield* writeTextFile(cwd, "big.txt", huge);
+
+        const error = yield* workspaceFileSystem
+          .readFile({ cwd, relativePath: "big.txt" })
+          .pipe(Effect.flip);
+
+        expect(error).toBeInstanceOf(WorkspaceFileSystemError);
+        expect((error as WorkspaceFileSystemError).detail).toContain("maximum read size");
       }),
     );
   });

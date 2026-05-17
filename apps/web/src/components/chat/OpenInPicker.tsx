@@ -31,7 +31,7 @@ import {
   RustRoverIcon,
   WebStormIcon,
 } from "../JetBrainsIcons";
-import { isMacPlatform, isWindowsPlatform } from "~/lib/utils";
+import { isMacPlatform, isWindowsPlatform, cn } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
 
 const resolveOptions = (platform: string, availableEditors: ReadonlyArray<EditorId>) => {
@@ -153,10 +153,12 @@ export const OpenInPicker = memo(function OpenInPicker({
   keybindings,
   availableEditors,
   openInCwd,
+  toolbarStack = false,
 }: {
   keybindings: ResolvedKeybindingsConfig;
   availableEditors: ReadonlyArray<EditorId>;
   openInCwd: string | null;
+  toolbarStack?: boolean;
 }) {
   const [preferredEditor, setPreferredEditor] = usePreferredEditor(availableEditors);
   const options = useMemo(
@@ -196,6 +198,62 @@ export const OpenInPicker = memo(function OpenInPicker({
     return () => window.removeEventListener("keydown", handler);
   }, [preferredEditor, keybindings, openInCwd]);
 
+  const sharedMenuPopup = (
+    <MenuPopup align={toolbarStack ? "start" : "end"}>
+      {options.length === 0 && <MenuItem disabled>No installed editors found</MenuItem>}
+      {options.map(({ label, Icon, value }) => (
+        <MenuItem key={value} onClick={() => openInEditor(value)}>
+          <Icon aria-hidden="true" className="text-muted-foreground" />
+          {label}
+          {value === preferredEditor && openFavoriteEditorShortcutLabel ? (
+            <MenuShortcut>{openFavoriteEditorShortcutLabel}</MenuShortcut>
+          ) : null}
+        </MenuItem>
+      ))}
+    </MenuPopup>
+  );
+
+  if (toolbarStack) {
+    return (
+      <div className="flex w-full min-w-0 flex-col gap-2" aria-label="Open in editor">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!preferredEditor || !openInCwd}
+          onClick={() => openInEditor(preferredEditor)}
+          className={cn(
+            "h-auto min-h-9 w-full min-w-0 justify-start gap-2 px-3 py-2 whitespace-normal shadow-xs/5",
+          )}
+          title={`Open workspace in ${primaryOption?.label ?? "editor"}`}
+        >
+          {primaryOption?.Icon ? (
+            <primaryOption.Icon aria-hidden="true" className="size-4 shrink-0" />
+          ) : null}
+          <span className="min-w-0 flex-1 text-left text-xs font-medium">
+            Open in {primaryOption?.label ?? "editor"}
+          </span>
+        </Button>
+        <Menu>
+          <MenuTrigger
+            render={
+              <Button
+                aria-label="Choose editor to open workspace"
+                variant="outline"
+                size="sm"
+                type="button"
+                className="h-auto min-h-9 w-full min-w-0 justify-between gap-2 px-3 py-2 whitespace-normal shadow-xs/5"
+              />
+            }
+          >
+            <span className="min-w-0 truncate text-xs text-muted-foreground">Switch editor...</span>
+            <ChevronDownIcon aria-hidden="true" className="size-4 shrink-0 opacity-80" />
+          </MenuTrigger>
+          {sharedMenuPopup}
+        </Menu>
+      </div>
+    );
+  }
+
   return (
     <Group aria-label="Subscription actions">
       <Button
@@ -211,21 +269,14 @@ export const OpenInPicker = memo(function OpenInPicker({
       </Button>
       <GroupSeparator className="hidden @3xl/header-actions:block" />
       <Menu>
-        <MenuTrigger render={<Button aria-label="Copy options" size="icon-xs" variant="outline" />}>
+        <MenuTrigger
+          render={
+            <Button aria-label="Choose editor to open workspace" size="icon-xs" variant="outline" />
+          }
+        >
           <ChevronDownIcon aria-hidden="true" className="size-4" />
         </MenuTrigger>
-        <MenuPopup align="end">
-          {options.length === 0 && <MenuItem disabled>No installed editors found</MenuItem>}
-          {options.map(({ label, Icon, value }) => (
-            <MenuItem key={value} onClick={() => openInEditor(value)}>
-              <Icon aria-hidden="true" className="text-muted-foreground" />
-              {label}
-              {value === preferredEditor && openFavoriteEditorShortcutLabel && (
-                <MenuShortcut>{openFavoriteEditorShortcutLabel}</MenuShortcut>
-              )}
-            </MenuItem>
-          ))}
-        </MenuPopup>
+        {sharedMenuPopup}
       </Menu>
     </Group>
   );

@@ -96,6 +96,14 @@ contextBridge.exposeInMainWorld("desktopBridge", {
       ...(position === undefined ? {} : { position }),
     }),
   openExternal: (url: string) => ipcRenderer.invoke(IpcChannels.OPEN_EXTERNAL_CHANNEL, url),
+  attachComponentPreview: (input) =>
+    ipcRenderer.invoke(IpcChannels.COMPONENT_PREVIEW_ATTACH_CHANNEL, input),
+  detachComponentPreview: (viewId) =>
+    ipcRenderer.invoke(IpcChannels.COMPONENT_PREVIEW_DETACH_CHANNEL, { viewId }),
+  setComponentPreviewBounds: (input) =>
+    ipcRenderer.invoke(IpcChannels.COMPONENT_PREVIEW_SET_BOUNDS_CHANNEL, input),
+  primeComponentPreview: (input) =>
+    ipcRenderer.invoke(IpcChannels.COMPONENT_PREVIEW_PRIME_CHANNEL, input),
   onMenuAction: (listener) => {
     const wrappedListener = (_event: Electron.IpcRendererEvent, action: unknown) => {
       if (typeof action !== "string") return;

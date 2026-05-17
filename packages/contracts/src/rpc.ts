@@ -50,6 +50,15 @@ import {
 } from "./orchestration.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import {
+  ProjectAnalyzeReactComponentError,
+  ProjectAnalyzeReactComponentInput,
+  ProjectAnalyzeReactComponentResult,
+  ProjectBuildComponentPreviewError,
+  ProjectBuildComponentPreviewInput,
+  ProjectBuildComponentPreviewResult,
+  ProjectReadFileError,
+  ProjectReadFileInput,
+  ProjectReadFileResult,
   ProjectSearchEntriesError,
   ProjectSearchEntriesInput,
   ProjectSearchEntriesResult,
@@ -106,6 +115,9 @@ export const WS_METHODS = {
   projectsRemove: "projects.remove",
   projectsSearchEntries: "projects.searchEntries",
   projectsWriteFile: "projects.writeFile",
+  projectsReadFile: "projects.readFile",
+  projectsAnalyzeReactComponent: "projects.analyzeReactComponent",
+  projectsBuildComponentPreview: "projects.buildComponentPreview",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -275,6 +287,30 @@ export const WsProjectsWriteFileRpc = Rpc.make(WS_METHODS.projectsWriteFile, {
   success: ProjectWriteFileResult,
   error: ProjectWriteFileError,
 });
+
+export const WsProjectsReadFileRpc = Rpc.make(WS_METHODS.projectsReadFile, {
+  payload: ProjectReadFileInput,
+  success: ProjectReadFileResult,
+  error: ProjectReadFileError,
+});
+
+export const WsProjectsAnalyzeReactComponentRpc = Rpc.make(
+  WS_METHODS.projectsAnalyzeReactComponent,
+  {
+    payload: ProjectAnalyzeReactComponentInput,
+    success: ProjectAnalyzeReactComponentResult,
+    error: ProjectAnalyzeReactComponentError,
+  },
+);
+
+export const WsProjectsBuildComponentPreviewRpc = Rpc.make(
+  WS_METHODS.projectsBuildComponentPreview,
+  {
+    payload: ProjectBuildComponentPreviewInput,
+    success: ProjectBuildComponentPreviewResult,
+    error: ProjectBuildComponentPreviewError,
+  },
+);
 
 export const WsShellOpenInEditorRpc = Rpc.make(WS_METHODS.shellOpenInEditor, {
   payload: LaunchEditorInput,
@@ -490,6 +526,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsSourceControlPublishRepositoryRpc,
   WsProjectsSearchEntriesRpc,
   WsProjectsWriteFileRpc,
+  WsProjectsReadFileRpc,
+  WsProjectsAnalyzeReactComponentRpc,
+  WsProjectsBuildComponentPreviewRpc,
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,
   WsSubscribeVcsStatusRpc,

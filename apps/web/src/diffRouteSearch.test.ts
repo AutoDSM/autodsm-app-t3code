@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseDiffRouteSearch } from "./diffRouteSearch";
+import { parseDiffRouteSearch, stripComponentPreviewSearchParams } from "./diffRouteSearch";
 
 describe("parseDiffRouteSearch", () => {
   it("parses valid diff search values", () => {
@@ -69,6 +69,49 @@ describe("parseDiffRouteSearch", () => {
 
     expect(parsed).toEqual({
       diff: "1",
+    });
+  });
+
+  it("parses a trusted componentPreview path independently of diff toggle", () => {
+    expect(
+      parseDiffRouteSearch({
+        componentPath: "src/components/Panel.tsx",
+      }),
+    ).toEqual({
+      componentPath: "src/components/Panel.tsx",
+    });
+
+    expect(
+      parseDiffRouteSearch({
+        componentPath: "../../../etc/passwd",
+      }),
+    ).toEqual({});
+
+    expect(
+      parseDiffRouteSearch({
+        componentPath: "apps/web/src/components/ChatPanel.tsx",
+      }),
+    ).toEqual({
+      componentPath: "apps/web/src/components/ChatPanel.tsx",
+    });
+  });
+});
+
+describe("stripComponentPreviewSearchParams", () => {
+  it("removes componentPath and preserves unrelated and diff-related search keys", () => {
+    expect(
+      stripComponentPreviewSearchParams({
+        diff: "1",
+        diffTurnId: "turn-1",
+        diffFilePath: "src/app.ts",
+        componentPath: "src/components/Panel.tsx",
+        extra: true,
+      }),
+    ).toEqual({
+      diff: "1",
+      diffTurnId: "turn-1",
+      diffFilePath: "src/app.ts",
+      extra: true,
     });
   });
 });

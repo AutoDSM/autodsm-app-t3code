@@ -1516,8 +1516,8 @@ async function waitForNewThreadShortcutLabel(): Promise<void> {
 
 async function waitForCommandPaletteShortcutLabel(): Promise<void> {
   await waitForElement(
-    () => document.querySelector('[data-testid="command-palette-trigger"] kbd'),
-    "Command palette shortcut label did not render.",
+    () => document.querySelector('[data-testid="command-palette-trigger"]'),
+    "Command palette sidebar trigger did not render.",
   );
 }
 

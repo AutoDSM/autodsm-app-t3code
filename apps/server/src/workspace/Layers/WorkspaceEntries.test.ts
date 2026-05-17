@@ -68,7 +68,13 @@ const git = (cwd: string, args: ReadonlyArray<string>, env?: NodeJS.ProcessEnv) 
     return result.stdout.trim();
   });
 
-const searchWorkspaceEntries = (input: { cwd: string; query: string; limit: number }) =>
+const searchWorkspaceEntries = (input: {
+  cwd: string;
+  query: string;
+  limit: number;
+  entryKind?: "file";
+  entryPathSubstring?: string;
+}) =>
   Effect.gen(function* () {
     const workspaceEntries = yield* WorkspaceEntries;
     return yield* workspaceEntries.search(input);
@@ -105,6 +111,52 @@ it.layer(TestLayer)("WorkspaceEntriesLive", (it) => {
         expect(paths.some((entryPath) => entryPath.startsWith("node_modules"))).toBe(false);
         expect(result.truncated).toBe(false);
       }),
+    );
+
+    it.effect(
+      "entryKind=file omits directories from ranked results so small limits still surface files",
+      () =>
+        Effect.gen(function* () {
+          const cwd = yield* makeTempDir({ prefix: "t3code-workspace-entrykind-" });
+          yield* writeTextFile(cwd, "src/components/Composer.tsx");
+          yield* writeTextFile(cwd, "README.md");
+
+          const result = yield* searchWorkspaceEntries({
+            cwd,
+            query: "",
+            limit: 1,
+            entryKind: "file",
+          });
+
+          expect(result.entries).toEqual([
+            expect.objectContaining({ path: "README.md", kind: "file" }),
+          ]);
+          expect(result.entries.some((e) => e.kind === "directory")).toBe(false);
+        }),
+    );
+
+    it.effect(
+      "entryPathSubstring with empty query returns only subtree files within the substring",
+      () =>
+        Effect.gen(function* () {
+          const cwd = yield* makeTempDir({ prefix: "t3code-workspace-entrypathneedle-" });
+          yield* writeTextFile(cwd, "apps/web/src/components/Composer.tsx");
+          yield* writeTextFile(cwd, "apps/web/package.json");
+          yield* writeTextFile(cwd, "evil-src/components/Phantom.tsx");
+
+          const result = yield* searchWorkspaceEntries({
+            cwd,
+            query: "",
+            limit: 50,
+            entryKind: "file",
+            entryPathSubstring: "/src/components/",
+          });
+          const paths = result.entries.map((e) => e.path);
+
+          expect(paths).toContain("apps/web/src/components/Composer.tsx");
+          expect(paths).not.toContain("apps/web/package.json");
+          expect(paths).not.toContain("evil-src/components/Phantom.tsx");
+        }),
     );
 
     it.effect("filters and ranks entries by query", () =>

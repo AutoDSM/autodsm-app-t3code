@@ -483,11 +483,24 @@ export const makeWorkspaceEntries = Effect.gen(function* () {
           const normalizedQuery = normalizeSearchQuery(input.query, {
             trimLeadingPattern: /^[@./]+/,
           });
+          const pathSubstring =
+            typeof input.entryPathSubstring === "string"
+              ? input.entryPathSubstring.trim().toLowerCase()
+              : "";
+          const pathNeedle = pathSubstring.length > 0 ? pathSubstring : "";
           const limit = Math.max(0, Math.floor(input.limit));
           const rankedEntries: RankedWorkspaceEntry[] = [];
           let matchedEntryCount = 0;
 
           for (const entry of index.entries) {
+            if (input.entryKind === "file" && entry.kind === "directory") {
+              continue;
+            }
+
+            if (pathNeedle && !entry.normalizedPath.includes(pathNeedle)) {
+              continue;
+            }
+
             const score = scoreEntry(entry, normalizedQuery);
             if (score === null) {
               continue;
