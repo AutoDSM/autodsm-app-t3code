@@ -216,6 +216,16 @@ export function createDevRunnerEnv({
       delete output.T3CODE_DESKTOP_WS_URL;
     }
 
+    // Temporary local-dev ergonomics: loopback auto-auth instead of manual pairing tokens.
+    if (mode === "dev" || mode === "dev:server" || mode === "dev:desktop") {
+      const explicitDisable = baseEnv.T3CODE_DEV_DISABLE_PAIRING?.trim();
+      if (explicitDisable === "0" || explicitDisable?.toLowerCase() === "false") {
+        output.T3CODE_DEV_DISABLE_PAIRING = "0";
+      } else {
+        output.T3CODE_DEV_DISABLE_PAIRING = "1";
+      }
+    }
+
     return output;
   });
 }

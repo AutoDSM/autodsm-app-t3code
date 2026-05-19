@@ -11,6 +11,7 @@ import {
   VcsProcessTimeoutError,
 } from "@t3tools/contracts";
 import { ProcessRunner, layer as ProcessRunnerLive } from "../processRunner.ts";
+import { vitestGitArgsPrefix, vitestGitSpawnEnv } from "./gitVitestSandboxHooks.ts";
 import * as Match from "effect/Match";
 
 export interface VcsProcessInput {
@@ -55,21 +56,29 @@ export const make = Effect.fn("makeVcsProcess")(function* () {
   const processRunner = yield* ProcessRunner;
 
   const run = Effect.fn("VcsProcess.run")(function* (input: VcsProcessInput) {
-    const label = commandLabel(input.command, input.args);
+    const prefixedArgs =
+      input.command === "git" ? [...vitestGitArgsPrefix(), ...input.args] : input.args;
+    const label = commandLabel(input.command, prefixedArgs);
     const baseError = {
       operation: input.operation,
       command: label,
       cwd: input.cwd,
     };
 
+    const vitestSpawnAugment = input.command === "git" ? vitestGitSpawnEnv() : {};
+    const mergedEnv: NodeJS.ProcessEnv | undefined =
+      Object.keys(vitestSpawnAugment).length > 0 || input.env !== undefined
+        ? { ...vitestSpawnAugment, ...input.env }
+        : undefined;
+
     const result = yield* processRunner
       .run({
         command: input.command,
-        args: input.args,
+        args: prefixedArgs,
         cwd: input.cwd,
         ...(input.spawnCwd !== undefined ? { spawnCwd: input.spawnCwd } : {}),
         ...(input.stdin !== undefined ? { stdin: input.stdin } : {}),
-        ...(input.env !== undefined ? { env: input.env } : {}),
+        ...(mergedEnv !== undefined ? { env: mergedEnv } : {}),
         timeout: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         maxOutputBytes: input.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES,
         outputMode: "truncate",

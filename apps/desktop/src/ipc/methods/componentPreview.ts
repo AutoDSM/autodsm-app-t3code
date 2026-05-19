@@ -5,6 +5,7 @@ import * as Option from "effect/Option";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
 import {
   attachPreviewView,
+  capturePreviewView,
   detachPreviewView,
   isWebContentsViewPreviewSupported,
   primePreviewView,
@@ -40,7 +41,7 @@ export const attachComponentPreview = makeIpcMethod({
       return false;
     }
     const browserWindow = owner.value;
-    return yield* Effect.tryPromise({
+    const attached = yield* Effect.tryPromise({
       try: () =>
         attachPreviewView({
           browserWindow,
@@ -50,6 +51,15 @@ export const attachComponentPreview = makeIpcMethod({
         }),
       catch: () => false,
     });
+    if (!attached) {
+      yield* Effect.logWarning("[desktop.ipc.componentPreview.attach] returned false").pipe(
+        Effect.annotateLogs({
+          viewId: input.viewId,
+          url: input.url,
+        }),
+      );
+    }
+    return attached;
   }),
 });
 
@@ -92,6 +102,21 @@ export const primeComponentPreview = makeIpcMethod({
     return yield* Effect.tryPromise({
       try: () => primePreviewView(input.viewId, input.javascript, input.propsJson),
       catch: () => false,
+    });
+  }),
+});
+
+export const captureComponentPreview = makeIpcMethod({
+  channel: IpcChannels.COMPONENT_PREVIEW_CAPTURE_CHANNEL,
+  payload: Schema.Struct({ viewId: Schema.String }),
+  result: Schema.NullOr(Schema.String),
+  handler: Effect.fn("desktop.ipc.componentPreview.capture")(function* (input) {
+    if (!isWebContentsViewPreviewSupported()) {
+      return null;
+    }
+    return yield* Effect.tryPromise({
+      try: () => capturePreviewView(input.viewId),
+      catch: () => null,
     });
   }),
 });

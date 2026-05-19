@@ -55,6 +55,7 @@ const TEST_EPOCH = DateTime.makeUnsafe("1970-01-01T00:00:00.000Z");
 
 import type { ServerConfigShape } from "./config.ts";
 import { deriveServerPaths, ServerConfig } from "./config.ts";
+import { AutoDsmWorkspaceLive } from "./autodsm/AutoDsmWorkspaceService.ts";
 import { makeRoutesLayer } from "./server.ts";
 import { resolveAttachmentRelativePath } from "./attachmentPaths.ts";
 import {
@@ -368,6 +369,7 @@ const buildAppUnderTest = (options?: {
       startupPresentation: "browser",
       desktopBootstrapToken: defaultDesktopBootstrapToken,
       autoBootstrapProjectFromCwd: false,
+      devDisablePairing: false,
       logWebSocketEvents: false,
       tailscaleServeEnabled: false,
       tailscaleServePort: 443,
@@ -479,15 +481,24 @@ const buildAppUnderTest = (options?: {
       Layer.provide(WorkspacePathsLive),
       Layer.provideMerge(vcsDriverRegistryLayer),
     );
-    const workspaceAndProjectServicesLayer = Layer.mergeAll(
+    const workspaceFilesystemBundleLayer = Layer.mergeAll(
       WorkspacePathsLive,
       workspaceEntriesLayer,
       WorkspaceFileSystemLive.pipe(
         Layer.provide(WorkspacePathsLive),
         Layer.provide(workspaceEntriesLayer),
       ),
+    );
+    const workspaceAndProjectServicesLayer = Layer.mergeAll(
+      workspaceFilesystemBundleLayer,
       ProjectFaviconResolverLive,
     );
+    const orchestrationEngineTestLayer = Layer.mock(OrchestrationEngineService)({
+      readEvents: () => Stream.empty,
+      dispatch: () => Effect.succeed({ sequence: 0 }),
+      streamDomainEvents: Stream.empty,
+      ...options?.layers?.orchestrationEngine,
+    });
     const gitWorkflowLayer = GitWorkflowService.layer.pipe(
       Layer.provideMerge(vcsDriverRegistryLayer),
       Layer.provideMerge(gitVcsDriverLayer),
@@ -628,13 +639,12 @@ const buildAppUnderTest = (options?: {
           ...options?.layers?.terminalManager,
         }),
       ),
-      Layer.provide(
-        Layer.mock(OrchestrationEngineService)({
-          readEvents: () => Stream.empty,
-          dispatch: () => Effect.succeed({ sequence: 0 }),
-          streamDomainEvents: Stream.empty,
-          ...options?.layers?.orchestrationEngine,
-        }),
+      Layer.provide(orchestrationEngineTestLayer),
+      Layer.provideMerge(
+        AutoDsmWorkspaceLive.pipe(
+          Layer.provideMerge(workspaceFilesystemBundleLayer),
+          Layer.provideMerge(orchestrationEngineTestLayer),
+        ),
       ),
       Layer.provide(
         Layer.mock(ProjectionSnapshotQuery)({
@@ -1092,6 +1102,117 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         "bearer-session-token",
       ]);
       assert.isTrue(body.auth.sessionCookieName.startsWith("t3_session_"));
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("dev auto-bootstrap authenticates loopback clients when dev pairing is disabled", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        config: {
+          devDisablePairing: true,
+          devUrl: new URL("http://127.0.0.1:5733"),
+        },
+      });
+
+      const sessionUrl = yield* getHttpServerUrl("/api/auth/session");
+      const sessionBeforeResponse = yield* Effect.promise(() => fetch(sessionUrl));
+      const sessionBefore = (yield* Effect.promise(() => sessionBeforeResponse.json())) as {
+        readonly authenticated: boolean;
+        readonly auth: {
+          readonly devPairingDisabled?: boolean;
+        };
+      };
+
+      assert.equal(sessionBeforeResponse.status, 200);
+      assert.equal(sessionBefore.authenticated, false);
+      assert.equal(sessionBefore.auth.devPairingDisabled, true);
+
+      const autoBootstrapUrl = yield* getHttpServerUrl("/api/auth/dev-auto-bootstrap");
+      const autoBootstrapResponse = yield* Effect.promise(() =>
+        fetch(autoBootstrapUrl, {
+          method: "POST",
+        }),
+      );
+      const autoBootstrapBody = (yield* Effect.promise(() => autoBootstrapResponse.json())) as {
+        readonly authenticated: boolean;
+        readonly sessionMethod: string;
+      };
+      const setCookie = autoBootstrapResponse.headers.get("set-cookie");
+
+      assert.equal(autoBootstrapResponse.status, 200);
+      assert.equal(autoBootstrapBody.authenticated, true);
+      assert.equal(autoBootstrapBody.sessionMethod, "browser-session-cookie");
+      assert.isDefined(setCookie);
+
+      const sessionAfterResponse = yield* Effect.promise(() =>
+        fetch(sessionUrl, {
+          headers: {
+            cookie: setCookie?.split(";")[0] ?? "",
+          },
+        }),
+      );
+      const sessionAfter = (yield* Effect.promise(() => sessionAfterResponse.json())) as {
+        readonly authenticated: boolean;
+      };
+
+      assert.equal(sessionAfterResponse.status, 200);
+      assert.equal(sessionAfter.authenticated, true);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("rejects dev auto-bootstrap when dev pairing bypass is disabled", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        config: {
+          devDisablePairing: false,
+          devUrl: new URL("http://127.0.0.1:5733"),
+        },
+      });
+
+      const autoBootstrapUrl = yield* getHttpServerUrl("/api/auth/dev-auto-bootstrap");
+      const autoBootstrapResponse = yield* Effect.promise(() =>
+        fetch(autoBootstrapUrl, {
+          method: "POST",
+        }),
+      );
+      const autoBootstrapBody = (yield* Effect.promise(() => autoBootstrapResponse.json())) as {
+        readonly error?: string;
+      };
+
+      assert.equal(autoBootstrapResponse.status, 403);
+      assert.equal(autoBootstrapBody.error, "Dev pairing bypass is not enabled.");
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("dev auto-bootstrap works for desktop mode when dev pairing is disabled", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest({
+        config: {
+          mode: "desktop",
+          devDisablePairing: true,
+          devUrl: undefined,
+        },
+      });
+
+      const sessionUrl = yield* getHttpServerUrl("/api/auth/session");
+      const sessionBeforeResponse = yield* Effect.promise(() => fetch(sessionUrl));
+      const sessionBefore = (yield* Effect.promise(() => sessionBeforeResponse.json())) as {
+        readonly auth: {
+          readonly devPairingDisabled?: boolean;
+        };
+      };
+
+      assert.equal(sessionBeforeResponse.status, 200);
+      assert.equal(sessionBefore.auth.devPairingDisabled, true);
+
+      const autoBootstrapUrl = yield* getHttpServerUrl("/api/auth/dev-auto-bootstrap");
+      const autoBootstrapResponse = yield* Effect.promise(() =>
+        fetch(autoBootstrapUrl, {
+          method: "POST",
+        }),
+      );
+
+      assert.equal(autoBootstrapResponse.status, 200);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

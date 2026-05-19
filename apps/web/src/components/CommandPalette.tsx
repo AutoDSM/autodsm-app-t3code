@@ -2,11 +2,9 @@
 
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime";
 import {
-  DEFAULT_MODEL,
   type EnvironmentId,
   type FilesystemBrowseResult,
   type ProjectId,
-  ProviderInstanceId,
   type SourceControlDiscoveryResult,
   type SourceControlProviderKind,
   type SourceControlRepositoryInfo,
@@ -56,16 +54,16 @@ import {
   startNewThreadInProjectFromContext,
   startNewThreadFromContext,
 } from "../lib/chatThreadActions";
+import { addProjectFromRawPath } from "../lib/projectIntake/addProjectFromRawPath";
+import { resolveAutoDsmComponentPathForThread } from "../lib/autoDsmReconcileComponentAgentPaths";
 import {
   appendBrowsePathSegment,
   canNavigateUp,
   ensureBrowseDirectoryPath,
-  findProjectByPath,
   getBrowseDirectoryPath,
   getBrowseLeafPathSegment,
   getBrowseParentPath,
   hasTrailingPathSeparator,
-  inferProjectTitleFromPath,
   isExplicitRelativeProjectPath,
   isFilesystemBrowseQuery,
   isUnsupportedWindowsProjectPath,
@@ -73,12 +71,13 @@ import {
 } from "../lib/projectPaths";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { getLatestThreadForProject } from "../lib/threadSort";
-import { cn, isMacPlatform, isWindowsPlatform, newCommandId, newProjectId } from "../lib/utils";
+import { cn, isMacPlatform, isWindowsPlatform } from "../lib/utils";
 import {
   selectProjectsAcrossEnvironments,
   selectSidebarThreadsAcrossEnvironments,
   useStore,
 } from "../store";
+import { useUiStateStore } from "../uiStateStore";
 import { selectThreadTerminalState, useTerminalStateStore } from "../terminalStateStore";
 import { buildThreadRouteParams, resolveThreadRouteTarget } from "../threadRoutes";
 import {
@@ -406,6 +405,10 @@ function OpenCommandPaletteDialog() {
     useHandleNewThread();
   const projects = useStore(useShallow(selectProjectsAcrossEnvironments));
   const threads = useStore(useShallow(selectSidebarThreadsAcrossEnvironments));
+  const autoDsmThreadComponentPathById = useUiStateStore(
+    (state) => state.autoDsmThreadComponentPathById,
+  );
+  const autoDsmStarterId = useUiStateStore((state) => state.autodsmOnboarding.starterId);
   const keybindings = useServerKeybindings();
   const [viewStack, setViewStack] = useState<CommandPaletteView[]>([]);
   const currentView = viewStack.at(-1) ?? null;
@@ -702,13 +705,35 @@ function OpenCommandPaletteDialog() {
         renderLeadingContent: (thread) => <ThreadRowLeadingStatus thread={thread} />,
         renderTrailingContent: (thread) => <ThreadRowTrailingStatus thread={thread} />,
         runThread: async (thread) => {
+          const project =
+            projects.find(
+              (candidate) =>
+                candidate.environmentId === thread.environmentId &&
+                candidate.id === thread.projectId,
+            ) ?? null;
+          const componentPath = resolveAutoDsmComponentPathForThread({
+            thread,
+            projectCwd: project?.cwd ?? null,
+            storedPaths: autoDsmThreadComponentPathById,
+            starterId: autoDsmStarterId,
+          });
           await navigate({
             to: "/$environmentId/$threadId",
             params: buildThreadRouteParams(scopeThreadRef(thread.environmentId, thread.id)),
+            ...(componentPath ? { search: { componentPath } } : {}),
           });
         },
       }),
-    [activeThreadId, navigate, projectTitleById, settings.sidebarThreadSortOrder, threads],
+    [
+      activeThreadId,
+      autoDsmStarterId,
+      autoDsmThreadComponentPathById,
+      navigate,
+      projectTitleById,
+      projects,
+      settings.sidebarThreadSortOrder,
+      threads,
+    ],
   );
   const recentThreadItems = allThreadItems.slice(0, RECENT_THREAD_LIMIT);
 
@@ -1078,84 +1103,27 @@ function OpenCommandPaletteDialog() {
       const api = readEnvironmentApi(browseEnvironmentId);
       if (!api) return;
 
-      if (isUnsupportedWindowsProjectPath(rawCwd.trim(), browseEnvironmentPlatform)) {
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Failed to add project",
-            description: "Windows-style paths are only supported on Windows.",
-          }),
-        );
-        return;
-      }
-
-      if (isExplicitRelativeProjectPath(rawCwd.trim()) && !currentProjectCwdForBrowse) {
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Failed to add project",
-            description: "Relative paths require an active project.",
-          }),
-        );
-        return;
-      }
-
-      const cwd = resolveProjectPathForDispatch(rawCwd, currentProjectCwdForBrowse);
-      if (cwd.length === 0) return;
-
-      const existing = findProjectByPath(
-        projects.filter((project) => project.environmentId === browseEnvironmentId),
-        cwd,
-      );
-      if (existing) {
-        const latestThread = getLatestThreadForProject(
-          threads.filter((thread) => thread.environmentId === existing.environmentId),
-          existing.id,
-          settings.sidebarThreadSortOrder,
-        );
-        if (latestThread) {
-          await navigate({
-            to: "/$environmentId/$threadId",
-            params: buildThreadRouteParams(
-              scopeThreadRef(latestThread.environmentId, latestThread.id),
-            ),
-          });
-        } else {
-          await handleNewThread(scopeProjectRef(existing.environmentId, existing.id), {
-            envMode: settings.defaultThreadEnvMode,
-          }).catch(() => undefined);
-        }
-        setOpen(false);
-        return;
-      }
-
-      try {
-        const projectId = newProjectId();
-        await api.orchestration.dispatchCommand({
-          type: "project.create",
-          commandId: newCommandId(),
-          projectId,
-          title: inferProjectTitleFromPath(cwd),
-          workspaceRoot: cwd,
-          createWorkspaceRootIfMissing: true,
-          defaultModelSelection: {
-            instanceId: ProviderInstanceId.make("codex"),
-            model: DEFAULT_MODEL,
-          },
-          createdAt: new Date().toISOString(),
-        });
-        await handleNewThread(scopeProjectRef(browseEnvironmentId, projectId), {
-          envMode: settings.defaultThreadEnvMode,
-        }).catch(() => undefined);
-        setOpen(false);
-      } catch (error) {
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Failed to add project",
-            description: error instanceof Error ? error.message : "An error occurred.",
-          }),
-        );
+      const projectRef = await addProjectFromRawPath({
+        rawCwd,
+        environmentId: browseEnvironmentId,
+        browseEnvironmentPlatform,
+        currentProjectCwdForBrowse,
+        api,
+        projects,
+        threads,
+        sidebarThreadSortOrder: settings.sidebarThreadSortOrder,
+        navigate,
+        handleNewThread,
+        defaultThreadEnvMode: settings.defaultThreadEnvMode,
+        onError: (title, description) => {
+          toastManager.add(stackedThreadToast({ type: "error", title, description }));
+        },
+        onExistingProjectHandled: () => {
+          setOpen(false);
+        },
+      });
+      if (projectRef) {
+        useUiStateStore.getState().setAutoDsmWorkspaceProjectRef(projectRef);
       }
     },
     [

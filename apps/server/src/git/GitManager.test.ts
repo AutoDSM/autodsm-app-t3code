@@ -29,6 +29,7 @@ import {
 } from "../sourceControl/GitHubCli.ts";
 import { type TextGenerationShape, TextGeneration } from "../textGeneration/TextGeneration.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+import { vitestGitArgsPrefix, vitestGitSpawnEnv } from "../vcs/gitVitestSandboxHooks.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as GitHubSourceControlProvider from "../sourceControl/GitHubSourceControlProvider.ts";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
@@ -175,9 +176,13 @@ function normalizeFakePullRequestSummary(raw: unknown): GitHubPullRequestSummary
 }
 
 function runGitSyncForFakeGh(cwd: string, args: readonly string[]): void {
-  const result = spawnSync("git", args, {
+  const result = spawnSync("git", [...vitestGitArgsPrefix(), ...args], {
     cwd,
     encoding: "utf8",
+    env: {
+      ...process.env,
+      ...vitestGitSpawnEnv(),
+    },
   });
   if (result.status === 0) {
     return;

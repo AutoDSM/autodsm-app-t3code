@@ -6,6 +6,7 @@ import {
   HouseIcon,
   PaletteIcon,
   SearchIcon,
+  Settings2Icon,
   SquarePenIcon,
   TerminalIcon,
 } from "lucide-react";
@@ -18,7 +19,7 @@ import {
 } from "./ThreadStatusIndicators";
 import { ProjectFavicon } from "./ProjectFavicon";
 import { autoAnimate } from "@formkit/auto-animate";
-import React, { useCallback, useEffect, memo, useMemo, useRef, useState } from "react";
+import React, { Fragment, useCallback, useEffect, memo, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import {
   DndContext,
@@ -37,7 +38,6 @@ import { restrictToFirstScrollableAncestor, restrictToVerticalAxis } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import {
   type ContextMenuItem,
-  type EnvironmentId,
   ProjectId,
   type ScopedThreadRef,
   type SidebarProjectGroupingMode,
@@ -60,6 +60,7 @@ import { usePrimaryEnvironmentId } from "../environments/primary";
 import { isElectron } from "../env";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isMacPlatform, newCommandId } from "../lib/utils";
+import { disconnectProjectFromWorkspace } from "../lib/projectIntake/disconnectProject";
 import {
   selectProjectByRef,
   selectProjectsAcrossEnvironments,
@@ -95,7 +96,6 @@ import {
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
-import { SidebarSrcComponentsSection } from "./SidebarSrcComponentsSection";
 import { Button } from "./ui/button";
 import {
   Dialog,
@@ -111,6 +111,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "./u
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import {
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarHeader,
   SidebarMenu,
@@ -119,6 +120,7 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
+  SidebarSeparator,
   SidebarTrigger,
   useSidebar,
 } from "./ui/sidebar";
@@ -140,6 +142,10 @@ import {
   ThreadStatusPill,
 } from "./Sidebar.logic";
 import { sortThreads } from "../lib/threadSort";
+import { isAutodsmMaterializedSystemCwd } from "../lib/autodsmMaterializedWorkspace";
+import { shouldUseAutodsmComponentAgentSidebar } from "../lib/autodsmSidebarMode";
+import { AutoDsmComponentAgentSidebarSection } from "./autodsm/AutoDsmComponentAgentSidebarSection";
+import { useAutoDsmWorkspace } from "../hooks/useAutoDsmWorkspace";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { CommandDialogTrigger } from "./ui/command";
 import { readEnvironmentApi } from "../environmentApi";
@@ -168,9 +174,9 @@ const SIDEBAR_LIST_ANIMATION_OPTIONS = {
   easing: "ease-out",
 } as const;
 
-/** Top primary nav — dark strip + muted chrome (matches product sidebar reference). */
+/** Top primary nav — inherits the sidebar product surface; rows supply their own state color. */
 const SIDEBAR_TOP_NAV_BUTTON_CLASSNAME =
-  "h-8 gap-2.5 rounded-md bg-transparent px-2 py-0 text-sm font-normal text-zinc-400 shadow-none outline-none ring-0 transition-colors hover:bg-white/[0.06] hover:text-zinc-200 focus-visible:ring-2 focus-visible:ring-white/15 active:bg-white/[0.06] active:text-zinc-200 data-[active=true]:bg-white/[0.06] data-[active=true]:font-normal data-[active=true]:text-zinc-200 data-[active=true]:hover:bg-white/[0.06] data-[active=true]:hover:text-zinc-200 [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-current";
+  "h-8 gap-2.5 rounded-md bg-transparent px-2 py-0 text-sm font-normal text-muted-foreground shadow-none outline-none ring-0 transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/60 active:bg-muted active:text-foreground data-[active=true]:bg-muted data-[active=true]:font-normal data-[active=true]:text-foreground data-[active=true]:hover:bg-muted data-[active=true]:hover:text-foreground [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-current";
 
 /** Targets for the three primary sidebar tabs (Search uses the command palette only). */
 const SIDEBAR_PRIMARY_NAV_ROUTE = {
@@ -181,7 +187,8 @@ const SIDEBAR_PRIMARY_NAV_ROUTE = {
 
 /**
  * Derives which primary nav row is selected.
- * Home also matches chat index `/` so the empty-thread landing highlights Home while URLs stay canonical elsewhere.
+ * Home highlights for `/home` and for the chat index `/` empty-thread landing — the launcher
+ * tile screen is conceptually part of "home" while URLs stay canonical elsewhere.
  */
 function sidebarPrimaryNavSelection(pathname: string) {
   return {
@@ -881,6 +888,12 @@ interface SidebarProjectItemProps {
   suppressProjectClickForContextMenuRef: React.RefObject<boolean>;
   isManualProjectSorting: boolean;
   dragHandleProps: SortableProjectHandleProps | null;
+  /** Hide nested thread rows (AutoDSM COMPONENTS block lists threads separately). */
+  suppressInlineThreadList?: boolean;
+  /** Render only the thread sub-list (used under COMPONENTS). */
+  threadsOnly?: boolean;
+  /** Merges into chat route search when navigating to a thread (e.g. `componentPath`). */
+  threadNavigateSearchMerge?: (threadRef: ScopedThreadRef) => Record<string, unknown> | undefined;
 }
 
 const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjectItemProps) {
@@ -901,6 +914,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     suppressProjectClickForContextMenuRef,
     isManualProjectSorting,
     dragHandleProps,
+    suppressInlineThreadList = false,
+    threadsOnly = false,
+    threadNavigateSearchMerge,
   } = props;
   const threadSortOrder = useSettings<SidebarThreadSortOrder>(
     (settings) => settings.sidebarThreadSortOrder,
@@ -1105,6 +1121,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   }, [projectThreads, threadLastVisitedAts, threadSortOrder]);
 
   const pinnedCollapsedThread = useMemo(() => {
+    if (threadsOnly) {
+      return null;
+    }
     const activeThreadKey = activeRouteThreadKey ?? undefined;
     if (!activeThreadKey || projectExpanded) {
       return null;
@@ -1115,7 +1134,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
           scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === activeThreadKey,
       ) ?? null
     );
-  }, [activeRouteThreadKey, projectExpanded, visibleProjectThreads]);
+  }, [activeRouteThreadKey, projectExpanded, threadsOnly, visibleProjectThreads]);
 
   const {
     hasOverflowingThreads,
@@ -1124,6 +1143,15 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     showEmptyThreadState,
     shouldShowThreadPanel,
   } = useMemo(() => {
+    if (suppressInlineThreadList) {
+      return {
+        hasOverflowingThreads: false,
+        hiddenThreadStatus: null,
+        renderedThreads: [],
+        showEmptyThreadState: false,
+        shouldShowThreadPanel: false,
+      };
+    }
     const lastVisitedAtByThreadKey = new Map(
       projectThreads.map((thread, index) => [
         scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
@@ -1142,6 +1170,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       });
     };
     const hasOverflowingThreads = visibleProjectThreads.length > sidebarThreadPreviewCount;
+    const effectiveProjectExpanded = threadsOnly ? true : projectExpanded;
     const previewThreads =
       isThreadListExpanded || !hasOverflowingThreads
         ? visibleProjectThreads
@@ -1166,8 +1195,8 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         hiddenThreads.map((thread) => resolveProjectThreadStatus(thread)),
       ),
       renderedThreads,
-      showEmptyThreadState: projectExpanded && visibleProjectThreads.length === 0,
-      shouldShowThreadPanel: projectExpanded || pinnedCollapsedThread !== null,
+      showEmptyThreadState: effectiveProjectExpanded && visibleProjectThreads.length === 0,
+      shouldShowThreadPanel: effectiveProjectExpanded || pinnedCollapsedThread !== null,
     };
   }, [
     isThreadListExpanded,
@@ -1175,7 +1204,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     projectExpanded,
     projectThreads,
     sidebarThreadPreviewCount,
+    suppressInlineThreadList,
     threadLastVisitedAts,
+    threadsOnly,
     visibleProjectThreads,
   ]);
 
@@ -1261,22 +1292,8 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
 
   const removeProject = useCallback(
     async (member: SidebarProjectGroupMember, options: { force?: boolean } = {}): Promise<void> => {
-      const memberProjectRef = scopeProjectRef(member.environmentId, member.id);
-      const draftStore = useComposerDraftStore.getState();
-      const projectDraftThread = draftStore.getDraftThreadByProjectRef(memberProjectRef);
-      if (projectDraftThread) {
-        draftStore.clearDraftThread(projectDraftThread.draftId);
-      }
-      draftStore.clearProjectDraftThreadId(memberProjectRef);
-
-      const projectApi = readEnvironmentApi(member.environmentId);
-      if (!projectApi) {
-        throw new Error("Project API unavailable.");
-      }
-
-      await projectApi.orchestration.dispatchCommand({
-        type: "project.delete",
-        commandId: newCommandId(),
+      await disconnectProjectFromWorkspace({
+        environmentId: member.environmentId,
         projectId: member.id,
         ...(options.force === true ? { force: true } : {}),
       });
@@ -1511,12 +1528,29 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       if (isMobile) {
         setOpenMobile(false);
       }
+      const extra = threadNavigateSearchMerge?.(threadRef);
+      const hasExtra = Boolean(extra && Object.keys(extra).length > 0);
       void router.navigate({
         to: "/$environmentId/$threadId",
         params: buildThreadRouteParams(threadRef),
+        ...(hasExtra
+          ? {
+              search: (previous: Record<string, unknown>) => ({
+                ...previous,
+                ...extra,
+              }),
+            }
+          : {}),
       });
     },
-    [clearSelection, isMobile, router, setOpenMobile, setSelectionAnchor],
+    [
+      clearSelection,
+      isMobile,
+      router,
+      setOpenMobile,
+      setSelectionAnchor,
+      threadNavigateSearchMerge,
+    ],
   );
 
   const handleThreadClick = useCallback(
@@ -1550,9 +1584,19 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       if (isMobile) {
         setOpenMobile(false);
       }
+      const extra = threadNavigateSearchMerge?.(threadRef);
+      const hasExtra = Boolean(extra && Object.keys(extra).length > 0);
       void router.navigate({
         to: "/$environmentId/$threadId",
         params: buildThreadRouteParams(threadRef),
+        ...(hasExtra
+          ? {
+              search: (previous: Record<string, unknown>) => ({
+                ...previous,
+                ...extra,
+              }),
+            }
+          : {}),
       });
     },
     [
@@ -1562,6 +1606,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       router,
       setOpenMobile,
       setSelectionAnchor,
+      threadNavigateSearchMerge,
       toggleThreadSelection,
     ],
   );
@@ -1949,6 +1994,48 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     ],
   );
 
+  const threadList = (
+    <SidebarProjectThreadList
+      projectKey={project.projectKey}
+      projectExpanded={projectExpanded}
+      hasOverflowingThreads={hasOverflowingThreads}
+      hiddenThreadStatus={hiddenThreadStatus}
+      orderedProjectThreadKeys={orderedProjectThreadKeys}
+      renderedThreads={renderedThreads}
+      showEmptyThreadState={showEmptyThreadState}
+      shouldShowThreadPanel={shouldShowThreadPanel}
+      isThreadListExpanded={isThreadListExpanded}
+      projectCwd={project.cwd}
+      activeRouteThreadKey={activeRouteThreadKey}
+      threadJumpLabelByKey={threadJumpLabelByKey}
+      appSettingsConfirmThreadArchive={appSettingsConfirmThreadArchive}
+      renamingThreadKey={renamingThreadKey}
+      renamingTitle={renamingTitle}
+      setRenamingTitle={setRenamingTitle}
+      renamingInputRef={renamingInputRef}
+      renamingCommittedRef={renamingCommittedRef}
+      confirmingArchiveThreadKey={confirmingArchiveThreadKey}
+      setConfirmingArchiveThreadKey={setConfirmingArchiveThreadKey}
+      confirmArchiveButtonRefs={confirmArchiveButtonRefs}
+      attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
+      handleThreadClick={handleThreadClick}
+      navigateToThread={navigateToThread}
+      handleMultiSelectContextMenu={handleMultiSelectContextMenu}
+      handleThreadContextMenu={handleThreadContextMenu}
+      clearSelection={clearSelection}
+      commitRename={commitRename}
+      cancelRename={cancelRename}
+      attemptArchiveThread={attemptArchiveThread}
+      openPrLink={openPrLink}
+      expandThreadListForProject={expandThreadListForProject}
+      collapseThreadListForProject={collapseThreadListForProject}
+    />
+  );
+
+  if (threadsOnly) {
+    return threadList;
+  }
+
   return (
     <>
       <div className="group/project-header relative">
@@ -2045,41 +2132,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
         </Tooltip>
       </div>
 
-      <SidebarProjectThreadList
-        projectKey={project.projectKey}
-        projectExpanded={projectExpanded}
-        hasOverflowingThreads={hasOverflowingThreads}
-        hiddenThreadStatus={hiddenThreadStatus}
-        orderedProjectThreadKeys={orderedProjectThreadKeys}
-        renderedThreads={renderedThreads}
-        showEmptyThreadState={showEmptyThreadState}
-        shouldShowThreadPanel={shouldShowThreadPanel}
-        isThreadListExpanded={isThreadListExpanded}
-        projectCwd={project.cwd}
-        activeRouteThreadKey={activeRouteThreadKey}
-        threadJumpLabelByKey={threadJumpLabelByKey}
-        appSettingsConfirmThreadArchive={appSettingsConfirmThreadArchive}
-        renamingThreadKey={renamingThreadKey}
-        renamingTitle={renamingTitle}
-        setRenamingTitle={setRenamingTitle}
-        renamingInputRef={renamingInputRef}
-        renamingCommittedRef={renamingCommittedRef}
-        confirmingArchiveThreadKey={confirmingArchiveThreadKey}
-        setConfirmingArchiveThreadKey={setConfirmingArchiveThreadKey}
-        confirmArchiveButtonRefs={confirmArchiveButtonRefs}
-        attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
-        handleThreadClick={handleThreadClick}
-        navigateToThread={navigateToThread}
-        handleMultiSelectContextMenu={handleMultiSelectContextMenu}
-        handleThreadContextMenu={handleThreadContextMenu}
-        clearSelection={clearSelection}
-        commitRename={commitRename}
-        cancelRename={cancelRename}
-        attemptArchiveThread={attemptArchiveThread}
-        openPrLink={openPrLink}
-        expandThreadListForProject={expandThreadListForProject}
-        collapseThreadListForProject={collapseThreadListForProject}
-      />
+      {threadList}
 
       <Dialog
         open={projectRenameTarget !== null}
@@ -2270,6 +2323,10 @@ const SidebarChromeHeader = memo(function SidebarChromeHeader({
   );
 });
 
+function sidebarProjectUsesAutodsmMaterializedLayout(project: SidebarProjectSnapshot): boolean {
+  return project.memberProjects.some((member) => isAutodsmMaterializedSystemCwd(member.cwd));
+}
+
 interface SidebarProjectsContentProps {
   openAddProject: () => void;
   isManualProjectSorting: boolean;
@@ -2295,9 +2352,7 @@ interface SidebarProjectsContentProps {
   suppressProjectClickForContextMenuRef: React.RefObject<boolean>;
   attachProjectListAutoAnimateRef: (node: HTMLElement | null) => void;
   projectsLength: number;
-  componentsCatalogEnvironmentId: EnvironmentId | null;
-  componentsCatalogCwd: string | null;
-  resolveThreadRefForComponentPreviewSidebar: () => ScopedThreadRef | null;
+  useAutodsmComponentAgentSidebar: boolean;
 }
 
 const SidebarProjectsContent = memo(function SidebarProjectsContent(
@@ -2328,9 +2383,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     suppressProjectClickForContextMenuRef,
     attachProjectListAutoAnimateRef,
     projectsLength,
-    componentsCatalogEnvironmentId,
-    componentsCatalogCwd,
-    resolveThreadRefForComponentPreviewSidebar,
+    useAutodsmComponentAgentSidebar,
   } = props;
 
   const navigate = useNavigate();
@@ -2358,189 +2411,219 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     void navigate({ to: SIDEBAR_PRIMARY_NAV_ROUTE.designTokens });
   }, [closeMobileSidebar, navigate]);
 
+  const goSettings = useCallback(() => {
+    closeMobileSidebar();
+    void navigate({ to: "/settings" });
+  }, [closeMobileSidebar, navigate]);
+
   const primaryNav = useMemo(() => sidebarPrimaryNavSelection(pathname), [pathname]);
 
   return (
-    <SidebarContent className="gap-0">
-      <SidebarGroup className="border-b border-white/10 bg-zinc-950 px-2 py-2.5">
-        <SidebarMenu className="gap-1">
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              size="sm"
-              type="button"
-              className={SIDEBAR_TOP_NAV_BUTTON_CLASSNAME}
-              data-testid="sidebar-nav-home"
-              aria-current={primaryNav.home ? "page" : undefined}
-              isActive={primaryNav.home}
-              onClick={goHome}
-            >
-              <HouseIcon />
-              <span className="flex-1 truncate text-left">Home</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              size="sm"
-              type="button"
-              className={SIDEBAR_TOP_NAV_BUTTON_CLASSNAME}
-              data-testid="sidebar-nav-design-components"
-              aria-current={primaryNav.designComponents ? "page" : undefined}
-              isActive={primaryNav.designComponents}
-              onClick={goDesignComponents}
-            >
-              <span
-                aria-hidden
-                className="flex size-4 shrink-0 items-center justify-center text-[17px] leading-none font-normal select-none"
+    <Fragment>
+      <SidebarContent className="gap-0">
+        <SidebarGroup className="border-b border-border px-2 py-2.5">
+          <SidebarMenu className="gap-1">
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                size="sm"
+                type="button"
+                className={SIDEBAR_TOP_NAV_BUTTON_CLASSNAME}
+                data-testid="sidebar-nav-home"
+                aria-current={primaryNav.home ? "page" : undefined}
+                isActive={primaryNav.home}
+                onClick={goHome}
               >
-                +
-              </span>
-              <span className="flex-1 truncate text-left">Create component</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
+                <HouseIcon />
+                <span className="flex-1 truncate text-left">Home</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                size="sm"
+                type="button"
+                className={SIDEBAR_TOP_NAV_BUTTON_CLASSNAME}
+                data-testid="sidebar-nav-design-components"
+                aria-current={primaryNav.designComponents ? "page" : undefined}
+                isActive={primaryNav.designComponents}
+                onClick={goDesignComponents}
+              >
+                <span
+                  aria-hidden
+                  className="flex size-4 shrink-0 items-center justify-center text-[17px] leading-none font-normal select-none"
+                >
+                  +
+                </span>
+                <span className="flex-1 truncate text-left">Create component</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                size="sm"
+                type="button"
+                className={SIDEBAR_TOP_NAV_BUTTON_CLASSNAME}
+                data-testid="sidebar-nav-design-tokens"
+                aria-current={primaryNav.designTokens ? "page" : undefined}
+                isActive={primaryNav.designTokens}
+                onClick={goDesignTokens}
+              >
+                <PaletteIcon />
+                <span className="flex-1 truncate text-left">Design tokens</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <CommandDialogTrigger
+                render={
+                  <SidebarMenuButton
+                    size="sm"
+                    className={SIDEBAR_TOP_NAV_BUTTON_CLASSNAME}
+                    data-testid="command-palette-trigger"
+                  />
+                }
+              >
+                <SearchIcon />
+                <span className="flex-1 truncate text-left">Search</span>
+              </CommandDialogTrigger>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+        {useAutodsmComponentAgentSidebar ? (
+          <AutoDsmComponentAgentSidebarSection onNavigateHome={goHome} />
+        ) : (
+          <>
+            <SidebarGroup className="px-2 py-2">
+              <div className="mb-1 flex items-center justify-between pl-2 pr-1.5">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                  Projects
+                </span>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        aria-label="Add project"
+                        data-testid="sidebar-add-project-trigger"
+                        className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+                        onClick={openAddProject}
+                      />
+                    }
+                  >
+                    <FolderPlusIcon className="size-3.5" />
+                  </TooltipTrigger>
+                  <TooltipPopup side="right">Add project</TooltipPopup>
+                </Tooltip>
+              </div>
+
+              {isManualProjectSorting ? (
+                <DndContext
+                  sensors={projectDnDSensors}
+                  collisionDetection={projectCollisionDetection}
+                  modifiers={[restrictToVerticalAxis, restrictToFirstScrollableAncestor]}
+                  onDragStart={handleProjectDragStart}
+                  onDragEnd={handleProjectDragEnd}
+                  onDragCancel={handleProjectDragCancel}
+                >
+                  <SidebarMenu>
+                    <SortableContext
+                      items={sortedProjects.map((project) => project.projectKey)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      {sortedProjects.map((project) => (
+                        <SortableProjectItem
+                          key={project.projectKey}
+                          projectId={project.projectKey}
+                        >
+                          {(dragHandleProps) => (
+                            <SidebarProjectItem
+                              project={project}
+                              isThreadListExpanded={expandedThreadListsByProject.has(
+                                project.projectKey,
+                              )}
+                              activeRouteThreadKey={
+                                activeRouteProjectKey === project.projectKey ? routeThreadKey : null
+                              }
+                              newThreadShortcutLabel={newThreadShortcutLabel}
+                              handleNewThread={handleNewThread}
+                              archiveThread={archiveThread}
+                              deleteThread={deleteThread}
+                              threadJumpLabelByKey={threadJumpLabelByKey}
+                              attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
+                              expandThreadListForProject={expandThreadListForProject}
+                              collapseThreadListForProject={collapseThreadListForProject}
+                              dragInProgressRef={dragInProgressRef}
+                              suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
+                              suppressProjectClickForContextMenuRef={
+                                suppressProjectClickForContextMenuRef
+                              }
+                              isManualProjectSorting={isManualProjectSorting}
+                              dragHandleProps={dragHandleProps}
+                              suppressInlineThreadList={sidebarProjectUsesAutodsmMaterializedLayout(
+                                project,
+                              )}
+                            />
+                          )}
+                        </SortableProjectItem>
+                      ))}
+                    </SortableContext>
+                  </SidebarMenu>
+                </DndContext>
+              ) : (
+                <SidebarMenu ref={attachProjectListAutoAnimateRef}>
+                  {sortedProjects.map((project) => (
+                    <SidebarProjectListRow
+                      key={project.projectKey}
+                      project={project}
+                      isThreadListExpanded={expandedThreadListsByProject.has(project.projectKey)}
+                      activeRouteThreadKey={
+                        activeRouteProjectKey === project.projectKey ? routeThreadKey : null
+                      }
+                      newThreadShortcutLabel={newThreadShortcutLabel}
+                      handleNewThread={handleNewThread}
+                      archiveThread={archiveThread}
+                      deleteThread={deleteThread}
+                      threadJumpLabelByKey={threadJumpLabelByKey}
+                      attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
+                      expandThreadListForProject={expandThreadListForProject}
+                      collapseThreadListForProject={collapseThreadListForProject}
+                      dragInProgressRef={dragInProgressRef}
+                      suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
+                      suppressProjectClickForContextMenuRef={suppressProjectClickForContextMenuRef}
+                      isManualProjectSorting={isManualProjectSorting}
+                      dragHandleProps={null}
+                      suppressInlineThreadList={sidebarProjectUsesAutodsmMaterializedLayout(
+                        project,
+                      )}
+                    />
+                  ))}
+                </SidebarMenu>
+              )}
+
+              {projectsLength === 0 && (
+                <div className="px-2 pt-4 text-center text-xs text-muted-foreground/60">
+                  No projects yet
+                </div>
+              )}
+            </SidebarGroup>
+          </>
+        )}
+      </SidebarContent>
+      <SidebarSeparator className="mx-0 shrink-0" />
+      <SidebarFooter className="shrink-0 border-t border-border bg-muted/[0.12] p-2 dark:bg-muted/[0.08]">
+        <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
               size="sm"
               type="button"
-              className={SIDEBAR_TOP_NAV_BUTTON_CLASSNAME}
-              data-testid="sidebar-nav-design-tokens"
-              aria-current={primaryNav.designTokens ? "page" : undefined}
-              isActive={primaryNav.designTokens}
-              onClick={goDesignTokens}
+              data-testid="sidebar-nav-settings"
+              className="gap-2 px-2 py-2 text-left text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              onClick={goSettings}
             >
-              <PaletteIcon />
-              <span className="flex-1 truncate text-left">Design tokens</span>
+              <Settings2Icon className="size-4 shrink-0" aria-hidden />
+              <span className="flex-1 truncate text-left">Settings</span>
             </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <CommandDialogTrigger
-              render={
-                <SidebarMenuButton
-                  size="sm"
-                  className={SIDEBAR_TOP_NAV_BUTTON_CLASSNAME}
-                  data-testid="command-palette-trigger"
-                />
-              }
-            >
-              <SearchIcon />
-              <span className="flex-1 truncate text-left">Search</span>
-            </CommandDialogTrigger>
           </SidebarMenuItem>
         </SidebarMenu>
-      </SidebarGroup>
-      <SidebarGroup className="px-2 py-2">
-        <div className="mb-1 flex items-center justify-between pl-2 pr-1.5">
-          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
-            Projects
-          </span>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  aria-label="Add project"
-                  data-testid="sidebar-add-project-trigger"
-                  className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
-                  onClick={openAddProject}
-                />
-              }
-            >
-              <FolderPlusIcon className="size-3.5" />
-            </TooltipTrigger>
-            <TooltipPopup side="right">Add project</TooltipPopup>
-          </Tooltip>
-        </div>
-
-        {isManualProjectSorting ? (
-          <DndContext
-            sensors={projectDnDSensors}
-            collisionDetection={projectCollisionDetection}
-            modifiers={[restrictToVerticalAxis, restrictToFirstScrollableAncestor]}
-            onDragStart={handleProjectDragStart}
-            onDragEnd={handleProjectDragEnd}
-            onDragCancel={handleProjectDragCancel}
-          >
-            <SidebarMenu>
-              <SortableContext
-                items={sortedProjects.map((project) => project.projectKey)}
-                strategy={verticalListSortingStrategy}
-              >
-                {sortedProjects.map((project) => (
-                  <SortableProjectItem key={project.projectKey} projectId={project.projectKey}>
-                    {(dragHandleProps) => (
-                      <SidebarProjectItem
-                        project={project}
-                        isThreadListExpanded={expandedThreadListsByProject.has(project.projectKey)}
-                        activeRouteThreadKey={
-                          activeRouteProjectKey === project.projectKey ? routeThreadKey : null
-                        }
-                        newThreadShortcutLabel={newThreadShortcutLabel}
-                        handleNewThread={handleNewThread}
-                        archiveThread={archiveThread}
-                        deleteThread={deleteThread}
-                        threadJumpLabelByKey={threadJumpLabelByKey}
-                        attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
-                        expandThreadListForProject={expandThreadListForProject}
-                        collapseThreadListForProject={collapseThreadListForProject}
-                        dragInProgressRef={dragInProgressRef}
-                        suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
-                        suppressProjectClickForContextMenuRef={
-                          suppressProjectClickForContextMenuRef
-                        }
-                        isManualProjectSorting={isManualProjectSorting}
-                        dragHandleProps={dragHandleProps}
-                      />
-                    )}
-                  </SortableProjectItem>
-                ))}
-              </SortableContext>
-            </SidebarMenu>
-          </DndContext>
-        ) : (
-          <SidebarMenu ref={attachProjectListAutoAnimateRef}>
-            {sortedProjects.map((project) => (
-              <SidebarProjectListRow
-                key={project.projectKey}
-                project={project}
-                isThreadListExpanded={expandedThreadListsByProject.has(project.projectKey)}
-                activeRouteThreadKey={
-                  activeRouteProjectKey === project.projectKey ? routeThreadKey : null
-                }
-                newThreadShortcutLabel={newThreadShortcutLabel}
-                handleNewThread={handleNewThread}
-                archiveThread={archiveThread}
-                deleteThread={deleteThread}
-                threadJumpLabelByKey={threadJumpLabelByKey}
-                attachThreadListAutoAnimateRef={attachThreadListAutoAnimateRef}
-                expandThreadListForProject={expandThreadListForProject}
-                collapseThreadListForProject={collapseThreadListForProject}
-                dragInProgressRef={dragInProgressRef}
-                suppressProjectClickAfterDragRef={suppressProjectClickAfterDragRef}
-                suppressProjectClickForContextMenuRef={suppressProjectClickForContextMenuRef}
-                isManualProjectSorting={isManualProjectSorting}
-                dragHandleProps={null}
-              />
-            ))}
-          </SidebarMenu>
-        )}
-
-        {projectsLength === 0 && (
-          <div className="px-2 pt-4 text-center text-xs text-muted-foreground/60">
-            No projects yet
-          </div>
-        )}
-      </SidebarGroup>
-      <SidebarSrcComponentsSection
-        catalogEnvironmentId={componentsCatalogEnvironmentId}
-        catalogCwd={componentsCatalogCwd}
-        sectionVisible={
-          projectsLength > 0 &&
-          componentsCatalogEnvironmentId !== null &&
-          componentsCatalogCwd !== null
-        }
-        resolveTargetThreadRef={resolveThreadRefForComponentPreviewSidebar}
-        closeMobileSidebar={closeMobileSidebar}
-      />
-    </SidebarContent>
+      </SidebarFooter>
+    </Fragment>
   );
 });
 
@@ -2677,41 +2760,10 @@ export default function Sidebar() {
     }
     return next;
   }, [sidebarThreads, physicalToLogicalKey, projectPhysicalKeyByScopedRef]);
-  const sidebarComponentsCatalogSnapshot = useMemo(() => {
-    return sidebarProjectByKey.get(activeRouteProjectKey ?? "") ?? sidebarProjects[0] ?? null;
-  }, [activeRouteProjectKey, sidebarProjectByKey, sidebarProjects]);
-
-  const resolveThreadRefForComponentPreviewSidebar = useCallback(() => {
-    const catalog = sidebarComponentsCatalogSnapshot;
-    if (!catalog) return null;
-
-    if (routeThreadRef && routeThreadKey) {
-      const activeThread = sidebarThreadByKey.get(routeThreadKey);
-      if (activeThread) {
-        const physicalScopedKey =
-          projectPhysicalKeyByScopedRef.get(
-            scopedProjectKey(scopeProjectRef(activeThread.environmentId, activeThread.projectId)),
-          ) ??
-          scopedProjectKey(scopeProjectRef(activeThread.environmentId, activeThread.projectId));
-        const logicalKey = physicalToLogicalKey.get(physicalScopedKey) ?? physicalScopedKey;
-        if (logicalKey === catalog.projectKey) {
-          return routeThreadRef;
-        }
-      }
-    }
-
-    const groupThreads = threadsByProjectKey.get(catalog.projectKey);
-    const first = groupThreads?.[0];
-    return first ? scopeThreadRef(first.environmentId, first.id) : null;
-  }, [
-    physicalToLogicalKey,
-    projectPhysicalKeyByScopedRef,
-    routeThreadKey,
-    routeThreadRef,
-    sidebarComponentsCatalogSnapshot,
-    sidebarThreadByKey,
-    threadsByProjectKey,
-  ]);
+  const { cwd: autodsmWorkspaceCwd } = useAutoDsmWorkspace();
+  const useAutodsmComponentAgentSidebar = shouldUseAutodsmComponentAgentSidebar({
+    workspaceCwd: autodsmWorkspaceCwd,
+  });
 
   const getCurrentSidebarShortcutContext = useCallback(
     () => ({
@@ -3118,9 +3170,7 @@ export default function Sidebar() {
             suppressProjectClickForContextMenuRef={suppressProjectClickForContextMenuRef}
             attachProjectListAutoAnimateRef={attachProjectListAutoAnimateRef}
             projectsLength={projects.length}
-            componentsCatalogEnvironmentId={sidebarComponentsCatalogSnapshot?.environmentId ?? null}
-            componentsCatalogCwd={sidebarComponentsCatalogSnapshot?.cwd ?? null}
-            resolveThreadRefForComponentPreviewSidebar={resolveThreadRefForComponentPreviewSidebar}
+            useAutodsmComponentAgentSidebar={useAutodsmComponentAgentSidebar}
           />
         </>
       )}

@@ -263,6 +263,8 @@ const make = Effect.gen(function* () {
         logWindowWarning("main window render process gone", {
           reason: details.reason,
           exitCode: details.exitCode,
+          url: window.webContents.getURL(),
+          expectedDevRestart: environment.isDevelopment,
         }),
       );
     });

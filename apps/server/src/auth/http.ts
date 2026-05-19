@@ -99,6 +99,35 @@ export const authBootstrapRouteLayer = HttpRouter.add(
   }).pipe(Effect.catchTag("AuthError", (error) => respondToAuthError(error))),
 );
 
+export const authDevAutoBootstrapRouteLayer = HttpRouter.add(
+  "POST",
+  "/api/auth/dev-auto-bootstrap",
+  Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const serverAuth = yield* ServerAuth;
+    const sessions = yield* SessionCredentialService;
+    const result = yield* serverAuth.devAutoBootstrapBrowserSession(request);
+
+    const response = HttpServerResponse.jsonUnsafe(result.response, {
+      status: 200,
+      headers: browserApiCorsHeaders,
+    });
+
+    if (result.sessionToken.length === 0) {
+      return response;
+    }
+
+    return yield* response.pipe(
+      HttpServerResponse.setCookie(sessions.cookieName, result.sessionToken, {
+        expires: DateTime.toDate(result.response.expiresAt),
+        httpOnly: true,
+        path: "/",
+        sameSite: "lax",
+      }),
+    );
+  }).pipe(Effect.catchTag("AuthError", (error) => respondToAuthError(error))),
+);
+
 export const authBearerBootstrapRouteLayer = HttpRouter.add(
   "POST",
   "/api/auth/bootstrap/bearer",

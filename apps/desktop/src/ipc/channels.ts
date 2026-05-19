@@ -36,4 +36,5 @@ export const COMPONENT_PREVIEW_ATTACH_CHANNEL = "desktop:component-preview:attac
 export const COMPONENT_PREVIEW_DETACH_CHANNEL = "desktop:component-preview:detach";
 export const COMPONENT_PREVIEW_SET_BOUNDS_CHANNEL = "desktop:component-preview:set-bounds";
 export const COMPONENT_PREVIEW_PRIME_CHANNEL = "desktop:component-preview:prime";
+export const COMPONENT_PREVIEW_CAPTURE_CHANNEL = "desktop:component-preview:capture";
 export const SSH_PASSWORD_PROMPT_CANCELLED_RESULT = "ssh-password-prompt-cancelled";

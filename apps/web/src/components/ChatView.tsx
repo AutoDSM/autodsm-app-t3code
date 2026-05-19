@@ -39,12 +39,19 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useShallow } from "zustand/react/shallow";
 import { useGitStatus } from "~/lib/gitStatusState";
+import { useAutoDsmComponentPreviewRefresh } from "~/hooks/useAutoDsmComponentPreviewRefreshOnTurnComplete";
+import {
+  isAutoDsmComponentAgentThread,
+  resolveTurnStartTitleSeed,
+  shouldAutoTitleThreadOnFirstMessage,
+} from "~/lib/autoDsmComponentAgentThread";
 import { usePrimaryEnvironmentId } from "../environments/primary";
 import { readEnvironmentApi } from "../environmentApi";
 import { isElectron } from "../env";
 import { readLocalApi } from "../localApi";
 import {
   parseDiffRouteSearch,
+  sanitizeComponentPreviewPathForSearch,
   stripComponentPreviewSearchParams,
   stripDiffSearchParams,
 } from "../diffRouteSearch";
@@ -98,21 +105,35 @@ import {
   type Thread,
   type TurnDiffSummary,
 } from "../types";
+import { useAutoDsmComponentAgentTabs } from "~/hooks/useAutoDsmComponentAgentTabs";
+import { useSrcComponentsCatalog } from "~/hooks/useSrcComponentsCatalog";
+import { isAutodsmMaterializedSystemCwd } from "~/lib/autodsmMaterializedWorkspace";
 import { useTheme } from "../hooks/useTheme";
 import { useTurnDiffSummaries } from "../hooks/useTurnDiffSummaries";
 import { useCommandPaletteStore } from "../commandPaletteStore";
 import { buildTemporaryWorktreeBranchName } from "@t3tools/shared/git";
-import { useCompanionAgentHorizontalSplit } from "../hooks/useCompanionAgentHorizontalSplit";
+import {
+  CHAT_PREVIEW_AGENT_DEFAULT_RIGHT_WIDTH_REM,
+  CHAT_PREVIEW_AGENT_SPLIT_STORAGE_KEY,
+  useCompanionAgentHorizontalSplit,
+} from "../hooks/useCompanionAgentHorizontalSplit";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../rightPanelLayout";
 import { BranchToolbar } from "./BranchToolbar";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import PlanSidebar from "./PlanSidebar";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
+import { AutoDsmComponentAgentTabBar } from "./autodsm/AutoDsmComponentAgentTabBar";
 import { ComponentPreviewTabBar } from "./ComponentPreviewTabBar";
 import { PreviewSplitDivider } from "./PreviewSplitDivider";
 import { WebContentsView } from "./WebContentsView";
+import { useSidebar } from "./ui/sidebar";
+import { shouldUseAutodsmComponentAgentSidebar } from "~/lib/autodsmSidebarMode";
 import { ChevronDownIcon, TriangleAlertIcon, WifiOffIcon } from "lucide-react";
+import {
+  dedupeStableSorted,
+  normalizeSidebarComponentCatalogPath,
+} from "~/lib/srcComponentsWorkspacePaths";
 import { cn, randomUUID } from "~/lib/utils";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { decodeProjectScriptKeybindingRule } from "~/lib/projectScriptKeybindings";
@@ -156,7 +177,10 @@ import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { ChatHeader } from "./chat/ChatHeader";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
-import { NoActiveThreadState } from "./NoActiveThreadState";
+import { ChatLaunchEmptyState } from "./autodsm/ChatLaunchEmptyState";
+import { useAutoDsmWorkspace } from "~/hooks/useAutoDsmWorkspace";
+import { autodsmBrandProfileQueryOptions } from "~/lib/autodsmWorkspaceReactQuery";
+import { formatBrandTokenPromptAppendix } from "~/lib/brandTokenPromptContext";
 import { resolveEffectiveEnvMode, resolveEnvironmentOptionLabel } from "./BranchToolbar.logic";
 import { ProviderStatusBanner } from "./chat/ProviderStatusBanner";
 import { ThreadErrorBanner } from "./chat/ThreadErrorBanner";
@@ -183,6 +207,7 @@ import {
   shouldWriteThreadErrorToCurrentServerThread,
   waitForStartedServerThread,
 } from "./ChatView.logic";
+import { useQuery } from "@tanstack/react-query";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useComposerHandleContext } from "../composerHandleContext";
 import {
@@ -628,6 +653,18 @@ export default function ChatView(props: ChatViewProps) {
   const routeThreadKey = useMemo(() => scopedThreadKey(routeThreadRef), [routeThreadRef]);
   const composerDraftTarget: ScopedThreadRef | DraftId =
     routeKind === "server" ? routeThreadRef : props.draftId;
+  const autodsmWorkspace = useAutoDsmWorkspace();
+  const autodsmBrandQuery = useQuery(
+    autodsmBrandProfileQueryOptions({
+      environmentId: autodsmWorkspace.environmentId,
+      cwd: autodsmWorkspace.cwd,
+      enabled: autodsmWorkspace.cwd !== null && autodsmWorkspace.environmentId !== null,
+    }),
+  );
+  const brandProfileRef = useRef(autodsmBrandQuery.data);
+  useEffect(() => {
+    brandProfileRef.current = autodsmBrandQuery.data;
+  }, [autodsmBrandQuery.data]);
   const serverThread = useStore(
     useMemo(
       () => createThreadSelectorByRef(routeKind === "server" ? routeThreadRef : null),
@@ -636,6 +673,9 @@ export default function ChatView(props: ChatViewProps) {
   );
   const setStoreThreadError = useStore((store) => store.setError);
   const markThreadVisited = useUiStateStore((store) => store.markThreadVisited);
+  const mergeAutoDsmThreadComponentPaths = useUiStateStore(
+    (store) => store.mergeAutoDsmThreadComponentPaths,
+  );
   const activeThreadLastVisitedAt = useUiStateStore((store) =>
     routeKind === "server" ? store.threadLastVisitedAtById[routeThreadKey] : undefined,
   );
@@ -714,7 +754,6 @@ export default function ChatView(props: ChatViewProps) {
   const [planSidebarOpen, setPlanSidebarOpen] = useState(false);
   const shouldUsePlanSidebarSheet = useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
   const companionSplitMd = useMediaQuery({ min: "md" });
-  const companionSplit = useCompanionAgentHorizontalSplit(companionSplitMd);
   // Tracks whether the user explicitly dismissed the sidebar for the active turn.
   const planSidebarDismissedForTurnRef = useRef<string | null>(null);
   // When set, the thread-change reset effect will open the sidebar instead of closing it.
@@ -824,6 +863,12 @@ export default function ChatView(props: ChatViewProps) {
   const canCheckoutPullRequestIntoThread = isLocalDraftThread;
   const diffOpen = rawSearch.diff === "1";
   const componentPreviewPath = rawSearch.componentPath ?? null;
+  const previewAgentSplitMd = companionSplitMd && componentPreviewPath !== null;
+  const previewAgentSplit = useCompanionAgentHorizontalSplit(previewAgentSplitMd, {
+    storageKey: CHAT_PREVIEW_AGENT_SPLIT_STORAGE_KEY,
+    splitMode: "right-fixed",
+    defaultRightWidthRem: CHAT_PREVIEW_AGENT_DEFAULT_RIGHT_WIDTH_REM,
+  });
   const closeComponentPreview = useCallback(() => {
     if (routeKind === "server") {
       void navigate({
@@ -846,6 +891,36 @@ export default function ChatView(props: ChatViewProps) {
       });
     }
   }, [draftId, environmentId, navigate, routeKind, threadId]);
+  const selectComponentPreviewPath = useCallback(
+    (relativePath: string) => {
+      const safe = sanitizeComponentPreviewPathForSearch(relativePath);
+      if (!safe) {
+        return;
+      }
+      if (routeKind === "server") {
+        void navigate({
+          to: "/$environmentId/$threadId",
+          params: { environmentId, threadId },
+          search: (previous) => ({
+            ...(previous as Record<string, unknown>),
+            componentPath: safe,
+          }),
+        });
+        return;
+      }
+      if (draftId !== null) {
+        void navigate({
+          to: "/draft/$draftId",
+          params: { draftId },
+          search: (previous) => ({
+            ...(previous as Record<string, unknown>),
+            componentPath: safe,
+          }),
+        });
+      }
+    },
+    [draftId, environmentId, navigate, routeKind, threadId],
+  );
   const activeThreadId = activeThread?.id ?? null;
   const activeThreadRef = useMemo(
     () => (activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null),
@@ -1685,6 +1760,95 @@ export default function ChatView(props: ChatViewProps) {
     return providerStatuses.find((status) => status.instanceId === defaultInstanceId) ?? null;
   }, [activeProviderInstanceId, providerStatuses, selectedProvider]);
   const activeProjectCwd = activeProject?.cwd ?? null;
+  useAutoDsmComponentPreviewRefresh({
+    componentPath: componentPreviewPath,
+    environmentId,
+    projectCwd: activeProjectCwd,
+    latestTurnSettled,
+    latestTurnCompletedAt: activeLatestTurn?.completedAt,
+    isAgentTurnActive: isWorking,
+  });
+  const { catalog: threadSrcComponentsCatalog } = useSrcComponentsCatalog({
+    environmentId,
+    cwd: activeProjectCwd,
+    enabled: activeProjectCwd !== null,
+  });
+  const componentPreviewTabPaths = useMemo(() => {
+    const merged = [...threadSrcComponentsCatalog.paths];
+    if (componentPreviewPath && !merged.includes(componentPreviewPath)) {
+      merged.push(componentPreviewPath);
+    }
+    return dedupeStableSorted(merged);
+  }, [threadSrcComponentsCatalog.paths, componentPreviewPath]);
+  const isMaterializedAutoDsmProject =
+    activeProjectCwd !== null && isAutodsmMaterializedSystemCwd(activeProjectCwd);
+  const { tabs: autoDsmComponentAgentTabs, selectAgentTab: selectAutoDsmComponentAgentTab } =
+    useAutoDsmComponentAgentTabs({
+      environmentId: isMaterializedAutoDsmProject ? environmentId : null,
+      projectId: isMaterializedAutoDsmProject && activeProject ? activeProject.id : null,
+      isMaterialized: isMaterializedAutoDsmProject,
+      activeThreadKey: routeKind === "server" ? routeThreadKey : null,
+    });
+  const { isMobile: isMobileSidebar } = useSidebar();
+  const showAutodsmAgentTabsInChatHeader =
+    !shouldUseAutodsmComponentAgentSidebar({ workspaceCwd: activeProjectCwd }) || isMobileSidebar;
+  const hidePreviewTabBarInProduct =
+    isMaterializedAutoDsmProject &&
+    shouldUseAutodsmComponentAgentSidebar({ workspaceCwd: activeProjectCwd }) &&
+    !isMobileSidebar;
+  const componentPreviewVariant = isMaterializedAutoDsmProject ? "product" : "dev";
+  useEffect(() => {
+    if (!isMaterializedAutoDsmProject || routeKind !== "server") {
+      return;
+    }
+    const raw = useUiStateStore.getState().autoDsmThreadComponentPathById[routeThreadKey];
+    if (!raw) {
+      return;
+    }
+    const safe = sanitizeComponentPreviewPathForSearch(normalizeSidebarComponentCatalogPath(raw));
+    if (!safe || componentPreviewPath === safe || componentPreviewPath) {
+      return;
+    }
+    void navigate({
+      to: "/$environmentId/$threadId",
+      params: { environmentId, threadId },
+      replace: true,
+      search: (previous) => ({
+        ...(previous as Record<string, unknown>),
+        componentPath: safe,
+      }),
+    });
+  }, [
+    componentPreviewPath,
+    environmentId,
+    isMaterializedAutoDsmProject,
+    navigate,
+    routeKind,
+    routeThreadKey,
+    threadId,
+  ]);
+  useEffect(() => {
+    if (!isMaterializedAutoDsmProject || routeKind !== "server" || !componentPreviewPath) {
+      return;
+    }
+    const safe = sanitizeComponentPreviewPathForSearch(
+      normalizeSidebarComponentCatalogPath(componentPreviewPath),
+    );
+    if (!safe) {
+      return;
+    }
+    const stored = useUiStateStore.getState().autoDsmThreadComponentPathById[routeThreadKey];
+    if (stored) {
+      return;
+    }
+    mergeAutoDsmThreadComponentPaths({ [routeThreadKey]: safe });
+  }, [
+    componentPreviewPath,
+    isMaterializedAutoDsmProject,
+    mergeAutoDsmThreadComponentPaths,
+    routeKind,
+    routeThreadKey,
+  ]);
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
   const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
   const activeTerminalLaunchContext =
@@ -2773,6 +2937,13 @@ export default function ChatView(props: ChatViewProps) {
     if (previewAppendix && previewAppendix.trim().length > 0) {
       outgoingMessageText = `${outgoingMessageText}\n\n--- Component preview ---\n${previewAppendix}`;
     }
+    const brandAppendix = formatBrandTokenPromptAppendix({
+      profile: brandProfileRef.current,
+      prompt: messageTextForSend,
+    });
+    if (brandAppendix && brandAppendix.trim().length > 0) {
+      outgoingMessageText = `${outgoingMessageText}\n\n--- Design tokens ---\n${brandAppendix}`;
+    }
     const turnAttachmentsPromise = Promise.all(
       composerImagesSnapshot.map(async (image) => ({
         type: "image" as const,
@@ -2853,9 +3024,26 @@ export default function ChatView(props: ChatViewProps) {
         ctxSelectedModel || activeProject.defaultModelSelection?.model || DEFAULT_MODEL,
         ctxSelectedModelSelection.options,
       );
+      const activeThreadKeyForSend =
+        routeKind === "server"
+          ? scopedThreadKey(scopeThreadRef(environmentId, threadIdForSend))
+          : null;
+      const isComponentAgentThread = isAutoDsmComponentAgentThread(
+        activeThreadKeyForSend,
+        useUiStateStore.getState().autoDsmThreadComponentPathById,
+      );
+      const turnStartTitleSeed = resolveTurnStartTitleSeed({
+        isComponentAgentThread,
+        titleFromPrompt: title,
+      });
 
-      // Auto-title from first message
-      if (isFirstMessage && isServerThread) {
+      if (
+        shouldAutoTitleThreadOnFirstMessage({
+          isFirstMessage,
+          isServerThread,
+          isComponentAgentThread,
+        })
+      ) {
         await api.orchestration.dispatchCommand({
           type: "thread.meta.update",
           commandId: newCommandId(),
@@ -2916,7 +3104,7 @@ export default function ChatView(props: ChatViewProps) {
           attachments: turnAttachments,
         },
         modelSelection: ctxSelectedModelSelection,
-        titleSeed: title,
+        ...(turnStartTitleSeed !== undefined ? { titleSeed: turnStartTitleSeed } : {}),
         runtimeMode,
         interactionMode,
         ...(bootstrap ? { bootstrap } : {}),
@@ -3544,43 +3732,44 @@ export default function ChatView(props: ChatViewProps) {
 
   // Empty state: no active thread
   if (!activeThread) {
-    return <NoActiveThreadState />;
+    return <ChatLaunchEmptyState />;
   }
 
   return (
     <div
-      ref={companionSplit.splitMeasureRef}
+      ref={componentPreviewPath ? previewAgentSplit.splitMeasureRef : undefined}
       className={cn(
         "min-h-0 w-full flex-1 overflow-hidden bg-background",
-        companionSplitMd ? "grid min-w-0" : "flex min-w-0 flex-col",
+        previewAgentSplitMd ? "grid min-w-0" : "flex min-w-0 flex-col",
       )}
       style={
-        companionSplitMd && companionSplit.gridTemplateColumns
-          ? { gridTemplateColumns: companionSplit.gridTemplateColumns }
+        previewAgentSplitMd && previewAgentSplit.gridTemplateColumns
+          ? { gridTemplateColumns: previewAgentSplit.gridTemplateColumns }
           : undefined
       }
     >
-      <aside
-        className={cn(
-          companionSplitMd ? "flex" : "hidden",
-          "min-h-0 min-w-0 flex-col overflow-hidden bg-muted/[0.08]",
-        )}
-        aria-label="Workspace panel"
-        data-slot="chat-thread-companion-pane"
-        data-feature="project-thread-secondary-column"
-      >
-        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-3 py-3" />
-      </aside>
+      {componentPreviewPath && previewAgentSplitMd ? (
+        <WebContentsView
+          relativePath={componentPreviewPath}
+          environmentId={environmentId}
+          workspaceCwd={activeProject?.cwd ?? null}
+          variant={componentPreviewVariant}
+          registerPromptAppendix={(getter) => {
+            componentPreviewPromptAppendixRef.current = getter;
+          }}
+          onInjectComposerText={injectComposerFromPreview}
+        />
+      ) : null}
 
-      {companionSplitMd ? (
+      {previewAgentSplitMd ? (
         <button
           type="button"
           aria-orientation="vertical"
-          aria-label="Resize workspace and coding agent panels"
-          data-slot="chat-companion-agent-splitter"
+          aria-label="Resize preview and coding agent panels"
+          data-slot="chat-preview-agent-splitter"
           className="group -mx-[3px] z-10 flex min-h-full min-w-[9px] max-w-[9px] shrink-0 cursor-col-resize touch-none select-none justify-center self-stretch px-[3px]"
           tabIndex={0}
-          onPointerDown={companionSplit.onSplitterPointerDown}
+          onPointerDown={previewAgentSplit.onSplitterPointerDown}
         >
           <span
             aria-hidden
@@ -3629,13 +3818,24 @@ export default function ChatView(props: ChatViewProps) {
             onDeleteProjectScript={deleteProjectScript}
             onToggleTerminal={toggleTerminalVisibility}
             onToggleDiff={onToggleDiff}
+            productMode={isMaterializedAutoDsmProject}
           />
         </header>
 
-        {componentPreviewPath ? (
+        {isMaterializedAutoDsmProject &&
+        autoDsmComponentAgentTabs.length > 0 &&
+        showAutodsmAgentTabsInChatHeader ? (
+          <AutoDsmComponentAgentTabBar
+            tabs={autoDsmComponentAgentTabs}
+            activeThreadRef={routeKind === "server" ? routeThreadRef : null}
+            onSelectTab={selectAutoDsmComponentAgentTab}
+          />
+        ) : !hidePreviewTabBarInProduct && componentPreviewTabPaths.length > 0 ? (
           <ComponentPreviewTabBar
-            relativePath={componentPreviewPath}
-            onClose={closeComponentPreview}
+            paths={componentPreviewTabPaths}
+            activePath={componentPreviewPath}
+            onSelectPath={selectComponentPreviewPath}
+            onCloseActive={closeComponentPreview}
           />
         ) : null}
 
@@ -3647,12 +3847,22 @@ export default function ChatView(props: ChatViewProps) {
         />
         {/* Main content area with optional plan sidebar */}
         <div className="flex min-h-0 min-w-0 flex-1">
-          <div
-            className={cn(
-              "flex min-h-0 min-w-0 flex-1",
-              componentPreviewPath ? "flex-col md:flex-row" : "flex-col",
-            )}
-          >
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            {componentPreviewPath && !previewAgentSplitMd ? (
+              <>
+                <WebContentsView
+                  relativePath={componentPreviewPath}
+                  environmentId={environmentId}
+                  workspaceCwd={activeProject?.cwd ?? null}
+                  variant={componentPreviewVariant}
+                  registerPromptAppendix={(getter) => {
+                    componentPreviewPromptAppendixRef.current = getter;
+                  }}
+                  onInjectComposerText={injectComposerFromPreview}
+                />
+                <PreviewSplitDivider />
+              </>
+            ) : null}
             {/* Chat column */}
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
               {/* Messages Wrapper */}
@@ -3709,6 +3919,18 @@ export default function ChatView(props: ChatViewProps) {
                 )}
               >
                 <div className="relative isolate">
+                  {componentPreviewPath ? (
+                    <div className="mb-1.5 px-0.5" data-testid="component-preview-scope-chip">
+                      <span className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border/70 bg-muted/35 px-2 py-1 font-mono text-[10px] text-muted-foreground">
+                        <span className="shrink-0 font-sans font-medium text-[10px] text-foreground/85">
+                          Editing
+                        </span>
+                        <span className="min-w-0 truncate text-foreground/90">
+                          {componentPreviewPath}
+                        </span>
+                      </span>
+                    </div>
+                  ) : null}
                   <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
                   <div className="relative z-10">
                     <ChatComposer
@@ -3755,6 +3977,7 @@ export default function ChatView(props: ChatViewProps) {
                       keybindings={keybindings}
                       terminalOpen={Boolean(terminalState.terminalOpen)}
                       gitCwd={gitCwd}
+                      brandTokens={autodsmBrandQuery.data?.tokens ?? []}
                       promptRef={promptRef}
                       composerImagesRef={composerImagesRef}
                       composerTerminalContextsRef={composerTerminalContextsRef}
@@ -3828,21 +4051,6 @@ export default function ChatView(props: ChatViewProps) {
               ) : null}
             </div>
             {/* end chat column */}
-            {componentPreviewPath ? (
-              <>
-                <PreviewSplitDivider />
-                <div className="hidden shrink-0 bg-border md:block md:h-full md:w-px md:touch-none md:cursor-col-resize" />
-              </>
-            ) : null}
-            <WebContentsView
-              relativePath={componentPreviewPath ?? null}
-              environmentId={environmentId}
-              workspaceCwd={activeProject?.cwd ?? null}
-              registerPromptAppendix={(getter) => {
-                componentPreviewPromptAppendixRef.current = getter;
-              }}
-              onInjectComposerText={injectComposerFromPreview}
-            />
           </div>
 
           {/* Plan sidebar */}

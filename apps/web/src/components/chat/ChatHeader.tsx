@@ -48,6 +48,8 @@ interface ChatHeaderProps {
   onDeleteProjectScript: (scriptId: string) => Promise<void>;
   onToggleTerminal: () => void;
   onToggleDiff: () => void;
+  /** AutoDSM product mode: thread title only, hide noisy project badge. */
+  productMode?: boolean;
 }
 
 type ChatHeaderSecondaryActionsProps = {
@@ -260,6 +262,7 @@ export const ChatHeader = memo(function ChatHeader({
   onDeleteProjectScript,
   onToggleTerminal,
   onToggleDiff,
+  productMode = false,
 }: ChatHeaderProps) {
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const showOpenInPicker = shouldShowOpenInPicker({
@@ -304,12 +307,12 @@ export const ChatHeader = memo(function ChatHeader({
         >
           {activeThreadTitle}
         </h2>
-        {activeProjectName ? (
+        {activeProjectName && !productMode ? (
           <Badge variant="outline" className="min-w-0 shrink overflow-hidden">
             <span className="min-w-0 truncate">{activeProjectName}</span>
           </Badge>
         ) : null}
-        {activeProjectName && !isGitRepo ? (
+        {activeProjectName && !isGitRepo && !productMode ? (
           <Badge variant="outline" className="shrink-0 text-[10px] text-amber-700">
             No Git
           </Badge>

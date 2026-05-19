@@ -12,6 +12,11 @@ import { ServerConfig } from "../../config.ts";
 import { AuthPairingLinkRepositoryLive } from "../../persistence/Layers/AuthPairingLinks.ts";
 import { AuthPairingLinkRepository } from "../../persistence/Services/AuthPairingLinks.ts";
 import {
+  DEV_LOOPBACK_BYPASS_CREDENTIAL,
+  DEV_LOOPBACK_BYPASS_TTL,
+  isDevPairingDisabled,
+} from "../devPairingBypass.ts";
+import {
   BootstrapCredentialError,
   BootstrapCredentialService,
   type BootstrapCredentialChange,
@@ -94,6 +99,21 @@ export const makeBootstrapCredentialService = Effect.gen(function* () {
       }),
       remainingUses: 1,
     });
+  }
+
+  if (isDevPairingDisabled(config)) {
+    const now = yield* DateTime.now;
+    yield* seedGrant(DEV_LOOPBACK_BYPASS_CREDENTIAL, {
+      method: "one-time-token",
+      role: "owner",
+      subject: "dev-loopback-bypass",
+      label: "Dev loopback bypass",
+      expiresAt: DateTime.add(now, {
+        milliseconds: Duration.toMillis(DEV_LOOPBACK_BYPASS_TTL),
+      }),
+      remainingUses: "unbounded",
+    });
+    yield* Effect.logInfo("dev pairing disabled for loopback (T3CODE_DEV_DISABLE_PAIRING)");
   }
 
   const toBootstrapCredentialError = (message: string) => (cause: unknown) =>

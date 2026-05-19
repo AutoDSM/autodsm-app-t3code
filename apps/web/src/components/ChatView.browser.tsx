@@ -228,6 +228,7 @@ function createMockEnvironmentApi(input: {
       subscribeThread: (() => () =>
         undefined) as EnvironmentApi["orchestration"]["subscribeThread"],
     },
+    autodsm: {} as unknown as EnvironmentApi["autodsm"],
   };
 }
 
@@ -1828,6 +1829,139 @@ describe("ChatView timeline estimator parity (full app)", () => {
           expect(useUiStateStore.getState().projectExpandedById[PROJECT_LOGICAL_KEY]).toBe(true);
         },
         { timeout: 8_000, interval: 16 },
+      );
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("shows the AutoDSM launch surface on / when authenticated with no projects", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createProjectlessSnapshot(),
+      initialPath: "/",
+      configureFixture: (nextFixture) => {
+        nextFixture.welcome = {
+          ...nextFixture.welcome,
+          bootstrapProjectId: undefined,
+          bootstrapThreadId: undefined,
+        };
+      },
+      resolveRpc: (body) => {
+        if (body._tag === ORCHESTRATION_WS_METHODS.dispatchCommand) {
+          return { sequence: fixture.snapshot.snapshotSequence + 1 };
+        }
+        return undefined;
+      },
+    });
+
+    try {
+      await expect.element(page.getByText("autoDSM")).toBeInTheDocument();
+      await expect.element(page.getByRole("button", { name: "Open folder" })).toBeInTheDocument();
+      await expect.element(page.getByRole("button", { name: "Clone repo" })).toBeInTheDocument();
+      expect(document.body.innerText).not.toContain("Pick a thread to continue");
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("opens the add-project flow when Clone repo is activated from the launch surface", async () => {
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createProjectlessSnapshot(),
+      initialPath: "/",
+      configureFixture: (nextFixture) => {
+        nextFixture.welcome = {
+          ...nextFixture.welcome,
+          bootstrapProjectId: undefined,
+          bootstrapThreadId: undefined,
+        };
+      },
+      resolveRpc: (body) => {
+        if (body._tag === ORCHESTRATION_WS_METHODS.dispatchCommand) {
+          return { sequence: fixture.snapshot.snapshotSequence + 1 };
+        }
+        return undefined;
+      },
+    });
+
+    try {
+      await page.getByRole("button", { name: "Clone repo" }).click();
+      const palette = page.getByTestId("command-palette");
+      await expect.element(palette).toBeInTheDocument();
+      await expect.element(palette.getByText("Local folder", { exact: true })).toBeInTheDocument();
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("dispatches project.create when Open folder picks a directory from the launch surface", async () => {
+    const pickFolder = vi.fn().mockResolvedValue("/Users/julius/Projects/finder-picked");
+
+    const mounted = await mountChatView({
+      viewport: DEFAULT_VIEWPORT,
+      snapshot: createProjectlessSnapshot(),
+      initialPath: "/",
+      configureFixture: (nextFixture) => {
+        nextFixture.welcome = {
+          ...nextFixture.welcome,
+          bootstrapProjectId: undefined,
+          bootstrapThreadId: undefined,
+        };
+      },
+      resolveRpc: (body) => {
+        if (body._tag === ORCHESTRATION_WS_METHODS.dispatchCommand) {
+          return { sequence: fixture.snapshot.snapshotSequence + 1 };
+        }
+        return undefined;
+      },
+    });
+
+    try {
+      await waitForServerConfigToApply();
+      window.desktopBridge = {
+        pickFolder,
+        setTheme: vi.fn().mockResolvedValue(undefined),
+      } as unknown as NonNullable<typeof window.desktopBridge>;
+
+      await page.getByRole("button", { name: "Open folder" }).click();
+
+      await vi.waitFor(
+        () => {
+          expect(pickFolder).toHaveBeenCalled();
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+
+      await vi.waitFor(
+        () => {
+          const dispatchRequest = wsRequests.find(
+            (request) =>
+              request._tag === ORCHESTRATION_WS_METHODS.dispatchCommand &&
+              request.type === "project.create",
+          ) as
+            | {
+                _tag: string;
+                type?: string;
+                workspaceRoot?: string;
+                title?: string;
+              }
+            | undefined;
+
+          expect(dispatchRequest).toMatchObject({
+            _tag: ORCHESTRATION_WS_METHODS.dispatchCommand,
+            type: "project.create",
+            workspaceRoot: "/Users/julius/Projects/finder-picked",
+            title: "finder-picked",
+          });
+        },
+        { timeout: 8_000, interval: 16 },
+      );
+
+      await waitForURL(
+        mounted.router,
+        (path) => UUID_ROUTE_RE.test(path),
+        "Route should have changed to a new draft thread after opening a folder from the launch surface.",
       );
     } finally {
       await mounted.cleanup();

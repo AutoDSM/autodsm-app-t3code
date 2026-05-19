@@ -1,419 +1,88 @@
 <!doctype html>
-<html lang="en">
+<html>
   <head>
     <meta charset="utf-8" />
-    <title>AutoDSM — Product Loop</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>AutoDSM Product Loop</title>
     <style>
-      :root {
-        --bg: #0b0d12;
-        --panel: #141821;
-        --line: #262c38;
-        --ink: #e7ecf3;
-        --muted: #8b94a7;
-        --accent: #7cc4ff;
-        --warm: #ffb86b;
-        --good: #8ee089;
-        --bad: #ff7a85;
-      }
-      html,
       body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         margin: 0;
-        padding: 0;
-        background: var(--bg);
-        color: var(--ink);
-        font:
-          14px/1.5 ui-sans-serif,
-          system-ui,
-          -apple-system,
-          "Inter",
-          sans-serif;
+        background: #0b1020;
+        color: #eef2ff;
       }
-      .wrap {
-        max-width: 1100px;
-        margin: 24px auto;
-        padding: 0 20px;
+      main {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 48px;
       }
       h1 {
-        font-size: 22px;
-        margin: 0 0 4px;
+        font-size: 42px;
+        margin: 0 0 12px;
       }
-      .sub {
-        color: var(--muted);
-        margin-bottom: 20px;
+      h2 {
+        margin-top: 32px;
+        color: #c4b5fd;
       }
       .grid {
         display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
         gap: 16px;
       }
-      .row-2 {
-        grid-template-columns: 1fr 1fr;
-      }
-      .row-3 {
-        grid-template-columns: repeat(3, 1fr);
-      }
-      .row-4 {
-        grid-template-columns: repeat(4, 1fr);
-      }
       .card {
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 10px;
-        padding: 14px 16px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(255, 255, 255, 0.06);
+        border-radius: 18px;
+        padding: 18px;
       }
-      .card h3 {
-        margin: 0 0 6px;
-        font-size: 14px;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        color: var(--accent);
-      }
-      .card p {
-        margin: 4px 0;
-        color: var(--ink);
-      }
-      .card .muted {
-        color: var(--muted);
-        font-size: 12px;
+      .flow {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
       }
       .pill {
-        display: inline-block;
-        padding: 2px 8px;
+        padding: 10px 14px;
         border-radius: 999px;
-        background: #1c2230;
-        color: var(--muted);
-        font-size: 11px;
-        margin-right: 4px;
+        background: #312e81;
+        border: 1px solid #818cf8;
       }
-      svg {
-        width: 100%;
-        height: auto;
-        display: block;
+      .muted {
+        color: #bac2d9;
       }
-      .legend {
-        font-size: 12px;
-        color: var(--muted);
-        margin-top: 6px;
-      }
-      .tier {
-        display: flex;
-        gap: 12px;
-        flex-wrap: wrap;
-      }
-      .tier .t {
-        flex: 1 1 220px;
-        border-left: 3px solid var(--accent);
-        padding: 8px 12px;
-        background: #11151d;
-        border-radius: 0 8px 8px 0;
-      }
-      .tier .t.free {
-        border-color: #8b94a7;
-      }
-      .tier .t.pro {
-        border-color: var(--accent);
-      }
-      .tier .t.team {
-        border-color: var(--good);
-      }
-      .tier .t.ent {
-        border-color: var(--warm);
-      }
-      .tier .t h4 {
-        margin: 0;
-        font-size: 13px;
-      }
-      .tier .t .p {
-        font-size: 12px;
-        color: var(--muted);
-      }
-      hr.sep {
-        border: none;
-        border-top: 1px solid var(--line);
-        margin: 24px 0;
+      code {
+        color: #a7f3d0;
       }
     </style>
   </head>
   <body>
-    <div class="wrap">
-      <h1>AutoDSM — Product Loop &amp; Artifact Map</h1>
-      <div class="sub">
-        Local-first AI workspace for editing shared React component systems. Prompt → preview → diff
-        → merge.
+    <main>
+      <h1>AutoDSM Product Loop</h1>
+      <p class="muted">T3 Code is the engine. AutoDSM is the product.</p>
+      <div class="flow">
+        <span class="pill">Modern Starter / shadcn fork</span
+        ><span class="pill">Atomic components</span><span class="pill">Scoped AI edit</span
+        ><span class="pill">Storybook preview</span><span class="pill">ChangeSet review</span
+        ><span class="pill">Local PR</span><span class="pill">Package export</span>
       </div>
-
-      <div class="card" style="padding: 20px">
-        <svg
-          viewBox="0 0 1040 360"
-          xmlns="http://www.w3.org/2000/svg"
-          aria-label="AutoDSM product loop"
-        >
-          <defs>
-            <marker
-              id="arr"
-              viewBox="0 0 10 10"
-              refX="9"
-              refY="5"
-              markerWidth="8"
-              markerHeight="8"
-              orient="auto-start-reverse"
-            >
-              <path d="M0,0 L10,5 L0,10 z" fill="#7cc4ff" />
-            </marker>
-            <marker
-              id="arr2"
-              viewBox="0 0 10 10"
-              refX="9"
-              refY="5"
-              markerWidth="8"
-              markerHeight="8"
-              orient="auto-start-reverse"
-            >
-              <path d="M0,0 L10,5 L0,10 z" fill="#8ee089" />
-            </marker>
-          </defs>
-
-          <!-- Stages -->
-          <g font-family="ui-sans-serif, system-ui" font-size="13" fill="#e7ecf3">
-            <g>
-              <rect x="20" y="40" width="170" height="70" rx="10" fill="#141821" stroke="#262c38" />
-              <text x="105" y="70" text-anchor="middle">SELECT</text>
-              <text x="105" y="90" text-anchor="middle" fill="#8b94a7" font-size="11">
-                Component from registry
-              </text>
-            </g>
-            <g>
-              <rect
-                x="220"
-                y="40"
-                width="170"
-                height="70"
-                rx="10"
-                fill="#141821"
-                stroke="#262c38"
-              />
-              <text x="305" y="70" text-anchor="middle">PROMPT</text>
-              <text x="305" y="90" text-anchor="middle" fill="#8b94a7" font-size="11">
-                Agent assembles context
-              </text>
-            </g>
-            <g>
-              <rect
-                x="420"
-                y="40"
-                width="170"
-                height="70"
-                rx="10"
-                fill="#141821"
-                stroke="#262c38"
-              />
-              <text x="505" y="70" text-anchor="middle">PREVIEW</text>
-              <text x="505" y="90" text-anchor="middle" fill="#8b94a7" font-size="11">
-                Sibling WebContentsView
-              </text>
-            </g>
-            <g>
-              <rect
-                x="620"
-                y="40"
-                width="170"
-                height="70"
-                rx="10"
-                fill="#141821"
-                stroke="#262c38"
-              />
-              <text x="705" y="70" text-anchor="middle">DIFF</text>
-              <text x="705" y="90" text-anchor="middle" fill="#8b94a7" font-size="11">
-                ChangeSet in DiffPanel
-              </text>
-            </g>
-            <g>
-              <rect
-                x="820"
-                y="40"
-                width="170"
-                height="70"
-                rx="10"
-                fill="#141821"
-                stroke="#262c38"
-              />
-              <text x="905" y="70" text-anchor="middle">MERGE</text>
-              <text x="905" y="90" text-anchor="middle" fill="#8b94a7" font-size="11">
-                User's git, user's PR
-              </text>
-            </g>
-          </g>
-
-          <!-- Arrows -->
-          <g stroke="#7cc4ff" stroke-width="2" fill="none">
-            <line x1="190" y1="75" x2="220" y2="75" marker-end="url(#arr)" />
-            <line x1="390" y1="75" x2="420" y2="75" marker-end="url(#arr)" />
-            <line x1="590" y1="75" x2="620" y2="75" marker-end="url(#arr)" />
-            <line x1="790" y1="75" x2="820" y2="75" marker-end="url(#arr)" />
-          </g>
-
-          <!-- Validate loop -->
-          <g font-family="ui-sans-serif, system-ui" font-size="12" fill="#e7ecf3">
-            <rect x="420" y="180" width="170" height="60" rx="10" fill="#141821" stroke="#262c38" />
-            <text x="505" y="205" text-anchor="middle">VALIDATE</text>
-            <text x="505" y="222" text-anchor="middle" fill="#8b94a7" font-size="11">
-              Scan delta + render manifest
-            </text>
-          </g>
-          <g stroke="#8ee089" stroke-width="2" fill="none" stroke-dasharray="4 4">
-            <line x1="505" y1="110" x2="505" y2="180" marker-end="url(#arr2)" />
-            <line x1="505" y1="240" x2="505" y2="290" />
-            <line x1="505" y1="290" x2="705" y2="290" />
-            <line x1="705" y1="290" x2="705" y2="110" marker-end="url(#arr2)" />
-          </g>
-
-          <!-- Artifacts row -->
-          <g font-family="ui-sans-serif, system-ui" font-size="11" fill="#e7ecf3">
-            <g>
-              <rect x="20" y="270" width="170" height="40" rx="6" fill="#11151d" stroke="#262c38" />
-              <text x="105" y="295" text-anchor="middle" fill="#ffb86b">ComponentRegistry</text>
-            </g>
-            <g>
-              <rect
-                x="220"
-                y="270"
-                width="170"
-                height="40"
-                rx="6"
-                fill="#11151d"
-                stroke="#262c38"
-              />
-              <text x="305" y="295" text-anchor="middle" fill="#ffb86b">GenerationPlan</text>
-            </g>
-            <g>
-              <rect
-                x="820"
-                y="180"
-                width="170"
-                height="40"
-                rx="6"
-                fill="#11151d"
-                stroke="#262c38"
-              />
-              <text x="905" y="205" text-anchor="middle" fill="#ffb86b">ChangeSet</text>
-            </g>
-            <g>
-              <rect
-                x="820"
-                y="230"
-                width="170"
-                height="40"
-                rx="6"
-                fill="#11151d"
-                stroke="#262c38"
-              />
-              <text x="905" y="255" text-anchor="middle" fill="#ffb86b">EditOutcome</text>
-            </g>
-            <g>
-              <rect
-                x="620"
-                y="180"
-                width="170"
-                height="40"
-                rx="6"
-                fill="#11151d"
-                stroke="#262c38"
-              />
-              <text x="705" y="205" text-anchor="middle" fill="#ffb86b">ScanArtifact</text>
-            </g>
-            <g>
-              <rect
-                x="420"
-                y="270"
-                width="170"
-                height="40"
-                rx="6"
-                fill="#11151d"
-                stroke="#262c38"
-              />
-              <text x="505" y="295" text-anchor="middle" fill="#ffb86b">RenderManifest</text>
-            </g>
-          </g>
-        </svg>
-        <div class="legend">
-          Blue = loop progression. Green = validation feedback. Orange = artifacts.
+      <h2>Four Pillars</h2>
+      <div class="grid">
+        <div class="card">
+          <b>Library Forking</b>
+          <p>Isolated workspaces under <code>~/.autodsm/systems</code>.</p>
+        </div>
+        <div class="card">
+          <b>AI-Isolated Engineering</b>
+          <p>One component, its history, and active tokens.</p>
+        </div>
+        <div class="card">
+          <b>Design Tokens</b>
+          <p>Colors, typography, spacing, motion.</p>
+        </div>
+        <div class="card">
+          <b>Live Preview</b>
+          <p>Storybook in a WebContentsView canvas.</p>
         </div>
       </div>
-
-      <hr class="sep" />
-
-      <h3 style="color: var(--accent); letter-spacing: 0.04em; text-transform: uppercase">
-        Services owning each step
-      </h3>
-      <div class="grid row-4">
-        <div class="card">
-          <h3>project-analysis</h3>
-          <p>
-            Detects framework, packages, style system. Emits
-            <span class="pill">ProjectProfile</span>
-          </p>
-        </div>
-        <div class="card">
-          <h3>indexer</h3>
-          <p>
-            Builds the component graph. Emits <span class="pill">ComponentRegistry</span>
-            <span class="pill">BrandProfile</span>
-          </p>
-        </div>
-        <div class="card">
-          <h3>render-runtime</h3>
-          <p>
-            Owns <span class="pill">PreviewViewController</span>. Drives
-            <span class="pill">RenderPlan → RenderManifest</span>
-          </p>
-        </div>
-        <div class="card">
-          <h3>scanner</h3>
-          <p>AST + axe + drift rules. Emits <span class="pill">ScanArtifact</span></p>
-        </div>
-        <div class="card">
-          <h3>agent-supervisor</h3>
-          <p>Wraps providers. Emits <span class="pill">GenerationPlan</span></p>
-        </div>
-        <div class="card">
-          <h3>changeset</h3>
-          <p>
-            Mediates writes. Emits <span class="pill">ChangeSet</span>
-            <span class="pill">EditOutcome</span>
-          </p>
-        </div>
-        <div class="card">
-          <h3>git-engine</h3>
-          <p>Branch-per-session, commit, PR. Never edits default branch.</p>
-        </div>
-        <div class="card">
-          <h3>publish</h3>
-          <p>Content-addressed <span class="pill">PublishedSnapshot</span> exports.</p>
-        </div>
-      </div>
-
-      <hr class="sep" />
-
-      <h3 style="color: var(--accent); letter-spacing: 0.04em; text-transform: uppercase">
-        Pricing tiers
-      </h3>
-      <div class="tier">
-        <div class="t free">
-          <h4>Free — $0</h4>
-          <div class="p">Solo / OSS / evaluation. Local-first. Single provider.</div>
-        </div>
-        <div class="t pro">
-          <h4>Pro — $29/mo</h4>
-          <div class="p">All providers, all scan rules, drift, multiple projects.</div>
-        </div>
-        <div class="t team">
-          <h4>Team — $49/seat</h4>
-          <div class="p">Shared BrandProfile, governance gates, dashboards.</div>
-        </div>
-        <div class="t ent">
-          <h4>Enterprise — $40–80K/yr</h4>
-          <div class="p">SSO, audit, on-prem, custom provider packs, SLAs.</div>
-        </div>
-      </div>
-    </div>
+    </main>
   </body>
 </html>

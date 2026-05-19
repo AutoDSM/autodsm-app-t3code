@@ -104,6 +104,8 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     ipcRenderer.invoke(IpcChannels.COMPONENT_PREVIEW_SET_BOUNDS_CHANNEL, input),
   primeComponentPreview: (input) =>
     ipcRenderer.invoke(IpcChannels.COMPONENT_PREVIEW_PRIME_CHANNEL, input),
+  captureComponentPreview: (input) =>
+    ipcRenderer.invoke(IpcChannels.COMPONENT_PREVIEW_CAPTURE_CHANNEL, input),
   onMenuAction: (listener) => {
     const wrappedListener = (_event: Electron.IpcRendererEvent, action: unknown) => {
       if (typeof action !== "string") return;

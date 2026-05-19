@@ -15,6 +15,18 @@ describe("splitPromptIntoComposerSegments", () => {
     ]);
   });
 
+  it("splits known brand tokens into brand-token segments", () => {
+    expect(
+      splitPromptIntoComposerSegments("Use @primary.", [], {
+        brandTokenNames: new Set(["primary"]),
+      }),
+    ).toEqual([
+      { type: "text", text: "Use " },
+      { type: "brand-token", name: "primary" },
+      { type: "text", text: "." },
+    ]);
+  });
+
   it("does not convert an incomplete trailing mention token", () => {
     expect(splitPromptIntoComposerSegments("Inspect @AGENTS.md")).toEqual([
       { type: "text", text: "Inspect @AGENTS.md" },

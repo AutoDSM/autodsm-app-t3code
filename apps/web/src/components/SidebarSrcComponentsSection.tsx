@@ -1,15 +1,10 @@
 import { type EnvironmentId, type ScopedThreadRef } from "@t3tools/contracts";
-import { useQuery } from "@tanstack/react-query";
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 
 import { SrcComponentsSidebarCatalogBlock } from "~/components/SidebarSrcComponentsCatalog";
 import { parseDiffRouteSearch } from "~/diffRouteSearch";
-import {
-  buildSrcComponentsCatalogViewModel,
-  SIDEBAR_COMPONENTS_SEARCH_PATH_INCLUDES,
-} from "~/lib/srcComponentsCatalog";
-import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
+import { useSrcComponentsCatalog } from "~/hooks/useSrcComponentsCatalog";
 import { buildThreadRouteParams } from "~/threadRoutes";
 
 export interface SidebarSrcComponentsSectionProps {
@@ -37,28 +32,14 @@ export const SidebarSrcComponentsSection = memo(function SidebarSrcComponentsSec
     select: (record) => parseDiffRouteSearch(record as Record<string, unknown>).componentPath,
   });
 
-  const { data, isPending, isError } = useQuery(
-    projectSearchEntriesQueryOptions({
-      environmentId: catalogEnvironmentId,
-      cwd: catalogCwd,
-      query: "",
-      limit: 800,
-      entryKind: "file",
-      entryPathSubstring: SIDEBAR_COMPONENTS_SEARCH_PATH_INCLUDES,
-      enabled: Boolean(sectionVisible) && catalogEnvironmentId !== null && catalogCwd !== null,
-    }),
-  );
+  const baseCatalogEnabled =
+    Boolean(sectionVisible) && catalogEnvironmentId !== null && catalogCwd !== null;
 
-  const catalog = useMemo(
-    () =>
-      buildSrcComponentsCatalogViewModel({
-        rankedEntries: data?.entries,
-        queryTruncated: data?.truncated,
-        isPending,
-        isError,
-      }),
-    [data?.entries, data?.truncated, isError, isPending],
-  );
+  const { catalog, retryWorkspaceBuild, workspaceBuildRetryPending } = useSrcComponentsCatalog({
+    environmentId: catalogEnvironmentId,
+    cwd: catalogCwd,
+    enabled: baseCatalogEnabled,
+  });
 
   const [folderExpanded, setFolderExpanded] = useState(true);
   const toggleFolder = useCallback(() => {
@@ -99,6 +80,8 @@ export const SidebarSrcComponentsSection = memo(function SidebarSrcComponentsSec
       previewPathActive={previewPathActive}
       canPickThreads={canPickThreads}
       onPickComponentPath={navigateToPreview}
+      onRetryWorkspaceBuild={retryWorkspaceBuild}
+      workspaceBuildRetryPending={workspaceBuildRetryPending}
     />
   );
 });

@@ -49,12 +49,12 @@ import { selectProjectsAcrossEnvironments, useStore } from "../../store";
 import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
 import { formatRelativeTime, formatRelativeTimeLabel } from "../../timestampFormat";
 import { Button } from "../ui/button";
-import { DraftInput } from "../ui/draft-input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
+import { ProviderInstanceCard } from "./ProviderInstanceCard";
 import {
   canOneClickUpdateProviderCandidate,
   collectProviderUpdateCandidates,
@@ -62,7 +62,7 @@ import {
   isProviderUpdateActive,
   type ProviderUpdateCandidate,
 } from "../ProviderUpdateLaunchNotification.logic";
-import { ProviderInstanceCard } from "./ProviderInstanceCard";
+import { ProjectFolderSettingsTile } from "./ProjectFolderSettingsTile";
 import { DRIVER_OPTIONS, getDriverOption } from "./providerDriverMeta";
 import {
   buildProviderInstanceUpdatePatch,
@@ -516,6 +516,7 @@ export function GeneralSettingsPanel() {
 
   return (
     <SettingsPageContainer>
+      <ProjectFolderSettingsTile />
       <SettingsSection title="General">
         <SettingsRow
           title="Theme"
@@ -733,34 +734,6 @@ export function GeneralSettingsPanel() {
                 </SelectItem>
               </SelectPopup>
             </Select>
-          }
-        />
-
-        <SettingsRow
-          title="Add project starts in"
-          description='Leave empty to use "~/" when the Add Project browser opens.'
-          resetAction={
-            settings.addProjectBaseDirectory !==
-            DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory ? (
-              <SettingResetButton
-                label="add project base directory"
-                onClick={() =>
-                  updateSettings({
-                    addProjectBaseDirectory: DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory,
-                  })
-                }
-              />
-            ) : null
-          }
-          control={
-            <DraftInput
-              className="w-full sm:w-72"
-              value={settings.addProjectBaseDirectory}
-              onCommit={(next) => updateSettings({ addProjectBaseDirectory: next })}
-              placeholder="~/"
-              spellCheck={false}
-              aria-label="Add project base directory"
-            />
           }
         />
 

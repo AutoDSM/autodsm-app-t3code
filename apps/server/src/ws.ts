@@ -76,6 +76,7 @@ import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import { analyzeReactComponentFile } from "./componentPreview/analyzeReactComponent.ts";
 import { bundleComponentPreview } from "./componentPreview/bundleComponentPreview.ts";
+import { AutoDsmWorkspaceService } from "./autodsm/AutoDsmWorkspaceService.ts";
 import * as SourceControlDiscoveryLayer from "./sourceControl/SourceControlDiscovery.ts";
 import { SourceControlRepositoryService } from "./sourceControl/SourceControlRepositoryService.ts";
 import * as AzureDevOpsCli from "./sourceControl/AzureDevOpsCli.ts";
@@ -189,6 +190,7 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
       const workspaceEntries = yield* WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem;
       const workspacePaths = yield* WorkspacePaths;
+      const autoDsm = yield* AutoDsmWorkspaceService;
       const projectSetupScriptRunner = yield* ProjectSetupScriptRunner;
       const repositoryIdentityResolver = yield* RepositoryIdentityResolver;
       const serverEnvironment = yield* ServerEnvironment;
@@ -1107,6 +1109,164 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
               }),
             ),
             { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.autodsmGetProjectProfile]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmGetProjectProfile, autoDsm.getProjectProfile(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmGetBrandProfile]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmGetBrandProfile, autoDsm.getBrandProfile(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmAddBrandToken]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmAddBrandToken, autoDsm.addBrandToken(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmRemoveBrandToken]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmRemoveBrandToken, autoDsm.removeBrandToken(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmUpdateBrandToken]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmUpdateBrandToken, autoDsm.updateBrandToken(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmResyncBrandTokens]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmResyncBrandTokens, autoDsm.resyncBrandTokens(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmGetWorkspacePreviewCss]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.autodsmGetWorkspacePreviewCss,
+            autoDsm.getWorkspacePreviewCss(input),
+            {
+              "rpc.aggregate": "autodsm",
+            },
+          ),
+        [WS_METHODS.autodsmGetComponentRegistry]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.autodsmGetComponentRegistry,
+            autoDsm.getComponentRegistry(input),
+            {
+              "rpc.aggregate": "autodsm",
+            },
+          ),
+        [WS_METHODS.autodsmRunWorkspaceBuild]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmRunWorkspaceBuild, autoDsm.runWorkspaceBuild(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmGetComponentRegistryEntry]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.autodsmGetComponentRegistryEntry,
+            autoDsm.getComponentRegistryEntry(input),
+            {
+              "rpc.aggregate": "autodsm",
+            },
+          ),
+        [WS_METHODS.autodsmGetRenderEnvironmentProfile]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.autodsmGetRenderEnvironmentProfile,
+            autoDsm.getRenderEnvironmentProfile(input),
+            {
+              "rpc.aggregate": "autodsm",
+            },
+          ),
+        [WS_METHODS.autodsmGetRenderManifest]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmGetRenderManifest, autoDsm.getRenderManifest(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmGetScanArtifact]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmGetScanArtifact, autoDsm.getScanArtifact(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmSubscribeIndexingProgress]: (input) =>
+          observeRpcStreamEffect(
+            WS_METHODS.autodsmSubscribeIndexingProgress,
+            autoDsm.subscribeIndexingProgress(input),
+            { "rpc.aggregate": "autodsm" },
+          ),
+        [WS_METHODS.autodsmRunScan]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmRunScan, autoDsm.runScan(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmBuildRenderPlan]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmBuildRenderPlan, autoDsm.buildRenderPlan(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmExecuteRenderPlan]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmExecuteRenderPlan, autoDsm.executeRenderPlan(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmGetSidecarStatus]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmGetSidecarStatus, autoDsm.getSidecarStatus(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmStartSidecar]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmStartSidecar, autoDsm.startSidecar(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmGetProviderCatalog]: (_input) =>
+          observeRpcEffect(WS_METHODS.autodsmGetProviderCatalog, autoDsm.getProviderCatalog(), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmChangeSetCreate]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmChangeSetCreate, autoDsm.changeSetCreate(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmChangeSetPreview]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmChangeSetPreview, autoDsm.changeSetPreview(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmChangeSetApply]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmChangeSetApply, autoDsm.changeSetApply(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmChangeSetRollback]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmChangeSetRollback, autoDsm.changeSetRollback(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmAssembleGenerationPlan]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.autodsmAssembleGenerationPlan,
+            autoDsm.assembleGenerationPlan(input),
+            {
+              "rpc.aggregate": "autodsm",
+            },
+          ),
+        [WS_METHODS.autodsmExportPublishedSnapshot]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.autodsmExportPublishedSnapshot,
+            autoDsm.exportPublishedSnapshot(input),
+            {
+              "rpc.aggregate": "autodsm",
+            },
+          ),
+        [WS_METHODS.autodsmPrepareSessionBranch]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.autodsmPrepareSessionBranch,
+            autoDsm.prepareSessionBranch(input),
+            {
+              "rpc.aggregate": "autodsm",
+            },
+          ),
+        [WS_METHODS.autodsmGetIssuesForPrompt]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.autodsmGetIssuesForPrompt,
+            autoDsm.getIssuesForPrompt(input),
+            {
+              "rpc.aggregate": "autodsm",
+            },
+          ),
+        [WS_METHODS.autodsmCreateWorkspace]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmCreateWorkspace, autoDsm.createWorkspace(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmListWorkspaceHistory]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.autodsmListWorkspaceHistory,
+            autoDsm.listWorkspaceHistory(input),
+            {
+              "rpc.aggregate": "autodsm",
+            },
           ),
         [WS_METHODS.shellOpenInEditor]: (input) =>
           observeRpcEffect(WS_METHODS.shellOpenInEditor, externalLauncher.launchEditor(input), {

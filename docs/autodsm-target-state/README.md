@@ -1,111 +1,57 @@
 # AutoDSM Target State Documentation
 
-<!-- AGENT_CONTEXT
-type: index
-project: autodsm
-version: 1.0-target
-description: Local-first AI workspace for React component libraries
--->
-
-## Quick Reference
-
-| What         | Value                                          |
-| ------------ | ---------------------------------------------- |
-| **Product**  | AutoDSM - The Agentic Storybook                |
-| **Platform** | macOS Electron desktop app                     |
-| **Stack**    | T3 Code fork, Electron, React, Effect.js, Vite |
-| **ICP**      | Design engineers, frontend platform leads      |
-
-## Document Map
-
-```
-docs/autodsm-target-state/
-├── README.md                          # This file - index & overview
-├── diagrams/
-│   └── architecture.html              # Interactive visual diagram
-├── architecture/
-│   ├── system-overview.md             # Process model, IPC, data flow
-│   ├── process-model.md               # Detailed service architecture
-│   └── security-model.md              # Security configuration & threats
-├── features/
-│   ├── core-features.md               # Feature inventory by phase
-│   ├── providers.md                   # AI provider integration
-│   └── git-integration.md             # Git/GitHub workflow
-└── phases/
-    ├── roadmap.md                     # Implementation phases
-    └── acceptance-criteria.md         # Phase completion gates
-```
+This folder describes the target state for AutoDSM v1 inside the T3 Code repository.
 
 ## Core Concept
 
-```
-Storybook (component browser) + Cursor (AI editing) = AutoDSM
+AutoDSM is a local desktop AI workspace for creating, customizing, maintaining, reviewing, and shipping frontend design systems. It is built on T3 Code, but the product experience is AutoDSM: a design-system construction workspace, not a generic coding IDE.
+
+## Product Loop
+
+```txt
+create/open isolated workspace
+→ fork shadcn/ui or start Modern Starter
+→ browse atomic component system
+→ edit tokens or one component
+→ render with local Storybook
+→ review ChangeSet diff
+→ create local PR record
+→ publish typed npm package
 ```
 
-### The Loop
+## Document Map
 
-```
-SELECT → REQUEST → PREVIEW → REVIEW → VALIDATE → MERGE
-component   change    render    diff     scan     safely
-```
+- `architecture/system-overview.md`: high-level system architecture.
+- `architecture/process-model.md`: processes, services, lifecycles.
+- `architecture/security-model.md`: trust boundaries and Electron security.
+- `features/core-features.md`: product surfaces and core capabilities.
+- `features/git-integration.md`: v1 local PR records and future remote GitHub hooks.
+- `features/providers.md`: T3 Code provider integration and scoped context.
+- `features/loading.md`: workspace creation RPC (`autodsm.createWorkspace`), template materialization, thread seeding, COMPONENTS sidebar.
+- `phases/roadmap.md`: phase-by-phase implementation sequence.
+- `phases/acceptance-criteria.md`: ship criteria and test matrix.
+- `diagrams/architecture.html`: visual architecture reference.
 
 ## Canonical Artifacts
 
-Every feature reads or writes one of these artifacts:
-
-| Artifact            | Purpose                     | File                                       |
-| ------------------- | --------------------------- | ------------------------------------------ |
-| `ProjectProfile`    | Framework, config detection | `~/.autodsm/projects/<hash>/profile.json`  |
-| `BrandProfile`      | Tokens, fonts, colors       | `~/.autodsm/projects/<hash>/brand.json`    |
-| `ComponentRegistry` | Components, props, usage    | `~/.autodsm/projects/<hash>/registry.json` |
-| `RenderManifest`    | Per-render state            | In-memory                                  |
-| `ScanArtifact`      | Violations, severity        | `~/.autodsm/projects/<hash>/scans/`        |
-| `ChangeSet`         | Agent-proposed changes      | `~/.autodsm/changesets/`                   |
-| `PublishedSnapshot` | Immutable brand books       | `~/.autodsm/snapshots/`                    |
-
-## Key Differentiators
-
-| vs.            | AutoDSM Edge                                        |
-| -------------- | --------------------------------------------------- |
-| Storybook      | No `.stories` files, AI editing, real-repo fidelity |
-| Cursor/Copilot | Component context, ChangeSet validation, merge-safe |
-| Chromatic      | Generates changes, not just detects them            |
+| Artifact                | Purpose                                          | v1 location                                                   |
+| ----------------------- | ------------------------------------------------ | ------------------------------------------------------------- |
+| `WorkspaceMetadata`     | Workspace identity, source, version, preferences | `~/.autodsm/systems/<id>/meta.json`                           |
+| `BrandProfile`          | Tokens and brand foundation                      | `~/.autodsm/systems/<id>/system/tokens.json`                  |
+| `ComponentRegistry`     | Indexed components, props, stories, health       | rebuilt from `system/components/`                             |
+| `ComponentConversation` | Per-component AI history                         | `~/.autodsm/systems/<id>/conversations/<slug>.json`           |
+| `Session`               | Active edit session state                        | `~/.autodsm/systems/<id>/sessions/<session-id>/manifest.json` |
+| `ChangeSet`             | Reviewable file/hunk diff                        | `~/.autodsm/systems/<id>/sessions/<session-id>/`              |
+| `PullRequest`           | Local PR record                                  | `~/.autodsm/systems/<id>/prs/<pr-id>.json`                    |
+| `ActivityEntry`         | Workspace timeline event                         | `~/.autodsm/systems/<id>/activity-log.jsonl`                  |
+| `PublishedExport`       | Installable npm package                          | `~/.autodsm/exports/<system-id>-<version>/`                   |
 
 ## Principles
 
-### Local-First (Non-Negotiable)
-
-- Source code never leaves machine unless explicitly published
-- No secrets sent to AutoDSM servers
-- AST scans stay local
-
-### Merge-Safe
-
-- Every write mediated by ChangeSet
-- Every commit is user's commit
-- Branch-per-session (never edit default branch)
-
-## Target Users
-
-**Primary:** In-house teams owning reusable React component systems
-
-**Titles:** Design Engineer, Frontend Platform Engineer, Design System Lead
-
-**Anti-ICP:** Design-only teams, teams without shared components, teams without PRs
-
-## Quick Links
-
-- [Interactive Architecture Diagram](./diagrams/architecture.html)
-- [System Architecture](./architecture/system-overview.md)
-- [Core Features](./features/core-features.md)
-- [Implementation Roadmap](./phases/roadmap.md)
-
----
-
-<!-- AGENT_ACTIONS
-to_understand_architecture: Read ./architecture/system-overview.md
-to_understand_features: Read ./features/core-features.md
-to_understand_security: Read ./architecture/security-model.md
-to_understand_ai_integration: Read ./features/providers.md
-to_understand_git_workflow: Read ./features/git-integration.md
--->
+- T3 Code is the engine. AutoDSM is the product.
+- Workspaces are local-first and isolated under `~/.autodsm/`.
+- AutoDSM v1 does not write into production repos.
+- AI edits are component-scoped and become ChangeSets.
+- Storybook is the invisible v1 rendering substrate.
+- Supabase never stores design-system source.
+- v1 starts from Modern Starter or shadcn/ui only.

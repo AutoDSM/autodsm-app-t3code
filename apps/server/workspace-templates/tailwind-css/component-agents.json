@@ -1,0 +1,6 @@
+{
+  "agents": [
+    { "title": "Utility strip", "componentPath": "/src/components/UtilityStrip.tsx" },
+    { "title": "Gradient heading", "componentPath": "/src/components/GradientHeading.tsx" }
+  ]
+}

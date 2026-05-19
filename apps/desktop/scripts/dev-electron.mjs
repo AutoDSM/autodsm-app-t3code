@@ -1,8 +1,9 @@
 import { spawn, spawnSync } from "node:child_process";
+import { statSync } from "node:fs";
 import { watch } from "node:fs";
 import { join } from "node:path";
 
-import { desktopDir, resolveElectronPath } from "./electron-launcher.mjs";
+import { desktopDir, getElectronLaunchInfo, resolveElectronPath } from "./electron-launcher.mjs";
 import { waitForResources } from "./wait-for-resources.mjs";
 
 const devServerUrl = process.env.VITE_DEV_SERVER_URL?.trim();
@@ -27,7 +28,13 @@ const watchedDirectories = [
 ];
 const forcedShutdownTimeoutMs = 1_500;
 const restartDebounceMs = 120;
+const minRestartCooldownMs = 2_000;
 const childTreeGracePeriodMs = 1_200;
+const outputPollMsRaw = process.env.T3CODE_DESKTOP_OUTPUT_POLL_MS;
+const outputPollMs =
+  Number.isFinite(Number(outputPollMsRaw)) && Number(outputPollMsRaw) > 0
+    ? Number(outputPollMsRaw)
+    : 400;
 
 await waitForResources({
   baseDir: desktopDir,
@@ -39,12 +46,25 @@ await waitForResources({
 const childEnv = { ...process.env };
 delete childEnv.ELECTRON_RUN_AS_NODE;
 
+const chromiumDevSwitches = [
+  "--disable-http-cache",
+  "--disable-features=CompressionDictionaryTransport,CompressionDictionaryTransportBackend,SharedDictionary",
+  "--disable-logging",
+];
+
 let shuttingDown = false;
 let restartTimer = null;
 let currentApp = null;
 let restartQueue = Promise.resolve();
 const expectedExits = new WeakSet();
 const watchers = [];
+let outputPollTimer = null;
+let lastAppStartAtMs = 0;
+let restartGeneration = 0;
+
+function logDevElectron(message, data = {}) {
+  console.info(`[dev-electron] ${message}`, data);
+}
 
 function killChildTreeByPid(pid, signal) {
   if (process.platform === "win32" || typeof pid !== "number") {
@@ -67,9 +87,20 @@ function startApp() {
     return;
   }
 
+  resolveElectronPath();
+  const resolvedLaunchInfo = getElectronLaunchInfo();
+  lastAppStartAtMs = Date.now();
+  restartGeneration += 1;
+  const generation = restartGeneration;
+
+  logDevElectron("starting electron", {
+    generation,
+    ...resolvedLaunchInfo,
+  });
+
   const app = spawn(
     resolveElectronPath(),
-    [`--t3code-dev-root=${desktopDir}`, "dist-electron/main.cjs"],
+    ["dist-electron/main.cjs", ...chromiumDevSwitches, `--t3code-dev-root=${desktopDir}`],
     {
       cwd: desktopDir,
       env: childEnv,
@@ -79,13 +110,18 @@ function startApp() {
 
   currentApp = app;
 
-  app.once("error", () => {
+  app.once("error", (error) => {
     if (currentApp === app) {
       currentApp = null;
     }
 
+    logDevElectron("electron spawn error (will restart)", {
+      generation,
+      message: error instanceof Error ? error.message : String(error),
+    });
+
     if (!shuttingDown) {
-      scheduleRestart();
+      scheduleRestart("spawn-error");
     }
   });
 
@@ -94,9 +130,26 @@ function startApp() {
       currentApp = null;
     }
 
+    const expected = expectedExits.has(app);
     const exitedAbnormally = signal !== null || code !== 0;
-    if (!shuttingDown && !expectedExits.has(app) && exitedAbnormally) {
-      scheduleRestart();
+    const kind = shuttingDown
+      ? "shutdown"
+      : expected
+        ? "expected-restart"
+        : exitedAbnormally
+          ? "abnormal-exit"
+          : "clean-exit";
+
+    logDevElectron("electron exited", {
+      generation,
+      kind,
+      code,
+      signal,
+      expectedRestart: expected,
+    });
+
+    if (!shuttingDown && !expected && exitedAbnormally) {
+      scheduleRestart("abnormal-exit");
     }
   });
 }
@@ -138,7 +191,7 @@ async function stopApp() {
   });
 }
 
-function scheduleRestart() {
+function scheduleRestart(reason) {
   if (shuttingDown) {
     return;
   }
@@ -146,6 +199,16 @@ function scheduleRestart() {
   if (restartTimer) {
     clearTimeout(restartTimer);
   }
+
+  const elapsedSinceStart = Date.now() - lastAppStartAtMs;
+  const cooldownRemaining = Math.max(0, minRestartCooldownMs - elapsedSinceStart);
+  const delayMs = restartDebounceMs + cooldownRemaining;
+
+  logDevElectron("scheduling electron restart", {
+    reason,
+    delayMs,
+    cooldownRemaining,
+  });
 
   restartTimer = setTimeout(() => {
     restartTimer = null;
@@ -157,10 +220,27 @@ function scheduleRestart() {
           startApp();
         }
       });
-  }, restartDebounceMs);
+  }, delayMs);
 }
 
-function startWatchers() {
+function fingerprintOutputs() {
+  const parts = [];
+  for (const { directory, files } of watchedDirectories) {
+    const dirAbs = join(desktopDir, directory);
+    for (const name of files) {
+      const abs = join(dirAbs, name);
+      try {
+        const s = statSync(abs);
+        parts.push(`${directory}/${name}\0${s.mtimeMs}\0${s.size}`);
+      } catch {
+        parts.push(`${directory}/${name}\0missing`);
+      }
+    }
+  }
+  return parts.join("\n");
+}
+
+function startNativeOutputWatchers() {
   for (const { directory, files } of watchedDirectories) {
     const watcher = watch(
       join(desktopDir, directory),
@@ -170,12 +250,43 @@ function startWatchers() {
           return;
         }
 
-        scheduleRestart();
+        scheduleRestart("output-change");
       },
     );
 
+    watcher.on("error", (err) => {
+      console.error(
+        "[dev-electron] fs.watch error (fall back to T3CODE_DESKTOP_OUTPUT_NATIVE_WATCH=0):",
+        err,
+      );
+    });
+
     watchers.push(watcher);
   }
+}
+
+function startPollingOutputWatch() {
+  let lastFingerprint = fingerprintOutputs();
+  outputPollTimer = setInterval(() => {
+    if (shuttingDown) {
+      return;
+    }
+
+    const next = fingerprintOutputs();
+    if (next !== lastFingerprint) {
+      lastFingerprint = next;
+      scheduleRestart("output-change");
+    }
+  }, outputPollMs);
+}
+
+function startOutputWatchers() {
+  if (process.env.T3CODE_DESKTOP_OUTPUT_NATIVE_WATCH === "1") {
+    startNativeOutputWatchers();
+    return;
+  }
+
+  startPollingOutputWatch();
 }
 
 function killChildTree(signal) {
@@ -200,6 +311,11 @@ async function shutdown(exitCode) {
     watcher.close();
   }
 
+  if (outputPollTimer) {
+    clearInterval(outputPollTimer);
+    outputPollTimer = null;
+  }
+
   await stopApp();
   killChildTree("TERM");
   await new Promise((resolve) => {
@@ -210,7 +326,7 @@ async function shutdown(exitCode) {
   process.exit(exitCode);
 }
 
-startWatchers();
+startOutputWatchers();
 cleanupStaleDevApps();
 startApp();
 

@@ -64,6 +64,7 @@ import { ServerEnvironmentLive } from "./environment/Layers/ServerEnvironment.ts
 import {
   authBearerBootstrapRouteLayer,
   authBootstrapRouteLayer,
+  authDevAutoBootstrapRouteLayer,
   authClientsRevokeOthersRouteLayer,
   authClientsRevokeRouteLayer,
   authClientsRouteLayer,
@@ -78,7 +79,9 @@ import { ServerAuthLive } from "./auth/Layers/ServerAuth.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
+import { layer as ProcessRunnerLive } from "./processRunner.ts";
 import { OrchestrationLayerLive } from "./orchestration/runtimeLayer.ts";
+import { AutoDsmWorkspaceLive } from "./autodsm/AutoDsmWorkspaceService.ts";
 import {
   clearPersistedServerRuntimeState,
   makePersistedServerRuntimeState,
@@ -242,6 +245,10 @@ const ProviderRuntimeLayerLive = ProviderSessionReaperLive.pipe(
 );
 
 const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
+  // Subprocess execution for AutoDSM workspace install, builds, etc. Method
+  // effects from AutoDsmWorkspaceService still require this tag at call time;
+  // Layer.provide only on AutoDsmWorkspaceLive does not propagate to those fibers.
+  Layer.provideMerge(ProcessRunnerLive),
   // Core Services
   Layer.provideMerge(CheckpointingLayerLive),
   Layer.provideMerge(SourceControlProviderRegistryLayerLive),
@@ -272,6 +279,7 @@ const RuntimeCoreDependenciesLive = ReactorLayerLive.pipe(
   Layer.provideMerge(OpenCodeRuntimeLive),
   Layer.provideMerge(ServerSettingsLive),
   Layer.provideMerge(WorkspaceLayerLive),
+  Layer.provideMerge(AutoDsmWorkspaceLive),
   Layer.provideMerge(ProjectFaviconResolverLive),
   Layer.provideMerge(RepositoryIdentityResolverLive),
   Layer.provideMerge(ServerEnvironmentLive),
@@ -296,6 +304,7 @@ const RuntimeServicesLive = ServerRuntimeStartupLive.pipe(
 export const makeRoutesLayer = Layer.mergeAll(
   authBearerBootstrapRouteLayer,
   authBootstrapRouteLayer,
+  authDevAutoBootstrapRouteLayer,
   authClientsRevokeOthersRouteLayer,
   authClientsRevokeRouteLayer,
   authClientsRouteLayer,
@@ -421,4 +430,6 @@ export const makeServerLayer = Layer.unwrap(
 );
 
 // Important: Only `ServerConfig` should be provided by the CLI layer!!! Don't let other requirements leak into the launch layer.
-export const runServer = Layer.launch(makeServerLayer);
+// Layer.launch infers RPC/workspace service requirements into the CLI handler union; narrow at the boundary for `Command.run`.
+// @effect-diagnostics-next-line effect(anyUnknownInErrorContext):off — precise launch failure union is internal to the HTTP stack
+export const runServer = Layer.launch(makeServerLayer) as Effect.Effect<void, Error, ServerConfig>;

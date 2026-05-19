@@ -1,6 +1,8 @@
 import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
 import { useEffect } from "react";
 
+import { shouldSkipPairingRedirect } from "~/lib/devPairingBypass";
+
 import { useCommandPaletteStore } from "../commandPaletteStore";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import {
@@ -109,11 +111,19 @@ function ChatRouteLayout() {
 export const Route = createFileRoute("/_chat")({
   beforeLoad: async ({ context }) => {
     if (
-      context.authGateState.status !== "authenticated" &&
-      context.authGateState.status !== "hosted-static"
+      context.authGateState.status === "authenticated" ||
+      context.authGateState.status === "hosted-static"
     ) {
-      throw redirect({ to: "/pair", replace: true });
+      return;
     }
+    if (
+      shouldSkipPairingRedirect(
+        context.authGateState.status === "requires-auth" ? context.authGateState.auth : undefined,
+      )
+    ) {
+      return;
+    }
+    throw redirect({ to: "/pair", replace: true });
   },
   component: ChatRouteLayout,
 });

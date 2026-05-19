@@ -1,0 +1,6 @@
+{
+  "agents": [
+    { "title": "Welcome shell", "componentPath": "/src/components/WelcomeShell.tsx" },
+    { "title": "Action card", "componentPath": "/src/components/ActionCard.tsx" }
+  ]
+}

@@ -5,6 +5,7 @@ import * as Layer from "effect/Layer";
 import { ServerConfig } from "../../config.ts";
 import { ServerAuthPolicy, type ServerAuthPolicyShape } from "../Services/ServerAuthPolicy.ts";
 import { resolveSessionCookieName } from "../utils.ts";
+import { isDevPairingDisabled } from "../devPairingBypass.ts";
 import { isLoopbackHost, isWildcardHost } from "../../startupAccess.ts";
 
 export const makeServerAuthPolicy = Effect.gen(function* () {
@@ -35,6 +36,7 @@ export const makeServerAuthPolicy = Effect.gen(function* () {
       mode: config.mode,
       port: config.port,
     }),
+    ...(isDevPairingDisabled(config) ? { devPairingDisabled: true } : {}),
   };
 
   return {

@@ -1,0 +1,10 @@
+{
+  "agents": [
+    { "title": "Button", "componentPath": "/src/components/ShadcnButton.tsx" },
+    { "title": "Card", "componentPath": "/src/components/ShadcnCard.tsx" },
+    { "title": "Badge", "componentPath": "/src/components/ShadcnBadge.tsx" },
+    { "title": "Input", "componentPath": "/src/components/ShadcnInput.tsx" },
+    { "title": "Theme card", "componentPath": "/src/components/ThemeCard.tsx" },
+    { "title": "Pill label", "componentPath": "/src/components/PillLabel.tsx" }
+  ]
+}

@@ -11,6 +11,8 @@ import { useEffect, useEffectEvent, useRef } from "react";
 import { QueryClient, useQueryClient } from "@tanstack/react-query";
 
 import { APP_DISPLAY_NAME } from "../branding";
+import { isElectron } from "../env";
+import { ElectronDesktopAuthRecovery } from "../components/autodsm/ElectronDesktopAuthRecovery";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
 import { CommandPalette } from "../components/CommandPalette";
 import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
@@ -58,10 +60,27 @@ import { configureClientTracing } from "../observability/clientTracing";
 import {
   ensurePrimaryEnvironmentReady,
   getPrimaryKnownEnvironment,
-  resolveInitialServerAuthGateState,
+  isLoopbackHostname,
+  resolveInitialServerAuthGateStateForDesktopProduct,
+  resolveInitialServerAuthGateStateForLocalDev,
+  resolveInitialServerAuthGateStateWithElectronRetry,
   updatePrimaryEnvironmentDescriptor,
 } from "../environments/primary";
+import { readPrimaryEnvironmentTarget } from "../environments/primary/target";
 import { hasHostedPairingRequest, isHostedStaticApp } from "../hostedPairing";
+
+function isPrimaryTargetLoopback(): boolean {
+  const primaryTarget = readPrimaryEnvironmentTarget();
+  if (!primaryTarget) {
+    return false;
+  }
+
+  try {
+    return isLoopbackHostname(new URL(primaryTarget.target.httpBaseUrl).hostname);
+  } catch {
+    return false;
+  }
+}
 
 export const Route = createRootRouteWithContext<{
   queryClient: QueryClient;
@@ -84,9 +103,15 @@ export const Route = createRootRouteWithContext<{
       };
     }
 
+    const resolveAuthGateState = isPrimaryTargetLoopback()
+      ? resolveInitialServerAuthGateStateForLocalDev
+      : isElectron
+        ? resolveInitialServerAuthGateStateForDesktopProduct
+        : resolveInitialServerAuthGateStateWithElectronRetry;
+
     const [, authGateState] = await Promise.all([
       ensurePrimaryEnvironmentReady(),
-      resolveInitialServerAuthGateState(),
+      resolveAuthGateState(),
     ]);
     return {
       authGateState,
@@ -118,7 +143,37 @@ function RootRouteView() {
   }
 
   if (authGateState.status !== "authenticated" && authGateState.status !== "hosted-static") {
-    return <Outlet />;
+    return (
+      <>
+        {isElectron ? <ElectronDesktopAuthRecovery /> : null}
+        <Outlet />
+      </>
+    );
+  }
+
+  if (pathname.startsWith("/onboarding")) {
+    return (
+      <ToastProvider>
+        <AnchoredToastProvider>
+          {primaryEnvironmentAuthenticated ? <AuthenticatedTracingBootstrap /> : null}
+          {primaryEnvironmentAuthenticated ? <ServerStateBootstrap /> : null}
+          <EnvironmentConnectionManagerBootstrap />
+          <SshPasswordPromptDialog />
+          <HostedStaticEnvironmentBootstrap />
+          {primaryEnvironmentAuthenticated ? <EventRouter /> : null}
+          {primaryEnvironmentAuthenticated ? <ProviderUpdateLaunchNotification /> : null}
+          {primaryEnvironmentAuthenticated ? <WebSocketConnectionCoordinator /> : null}
+          {primaryEnvironmentAuthenticated ? <SlowRpcAckToastCoordinator /> : null}
+          {primaryEnvironmentAuthenticated ? (
+            <WebSocketConnectionSurface>
+              <Outlet />
+            </WebSocketConnectionSurface>
+          ) : (
+            <Outlet />
+          )}
+        </AnchoredToastProvider>
+      </ToastProvider>
+    );
   }
 
   const appShell = (
@@ -304,6 +359,13 @@ function EventRouter() {
       if (!payload.bootstrapProjectId || !payload.bootstrapThreadId) {
         return;
       }
+
+      const path = readPathname();
+      const onWorkspaceLauncherRoute = path === "/";
+      if (onWorkspaceLauncherRoute && isElectron) {
+        return;
+      }
+
       const bootstrapEnvironmentState =
         useStore.getState().environmentStateById[payload.environment.environmentId];
       const bootstrapProject =
@@ -320,7 +382,7 @@ function EventRouter() {
         );
       useUiStateStore.getState().setProjectExpanded(bootstrapProjectKey, true);
 
-      if (readPathname() !== "/") {
+      if (!onWorkspaceLauncherRoute) {
         return;
       }
       if (handledBootstrapThreadIdRef.current === payload.bootstrapThreadId) {

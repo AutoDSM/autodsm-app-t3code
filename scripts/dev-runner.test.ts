@@ -120,6 +120,48 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
       }),
     );
 
+    it.effect("enables dev pairing bypass by default for local dev modes", () =>
+      Effect.gen(function* () {
+        const env = yield* createDevRunnerEnv({
+          mode: "dev:desktop",
+          baseEnv: {},
+          serverOffset: 0,
+          webOffset: 0,
+          t3Home: undefined,
+          noBrowser: undefined,
+          autoBootstrapProjectFromCwd: undefined,
+          logWebSocketEvents: undefined,
+          host: undefined,
+          port: undefined,
+          devUrl: undefined,
+        });
+
+        assert.equal(env.T3CODE_DEV_DISABLE_PAIRING, "1");
+      }),
+    );
+
+    it.effect("respects explicit T3CODE_DEV_DISABLE_PAIRING=0 override", () =>
+      Effect.gen(function* () {
+        const env = yield* createDevRunnerEnv({
+          mode: "dev",
+          baseEnv: {
+            T3CODE_DEV_DISABLE_PAIRING: "0",
+          },
+          serverOffset: 0,
+          webOffset: 0,
+          t3Home: undefined,
+          noBrowser: undefined,
+          autoBootstrapProjectFromCwd: undefined,
+          logWebSocketEvents: undefined,
+          host: undefined,
+          port: undefined,
+          devUrl: undefined,
+        });
+
+        assert.equal(env.T3CODE_DEV_DISABLE_PAIRING, "0");
+      }),
+    );
+
     it.effect("forwards explicit websocket logging false without coercing it away", () =>
       Effect.gen(function* () {
         const env = yield* createDevRunnerEnv({

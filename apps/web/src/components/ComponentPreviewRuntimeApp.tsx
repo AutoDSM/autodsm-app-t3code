@@ -1,6 +1,7 @@
 import type { JSX } from "react";
 import { Component, type ErrorInfo, type ReactNode, useEffect, useState } from "react";
 
+import "~/componentPreviewInteractive.css";
 import {
   COMPONENT_PREVIEW_CHILD_READY,
   COMPONENT_PREVIEW_INIT,
@@ -37,7 +38,7 @@ class PreviewErrorBoundaryInner extends Component<
   override render() {
     if (this.state.error) {
       return (
-        <pre className="whitespace-pre-wrap text-destructive text-xs">
+        <pre className="max-w-full whitespace-pre-wrap text-center text-destructive text-xs">
           {this.state.error.message}
         </pre>
       );
@@ -67,7 +68,16 @@ export function ComponentPreviewRuntimeApp(): JSX.Element {
 
       void (async () => {
         try {
-          const { javascript, propsJson } = initPayload;
+          const { javascript, propsJson, workspaceStyleCss } = initPayload;
+          if (workspaceStyleCss && workspaceStyleCss.trim().length > 0) {
+            let styleEl = document.getElementById("autodsm-workspace-tokens");
+            if (!styleEl) {
+              styleEl = document.createElement("style");
+              styleEl.id = "autodsm-workspace-tokens";
+              document.head.appendChild(styleEl);
+            }
+            styleEl.textContent = workspaceStyleCss;
+          }
           const propsUnknown = JSON.parse(propsJson) as Record<string, unknown>;
           const blob = new Blob([javascript], { type: "text/javascript" });
           const blobUrl = URL.createObjectURL(blob);
@@ -82,7 +92,7 @@ export function ComponentPreviewRuntimeApp(): JSX.Element {
           setNode(
             <PreviewErrorBoundary>
               <div
-                className="preview-hit-target min-h-[120px] min-w-0"
+                className="preview-hit-target flex shrink-0 items-center justify-center"
                 onPointerDownCapture={(e) => {
                   window.parent.postMessage(
                     {
@@ -104,7 +114,11 @@ export function ComponentPreviewRuntimeApp(): JSX.Element {
         } catch (unknownError: unknown) {
           const message =
             unknownError instanceof Error ? unknownError.message : String(unknownError);
-          setNode(<pre className="whitespace-pre-wrap text-destructive text-xs">{message}</pre>);
+          setNode(
+            <pre className="max-w-full whitespace-pre-wrap text-center text-destructive text-xs">
+              {message}
+            </pre>,
+          );
           window.parent.postMessage(
             { type: COMPONENT_PREVIEW_RUNTIME_ERROR, payload: { message } },
             window.location.origin,
@@ -121,6 +135,8 @@ export function ComponentPreviewRuntimeApp(): JSX.Element {
   }, []);
 
   return (
-    <div className="box-border min-h-svh min-w-0 bg-background p-2 text-foreground">{node}</div>
+    <div className="box-border flex min-h-svh w-full min-w-0 items-center justify-center bg-background p-2 text-foreground">
+      {node}
+    </div>
   );
 }

@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as PairRouteImport } from './routes/pair'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as SettingsSourceControlRouteImport } from './routes/settings.source-control'
@@ -20,6 +21,12 @@ import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
 import { Route as SettingsDiagnosticsRouteImport } from './routes/settings.diagnostics'
 import { Route as SettingsConnectionsRouteImport } from './routes/settings.connections'
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
+import { Route as OnboardingWelcomeRouteImport } from './routes/onboarding.welcome'
+import { Route as OnboardingNameRouteImport } from './routes/onboarding.name'
+import { Route as OnboardingMethodRouteImport } from './routes/onboarding.method'
+import { Route as OnboardingLoadingRouteImport } from './routes/onboarding.loading'
+import { Route as OnboardingLibraryRouteImport } from './routes/onboarding.library'
+import { Route as OnboardingCreateRouteImport } from './routes/onboarding.create'
 import { Route as ChatPreviewComponentsSandboxRouteImport } from './routes/_chat.preview-components-sandbox'
 import { Route as ChatHomeRouteImport } from './routes/_chat.home'
 import { Route as ChatDesignTokensRouteImport } from './routes/_chat.design-tokens'
@@ -36,6 +43,11 @@ const SettingsRoute = SettingsRouteImport.update({
 const PairRoute = PairRouteImport.update({
   id: '/pair',
   path: '/pair',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChatRoute = ChatRouteImport.update({
@@ -82,6 +94,36 @@ const SettingsArchivedRoute = SettingsArchivedRouteImport.update({
   path: '/archived',
   getParentRoute: () => SettingsRoute,
 } as any)
+const OnboardingWelcomeRoute = OnboardingWelcomeRouteImport.update({
+  id: '/welcome',
+  path: '/welcome',
+  getParentRoute: () => OnboardingRoute,
+} as any)
+const OnboardingNameRoute = OnboardingNameRouteImport.update({
+  id: '/name',
+  path: '/name',
+  getParentRoute: () => OnboardingRoute,
+} as any)
+const OnboardingMethodRoute = OnboardingMethodRouteImport.update({
+  id: '/method',
+  path: '/method',
+  getParentRoute: () => OnboardingRoute,
+} as any)
+const OnboardingLoadingRoute = OnboardingLoadingRouteImport.update({
+  id: '/loading',
+  path: '/loading',
+  getParentRoute: () => OnboardingRoute,
+} as any)
+const OnboardingLibraryRoute = OnboardingLibraryRouteImport.update({
+  id: '/library',
+  path: '/library',
+  getParentRoute: () => OnboardingRoute,
+} as any)
+const OnboardingCreateRoute = OnboardingCreateRouteImport.update({
+  id: '/create',
+  path: '/create',
+  getParentRoute: () => OnboardingRoute,
+} as any)
 const ChatPreviewComponentsSandboxRoute =
   ChatPreviewComponentsSandboxRouteImport.update({
     id: '/preview-components-sandbox',
@@ -123,6 +165,7 @@ const ChatEnvironmentIdThreadIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
+  '/onboarding': typeof OnboardingRouteWithChildren
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/component-preview-runtime': typeof ChatComponentPreviewRuntimeRoute
@@ -130,6 +173,12 @@ export interface FileRoutesByFullPath {
   '/design-tokens': typeof ChatDesignTokensRoute
   '/home': typeof ChatHomeRoute
   '/preview-components-sandbox': typeof ChatPreviewComponentsSandboxRoute
+  '/onboarding/create': typeof OnboardingCreateRoute
+  '/onboarding/library': typeof OnboardingLibraryRoute
+  '/onboarding/loading': typeof OnboardingLoadingRoute
+  '/onboarding/method': typeof OnboardingMethodRoute
+  '/onboarding/name': typeof OnboardingNameRoute
+  '/onboarding/welcome': typeof OnboardingWelcomeRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
@@ -141,6 +190,7 @@ export interface FileRoutesByFullPath {
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
 }
 export interface FileRoutesByTo {
+  '/onboarding': typeof OnboardingRouteWithChildren
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/component-preview-runtime': typeof ChatComponentPreviewRuntimeRoute
@@ -148,6 +198,12 @@ export interface FileRoutesByTo {
   '/design-tokens': typeof ChatDesignTokensRoute
   '/home': typeof ChatHomeRoute
   '/preview-components-sandbox': typeof ChatPreviewComponentsSandboxRoute
+  '/onboarding/create': typeof OnboardingCreateRoute
+  '/onboarding/library': typeof OnboardingLibraryRoute
+  '/onboarding/loading': typeof OnboardingLoadingRoute
+  '/onboarding/method': typeof OnboardingMethodRoute
+  '/onboarding/name': typeof OnboardingNameRoute
+  '/onboarding/welcome': typeof OnboardingWelcomeRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
@@ -162,6 +218,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_chat': typeof ChatRouteWithChildren
+  '/onboarding': typeof OnboardingRouteWithChildren
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
   '/_chat/component-preview-runtime': typeof ChatComponentPreviewRuntimeRoute
@@ -169,6 +226,12 @@ export interface FileRoutesById {
   '/_chat/design-tokens': typeof ChatDesignTokensRoute
   '/_chat/home': typeof ChatHomeRoute
   '/_chat/preview-components-sandbox': typeof ChatPreviewComponentsSandboxRoute
+  '/onboarding/create': typeof OnboardingCreateRoute
+  '/onboarding/library': typeof OnboardingLibraryRoute
+  '/onboarding/loading': typeof OnboardingLoadingRoute
+  '/onboarding/method': typeof OnboardingMethodRoute
+  '/onboarding/name': typeof OnboardingNameRoute
+  '/onboarding/welcome': typeof OnboardingWelcomeRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
@@ -184,6 +247,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/onboarding'
     | '/pair'
     | '/settings'
     | '/component-preview-runtime'
@@ -191,6 +255,12 @@ export interface FileRouteTypes {
     | '/design-tokens'
     | '/home'
     | '/preview-components-sandbox'
+    | '/onboarding/create'
+    | '/onboarding/library'
+    | '/onboarding/loading'
+    | '/onboarding/method'
+    | '/onboarding/name'
+    | '/onboarding/welcome'
     | '/settings/archived'
     | '/settings/connections'
     | '/settings/diagnostics'
@@ -202,6 +272,7 @@ export interface FileRouteTypes {
     | '/draft/$draftId'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/onboarding'
     | '/pair'
     | '/settings'
     | '/component-preview-runtime'
@@ -209,6 +280,12 @@ export interface FileRouteTypes {
     | '/design-tokens'
     | '/home'
     | '/preview-components-sandbox'
+    | '/onboarding/create'
+    | '/onboarding/library'
+    | '/onboarding/loading'
+    | '/onboarding/method'
+    | '/onboarding/name'
+    | '/onboarding/welcome'
     | '/settings/archived'
     | '/settings/connections'
     | '/settings/diagnostics'
@@ -222,6 +299,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_chat'
+    | '/onboarding'
     | '/pair'
     | '/settings'
     | '/_chat/component-preview-runtime'
@@ -229,6 +307,12 @@ export interface FileRouteTypes {
     | '/_chat/design-tokens'
     | '/_chat/home'
     | '/_chat/preview-components-sandbox'
+    | '/onboarding/create'
+    | '/onboarding/library'
+    | '/onboarding/loading'
+    | '/onboarding/method'
+    | '/onboarding/name'
+    | '/onboarding/welcome'
     | '/settings/archived'
     | '/settings/connections'
     | '/settings/diagnostics'
@@ -243,6 +327,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   ChatRoute: typeof ChatRouteWithChildren
+  OnboardingRoute: typeof OnboardingRouteWithChildren
   PairRoute: typeof PairRoute
   SettingsRoute: typeof SettingsRouteWithChildren
 }
@@ -261,6 +346,13 @@ declare module '@tanstack/react-router' {
       path: '/pair'
       fullPath: '/pair'
       preLoaderRoute: typeof PairRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_chat': {
@@ -325,6 +417,48 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings/archived'
       preLoaderRoute: typeof SettingsArchivedRouteImport
       parentRoute: typeof SettingsRoute
+    }
+    '/onboarding/welcome': {
+      id: '/onboarding/welcome'
+      path: '/welcome'
+      fullPath: '/onboarding/welcome'
+      preLoaderRoute: typeof OnboardingWelcomeRouteImport
+      parentRoute: typeof OnboardingRoute
+    }
+    '/onboarding/name': {
+      id: '/onboarding/name'
+      path: '/name'
+      fullPath: '/onboarding/name'
+      preLoaderRoute: typeof OnboardingNameRouteImport
+      parentRoute: typeof OnboardingRoute
+    }
+    '/onboarding/method': {
+      id: '/onboarding/method'
+      path: '/method'
+      fullPath: '/onboarding/method'
+      preLoaderRoute: typeof OnboardingMethodRouteImport
+      parentRoute: typeof OnboardingRoute
+    }
+    '/onboarding/loading': {
+      id: '/onboarding/loading'
+      path: '/loading'
+      fullPath: '/onboarding/loading'
+      preLoaderRoute: typeof OnboardingLoadingRouteImport
+      parentRoute: typeof OnboardingRoute
+    }
+    '/onboarding/library': {
+      id: '/onboarding/library'
+      path: '/library'
+      fullPath: '/onboarding/library'
+      preLoaderRoute: typeof OnboardingLibraryRouteImport
+      parentRoute: typeof OnboardingRoute
+    }
+    '/onboarding/create': {
+      id: '/onboarding/create'
+      path: '/create'
+      fullPath: '/onboarding/create'
+      preLoaderRoute: typeof OnboardingCreateRouteImport
+      parentRoute: typeof OnboardingRoute
     }
     '/_chat/preview-components-sandbox': {
       id: '/_chat/preview-components-sandbox'
@@ -402,6 +536,28 @@ const ChatRouteChildren: ChatRouteChildren = {
 
 const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
 
+interface OnboardingRouteChildren {
+  OnboardingCreateRoute: typeof OnboardingCreateRoute
+  OnboardingLibraryRoute: typeof OnboardingLibraryRoute
+  OnboardingLoadingRoute: typeof OnboardingLoadingRoute
+  OnboardingMethodRoute: typeof OnboardingMethodRoute
+  OnboardingNameRoute: typeof OnboardingNameRoute
+  OnboardingWelcomeRoute: typeof OnboardingWelcomeRoute
+}
+
+const OnboardingRouteChildren: OnboardingRouteChildren = {
+  OnboardingCreateRoute: OnboardingCreateRoute,
+  OnboardingLibraryRoute: OnboardingLibraryRoute,
+  OnboardingLoadingRoute: OnboardingLoadingRoute,
+  OnboardingMethodRoute: OnboardingMethodRoute,
+  OnboardingNameRoute: OnboardingNameRoute,
+  OnboardingWelcomeRoute: OnboardingWelcomeRoute,
+}
+
+const OnboardingRouteWithChildren = OnboardingRoute._addFileChildren(
+  OnboardingRouteChildren,
+)
+
 interface SettingsRouteChildren {
   SettingsArchivedRoute: typeof SettingsArchivedRoute
   SettingsConnectionsRoute: typeof SettingsConnectionsRoute
@@ -428,6 +584,7 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRouteWithChildren,
+  OnboardingRoute: OnboardingRouteWithChildren,
   PairRoute: PairRoute,
   SettingsRoute: SettingsRouteWithChildren,
 }

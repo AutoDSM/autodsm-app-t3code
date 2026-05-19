@@ -15,6 +15,18 @@ export function normalizeWorkspaceRelativePathPosix(raw: string): string {
   return raw.replace(/\\/g, "/").trim();
 }
 
+/**
+ * Canonical catalog / URL search form: POSIX relative path with no leading slash so sidebar rows,
+ * `componentPath` search params, and registry `relativePath` values agree after normalization.
+ */
+export function normalizeSidebarComponentCatalogPath(raw: string): string {
+  let normalized = normalizeWorkspaceRelativePathPosix(raw).trim();
+  while (normalized.startsWith("/")) {
+    normalized = normalized.slice(1);
+  }
+  return normalized;
+}
+
 /** True for `.tsx`/`.jsx` workspace paths under some `src/components/` subtree. */
 export function isWorkspaceSrcComponentsUiRelativePath(rawPath: string): boolean {
   const normalized = normalizeWorkspaceRelativePathPosix(rawPath).trim();

@@ -11,5 +11,6 @@ export function sandboxSrcComponentsCatalogViewModel(): SrcComponentsCatalogView
     isPending: false,
     isError: false,
     truncated: false,
+    gate: null,
   };
 }

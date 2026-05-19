@@ -1,12 +1,18 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { LinkIcon, PlusIcon } from "lucide-react";
 
-import { NoActiveThreadState } from "../components/NoActiveThreadState";
+import { ChatLaunchEmptyState } from "~/components/autodsm/ChatLaunchEmptyState";
+import { ElectronAuthenticatedChatLanding } from "~/components/autodsm/ElectronAuthenticatedChatLanding";
+import { ElectronWorkspaceBootstrapLoading } from "~/components/autodsm/ElectronWorkspaceBootstrapLoading";
+import { resolveChatIndexOnboarding } from "~/lib/autoDsmOnboarding";
+import { isDevPairingBypassActive } from "~/lib/devPairingBypass";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
+import { isElectron } from "../env";
 import { useSavedEnvironmentRegistryStore } from "../environments/runtime";
 import { APP_DISPLAY_NAME } from "~/branding";
+import { useUiStateStore } from "~/uiStateStore";
 
 function ChatIndexRouteView() {
   const { authGateState } = Route.useRouteContext();
@@ -18,10 +24,39 @@ function ChatIndexRouteView() {
     return <HostedStaticOnboardingState />;
   }
 
-  return <NoActiveThreadState />;
+  if (isElectron) {
+    if (authGateState.status === "requires-auth") {
+      if (isDevPairingBypassActive(authGateState.auth)) {
+        return <ElectronWorkspaceBootstrapLoading authPending />;
+      }
+      return <ElectronWorkspaceBootstrapLoading authFailed />;
+    }
+    if (authGateState.status === "authenticated") {
+      return <ElectronAuthenticatedChatLanding />;
+    }
+    return <ElectronWorkspaceBootstrapLoading authPending />;
+  }
+
+  return <ChatLaunchEmptyState />;
 }
 
 export const Route = createFileRoute("/_chat/")({
+  beforeLoad: async ({ context }) => {
+    if (!isElectron) {
+      return;
+    }
+    if (context.authGateState.status !== "authenticated") {
+      return;
+    }
+    const onboarding = useUiStateStore.getState().autodsmOnboarding;
+    const resolution = resolveChatIndexOnboarding(onboarding, true, true);
+    if (resolution?.kind === "onboarding") {
+      throw redirect({ to: resolution.to, replace: true });
+    }
+    if (resolution?.kind === "home") {
+      throw redirect({ to: resolution.to, replace: true });
+    }
+  },
   component: ChatIndexRouteView,
 });
 

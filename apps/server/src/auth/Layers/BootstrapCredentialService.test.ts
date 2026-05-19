@@ -8,11 +8,14 @@ import * as TestClock from "effect/testing/TestClock";
 import type { ServerConfigShape } from "../../config.ts";
 import { ServerConfig } from "../../config.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
+import { DEV_LOOPBACK_BYPASS_CREDENTIAL } from "../devPairingBypass.ts";
 import { BootstrapCredentialService } from "../Services/BootstrapCredentialService.ts";
 import { BootstrapCredentialServiceLive } from "./BootstrapCredentialService.ts";
 
 const makeServerConfigLayer = (
-  overrides?: Partial<Pick<ServerConfigShape, "desktopBootstrapToken">>,
+  overrides?: Partial<
+    Pick<ServerConfigShape, "desktopBootstrapToken" | "devDisablePairing" | "devUrl">
+  >,
 ) =>
   Layer.effect(
     ServerConfig,
@@ -28,7 +31,9 @@ const makeServerConfigLayer = (
   );
 
 const makeBootstrapCredentialLayer = (
-  overrides?: Partial<Pick<ServerConfigShape, "desktopBootstrapToken">>,
+  overrides?: Partial<
+    Pick<ServerConfigShape, "desktopBootstrapToken" | "devDisablePairing" | "devUrl">
+  >,
 ) =>
   BootstrapCredentialServiceLive.pipe(
     Layer.provide(SqlitePersistenceMemory),
@@ -149,5 +154,25 @@ it.layer(NodeServices.layer)("BootstrapCredentialServiceLive", (it) => {
       expect(revokedConsume.message).toContain("no longer available");
       expect(revokedConsume.status).toBe(401);
     }).pipe(Effect.provide(makeBootstrapCredentialLayer())),
+  );
+
+  it.effect("seeds a reusable dev loopback bypass grant when dev pairing is disabled", () =>
+    Effect.gen(function* () {
+      const bootstrapCredentials = yield* BootstrapCredentialService;
+      const first = yield* bootstrapCredentials.consume(DEV_LOOPBACK_BYPASS_CREDENTIAL);
+      const second = yield* bootstrapCredentials.consume(DEV_LOOPBACK_BYPASS_CREDENTIAL);
+
+      expect(first.method).toBe("one-time-token");
+      expect(first.role).toBe("owner");
+      expect(first.subject).toBe("dev-loopback-bypass");
+      expect(second.role).toBe("owner");
+    }).pipe(
+      Effect.provide(
+        makeBootstrapCredentialLayer({
+          devDisablePairing: true,
+          devUrl: new URL("http://127.0.0.1:5733"),
+        }),
+      ),
+    ),
   );
 });

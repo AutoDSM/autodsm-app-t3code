@@ -19,6 +19,7 @@ import {
   useState,
 } from "react";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
+import { resolveTerminalFontFamily } from "~/lib/productFontStacks";
 import { type TerminalContextSelection } from "~/lib/terminalContext";
 import { openInPreferredEditor } from "../editorPreferences";
 import {
@@ -320,7 +321,7 @@ export function TerminalViewport({
       lineHeight: 1.2,
       fontSize: 12,
       scrollback: 5_000,
-      fontFamily: '"SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace',
+      fontFamily: resolveTerminalFontFamily(mount),
       theme: terminalThemeFromApp(mount),
     });
     terminal.loadAddon(fitAddon);
@@ -559,6 +560,7 @@ export function TerminalViewport({
     const themeObserver = new MutationObserver(() => {
       const activeTerminal = terminalRef.current;
       if (!activeTerminal) return;
+      activeTerminal.options.fontFamily = resolveTerminalFontFamily(containerRef.current);
       activeTerminal.options.theme = terminalThemeFromApp(containerRef.current);
       activeTerminal.refresh(0, activeTerminal.rows - 1);
     });

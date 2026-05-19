@@ -910,6 +910,8 @@ function syncProjectUiFromStore() {
       key: derivePhysicalProjectKey(project),
       logicalKey: deriveLogicalProjectKeyFromSettings(project, clientSettings),
       cwd: project.cwd,
+      environmentId: project.environmentId,
+      projectId: project.id,
     })),
   );
 }
@@ -985,6 +987,8 @@ function applyRecoveredEventBatch(
         key: derivePhysicalProjectKey(project),
         logicalKey: deriveLogicalProjectKeyFromSettings(project, clientSettings),
         cwd: project.cwd,
+        environmentId: project.environmentId,
+        projectId: project.id,
       })),
     );
   }

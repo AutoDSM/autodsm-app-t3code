@@ -27,7 +27,14 @@ import {
   SessionCredentialError,
   SessionCredentialService,
 } from "../Services/SessionCredentialService.ts";
+import { deriveAuthClientMetadata } from "../utils.ts";
 import { AuthControlPlaneLive, AuthCoreLive } from "./AuthControlPlane.ts";
+import { ServerConfig } from "../../config.ts";
+import {
+  DEV_LOOPBACK_BYPASS_CREDENTIAL,
+  isDevPairingDisabled,
+  isLoopbackHttpRequest,
+} from "../devPairingBypass.ts";
 
 type BootstrapExchangeResult = {
   readonly response: AuthBootstrapResult;
@@ -63,6 +70,7 @@ function parseBearerToken(request: HttpServerRequest.HttpServerRequest): string 
 }
 
 export const makeServerAuth = Effect.gen(function* () {
+  const config = yield* ServerConfig;
   const policy = yield* ServerAuthPolicy;
   const bootstrapCredentials = yield* BootstrapCredentialService;
   const authControlPlane = yield* AuthControlPlane;
@@ -344,6 +352,46 @@ export const makeServerAuth = Effect.gen(function* () {
       ),
     );
 
+  const devAutoBootstrapBrowserSession: ServerAuthShape["devAutoBootstrapBrowserSession"] = (
+    request,
+  ) =>
+    Effect.gen(function* () {
+      if (!isDevPairingDisabled(config)) {
+        return yield* new AuthError({
+          message: "Dev pairing bypass is not enabled.",
+          status: 403,
+        });
+      }
+
+      if (!isLoopbackHttpRequest(request)) {
+        return yield* new AuthError({
+          message: "Dev auto-bootstrap is only available from loopback.",
+          status: 403,
+        });
+      }
+
+      const existing = yield* getSessionState(request);
+      if (existing.authenticated) {
+        const session = yield* authenticateRequest(request);
+        return {
+          response: {
+            authenticated: true,
+            role: session.role,
+            sessionMethod: session.method,
+            expiresAt: session.expiresAt
+              ? DateTime.toUtc(session.expiresAt)
+              : DateTime.toUtc(yield* DateTime.now),
+          } satisfies AuthBootstrapResult,
+          sessionToken: request.cookies[sessions.cookieName] ?? "",
+        };
+      }
+
+      return yield* exchangeBootstrapCredential(
+        DEV_LOOPBACK_BYPASS_CREDENTIAL,
+        deriveAuthClientMetadata({ request, label: "Dev loopback auto-bootstrap" }),
+      );
+    });
+
   const authenticateWebSocketUpgrade: ServerAuthShape["authenticateWebSocketUpgrade"] = (request) =>
     Effect.gen(function* () {
       const requestUrl = HttpServerRequest.toURL(request);
@@ -388,6 +436,7 @@ export const makeServerAuth = Effect.gen(function* () {
     authenticateWebSocketUpgrade,
     issueWebSocketToken,
     issueStartupPairingUrl,
+    devAutoBootstrapBrowserSession,
   } satisfies ServerAuthShape;
 });
 

@@ -1,7 +1,9 @@
-import { ProjectId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { defaultAutodsmOnboardingState } from "./lib/autoDsmOnboarding";
 import {
+  applyAutoDsmWorkspaceProjectRef,
   clearThreadUi,
   hydratePersistedProjectState,
   markThreadVisited,
@@ -15,8 +17,26 @@ import {
   setThreadChangedFilesExpanded,
   syncProjects,
   syncThreads,
+  type SyncProjectInput,
   type UiState,
 } from "./uiStateStore";
+
+const testEnv = EnvironmentId.make("env-test");
+
+function syncProj(
+  key: string,
+  cwd: string,
+  projectId: ProjectId,
+  logicalKey?: string,
+): SyncProjectInput {
+  return {
+    key,
+    logicalKey: logicalKey ?? key,
+    cwd,
+    environmentId: testEnv,
+    projectId,
+  };
+}
 
 function makeUiState(overrides: Partial<UiState> = {}): UiState {
   return {
@@ -25,6 +45,9 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     threadLastVisitedAtById: {},
     threadChangedFilesExpandedById: {},
     defaultAdvertisedEndpointKey: null,
+    autoDsmWorkspaceProjectRef: null,
+    autodsmOnboarding: defaultAutodsmOnboardingState,
+    autoDsmThreadComponentPathById: {},
     ...overrides,
   };
 }
@@ -224,9 +247,9 @@ describe("uiStateStore pure functions", () => {
     });
 
     const next = syncProjects(initialState, [
-      { key: project1, logicalKey: project1, cwd: "/tmp/project-1" },
-      { key: project2, logicalKey: project2, cwd: "/tmp/project-2" },
-      { key: project3, logicalKey: project3, cwd: "/tmp/project-3" },
+      syncProj(project1, "/tmp/project-1", project1),
+      syncProj(project2, "/tmp/project-2", project2),
+      syncProj(project3, "/tmp/project-3", project3),
     ]);
 
     expect(next.projectOrder).toEqual([project2, project1, project3]);
@@ -240,6 +263,8 @@ describe("uiStateStore pure functions", () => {
     // manual order and collapse state.
     const keyProject1 = "env-local:/tmp/project-1";
     const keyProject2 = "env-local:/tmp/project-2";
+    const pid1 = ProjectId.make("physical-proj-1");
+    const pid2 = ProjectId.make("physical-proj-2");
     const initialState = syncProjects(
       makeUiState({
         projectExpandedById: {
@@ -249,14 +274,14 @@ describe("uiStateStore pure functions", () => {
         projectOrder: [keyProject2, keyProject1],
       }),
       [
-        { key: keyProject1, logicalKey: keyProject1, cwd: "/tmp/project-1" },
-        { key: keyProject2, logicalKey: keyProject2, cwd: "/tmp/project-2" },
+        syncProj(keyProject1, "/tmp/project-1", pid1),
+        syncProj(keyProject2, "/tmp/project-2", pid2),
       ],
     );
 
     const next = syncProjects(initialState, [
-      { key: keyProject1, logicalKey: keyProject1, cwd: "/tmp/project-1" },
-      { key: keyProject2, logicalKey: keyProject2, cwd: "/tmp/project-2" },
+      syncProj(keyProject1, "/tmp/project-1", pid1),
+      syncProj(keyProject2, "/tmp/project-2", pid2),
     ]);
 
     expect(next.projectOrder).toEqual([keyProject2, keyProject1]);
@@ -272,11 +297,11 @@ describe("uiStateStore pure functions", () => {
         },
         projectOrder: [project1],
       }),
-      [{ key: project1, logicalKey: project1, cwd: "/tmp/project-1" }],
+      [syncProj(project1, "/tmp/project-1", project1)],
     );
 
     const next = syncProjects(initialState, [
-      { key: project1, logicalKey: project1, cwd: "/tmp/project-1-renamed" },
+      syncProj(project1, "/tmp/project-1-renamed", project1),
     ]);
 
     expect(next).not.toBe(initialState);
@@ -295,17 +320,20 @@ describe("uiStateStore pure functions", () => {
     const physicalRemote = "env-remote:/repo/project";
     const logicalKey = "repo-canonical-key";
 
+    const pidLocal = ProjectId.make("repo-local");
+    const pidRemote = ProjectId.make("repo-remote");
+
     const initial = syncProjects(makeUiState(), [
-      { key: physicalLocal, logicalKey, cwd: "/repo/project" },
-      { key: physicalRemote, logicalKey, cwd: "/repo/project" },
+      syncProj(physicalLocal, "/repo/project", pidLocal, logicalKey),
+      syncProj(physicalRemote, "/repo/project", pidRemote, logicalKey),
     ]);
 
     expect(initial.projectExpandedById).toEqual({ [logicalKey]: true });
 
     const afterCollapse = { ...initial, projectExpandedById: { [logicalKey]: false } };
     const next = syncProjects(afterCollapse, [
-      { key: physicalLocal, logicalKey, cwd: "/repo/project" },
-      { key: physicalRemote, logicalKey, cwd: "/repo/project" },
+      syncProj(physicalLocal, "/repo/project", pidLocal, logicalKey),
+      syncProj(physicalRemote, "/repo/project", pidRemote, logicalKey),
     ]);
 
     expect(next.projectExpandedById[logicalKey]).toBe(false);
@@ -319,8 +347,10 @@ describe("uiStateStore pure functions", () => {
     const previousLogicalKey = physicalKey;
     const nextLogicalKey = "repo-canonical-key";
 
+    const pidPk = ProjectId.make("physical-repo-proj");
+
     const initial = syncProjects(makeUiState(), [
-      { key: physicalKey, logicalKey: previousLogicalKey, cwd: "/repo/project" },
+      syncProj(physicalKey, "/repo/project", pidPk, previousLogicalKey),
     ]);
 
     expect(initial.projectExpandedById[previousLogicalKey]).toBe(true);
@@ -330,10 +360,36 @@ describe("uiStateStore pure functions", () => {
       projectExpandedById: { [previousLogicalKey]: false },
     };
     const next = syncProjects(afterCollapse, [
-      { key: physicalKey, logicalKey: nextLogicalKey, cwd: "/repo/project" },
+      syncProj(physicalKey, "/repo/project", pidPk, nextLogicalKey),
     ]);
 
     expect(next.projectExpandedById[nextLogicalKey]).toBe(false);
+  });
+
+  it("syncProjects clears stale AutoDSM workspace ref when project is removed", () => {
+    const missingId = ProjectId.make("missing-from-sync");
+    const initial = applyAutoDsmWorkspaceProjectRef(makeUiState(), {
+      environmentId: testEnv,
+      projectId: missingId,
+    });
+    const next = syncProjects(initial, [syncProj("kOther", "/other", ProjectId.make("other"))]);
+    expect(next.autoDsmWorkspaceProjectRef).toBeNull();
+  });
+
+  it("syncProjects preserves AutoDSM workspace ref when project remains", () => {
+    const pid = ProjectId.make("keep-me");
+    const initial = applyAutoDsmWorkspaceProjectRef(makeUiState(), {
+      environmentId: testEnv,
+      projectId: pid,
+    });
+    const next = syncProjects(initial, [
+      syncProj("kKeep", "/keep", pid),
+      syncProj("kOther", "/other", ProjectId.make("other")),
+    ]);
+    expect(next.autoDsmWorkspaceProjectRef).toEqual({
+      environmentId: testEnv,
+      projectId: pid,
+    });
   });
 
   it("syncThreads prunes missing thread UI state", () => {
@@ -484,8 +540,8 @@ describe("uiStateStore persistence round-trip", () => {
     // Regression: pre-fix, persistState only wrote `expandedProjectCwds`, so
     // an empty array on rehydrate was indistinguishable from a fresh install
     // and the syncProjects fallback re-expanded every row.
-    const projectA = { key: "kA", logicalKey: "kA", cwd: "/projA" };
-    const projectB = { key: "kB", logicalKey: "kB", cwd: "/projB" };
+    const projectA = syncProj("kA", "/projA", ProjectId.make("persist-a"));
+    const projectB = syncProj("kB", "/projB", ProjectId.make("persist-b"));
 
     let state = syncProjects(makeUiState(), [projectA, projectB]);
     state = setProjectExpanded(state, projectA.key, false);
@@ -505,9 +561,9 @@ describe("uiStateStore persistence round-trip", () => {
   });
 
   it("respects mixed expand state on rehydrate and defaults new projects to expanded", () => {
-    const projectA = { key: "kA", logicalKey: "kA", cwd: "/projA" };
-    const projectB = { key: "kB", logicalKey: "kB", cwd: "/projB" };
-    const projectC = { key: "kC", logicalKey: "kC", cwd: "/projC" };
+    const projectA = syncProj("kA", "/projA", ProjectId.make("persist-a"));
+    const projectB = syncProj("kB", "/projB", ProjectId.make("persist-b"));
+    const projectC = syncProj("kC", "/projC", ProjectId.make("persist-c"));
 
     let state = syncProjects(makeUiState(), [projectA, projectB]);
     state = setProjectExpanded(state, projectB.key, false);
@@ -535,8 +591,8 @@ describe("uiStateStore persistence round-trip", () => {
     });
 
     const rehydrated = syncProjects(makeUiState(), [
-      { key: "kA", logicalKey: "kA", cwd: "/projA" },
-      { key: "kB", logicalKey: "kB", cwd: "/projB" },
+      syncProj("kA", "/projA", ProjectId.make("legacy-a")),
+      syncProj("kB", "/projB", ProjectId.make("legacy-b")),
     ]);
 
     expect(rehydrated.projectExpandedById).toEqual({
@@ -546,9 +602,9 @@ describe("uiStateStore persistence round-trip", () => {
   });
 
   it("preserves manual project order across restart", () => {
-    const projectA = { key: "kOrderA", logicalKey: "kOrderA", cwd: "/order-projA" };
-    const projectB = { key: "kOrderB", logicalKey: "kOrderB", cwd: "/order-projB" };
-    const projectC = { key: "kOrderC", logicalKey: "kOrderC", cwd: "/order-projC" };
+    const projectA = syncProj("kOrderA", "/order-projA", ProjectId.make("order-a"));
+    const projectB = syncProj("kOrderB", "/order-projB", ProjectId.make("order-b"));
+    const projectC = syncProj("kOrderC", "/order-projC", ProjectId.make("order-c"));
 
     let state = syncProjects(makeUiState(), [projectA, projectB, projectC]);
     state = reorderProjects(state, [projectC.key], [projectA.key]);
@@ -579,6 +635,24 @@ describe("uiStateStore persistence round-trip", () => {
     expect(persisted.defaultAdvertisedEndpointKey).toBe("desktop-core:lan:http");
   });
 
+  it("persists AutoDSM workspace project ref", () => {
+    const ref = {
+      environmentId: EnvironmentId.make("env-autodsm-persist"),
+      projectId: ProjectId.make("proj-autodsm-persist"),
+    };
+    const state = applyAutoDsmWorkspaceProjectRef(makeUiState(), ref);
+
+    persistState(state);
+
+    const persisted = JSON.parse(
+      localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
+    ) as PersistedUiState;
+    expect(persisted.autoDsmWorkspaceProjectRef).toEqual({
+      environmentId: ref.environmentId,
+      projectId: ref.projectId,
+    });
+  });
+
   it("preserves expand state across restart when project's logical key changes", () => {
     // After restart, in-memory previousExpandedById is empty, so the
     // previousLogicalKey-to-state bridge in syncProjects cannot help. The
@@ -590,7 +664,7 @@ describe("uiStateStore persistence round-trip", () => {
     const cwd = "/lk-restart-proj";
 
     let state = syncProjects(makeUiState(), [
-      { key: physicalKey, logicalKey: previousLogicalKey, cwd },
+      syncProj(physicalKey, cwd, ProjectId.make("lk-restart")),
     ]);
     state = setProjectExpanded(state, previousLogicalKey, false);
     persistState(state);
@@ -602,7 +676,7 @@ describe("uiStateStore persistence round-trip", () => {
 
     const nextLogicalKey = "lk-restart-canonical";
     const rehydrated = syncProjects(makeUiState(), [
-      { key: physicalKey, logicalKey: nextLogicalKey, cwd },
+      syncProj(physicalKey, cwd, ProjectId.make("lk-restart"), nextLogicalKey),
     ]);
 
     expect(rehydrated.projectExpandedById[nextLogicalKey]).toBe(false);

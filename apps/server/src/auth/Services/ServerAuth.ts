@@ -79,6 +79,15 @@ export interface ServerAuthShape {
     session: AuthenticatedSession,
   ) => Effect.Effect<AuthWebSocketTokenResult, AuthError>;
   readonly issueStartupPairingUrl: (baseUrl: string) => Effect.Effect<string, AuthError>;
+  readonly devAutoBootstrapBrowserSession: (
+    request: HttpServerRequest.HttpServerRequest,
+  ) => Effect.Effect<
+    {
+      readonly response: AuthBootstrapResult;
+      readonly sessionToken: string;
+    },
+    AuthError
+  >;
 }
 
 export class ServerAuth extends Context.Service<ServerAuth, ServerAuthShape>()(

@@ -13,6 +13,14 @@ import { detectSourceControlProviderFromRemoteUrl } from "./sourceControl.ts";
 export const WORKTREE_BRANCH_PREFIX = "t3code";
 const TEMP_WORKTREE_BRANCH_PATTERN = new RegExp(`^${WORKTREE_BRANCH_PREFIX}\\/[0-9a-f]{8}$`);
 
+/** Branch namespace for AutoDSM session-isolated work (coexists with legacy `t3code/` branches). */
+export const AUTODSM_BRANCH_PREFIX = "autodsm";
+
+export function resolveAutodsmSessionBranchName(sessionKey: string): string {
+  const fragment = sanitizeBranchFragment(sessionKey);
+  return `${AUTODSM_BRANCH_PREFIX}/${fragment}`;
+}
+
 /**
  * Sanitize an arbitrary string into a valid, lowercase git refName fragment.
  * Strips quotes, collapses separators, limits to 64 chars.

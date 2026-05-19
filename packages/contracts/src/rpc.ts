@@ -67,6 +67,52 @@ import {
   ProjectWriteFileResult,
 } from "./project.ts";
 import {
+  AutoDsmBrandProfile,
+  AutoDsmBrandTokenAddInput,
+  AutoDsmBrandTokenRemoveInput,
+  AutoDsmBrandTokenResyncInput,
+  AutoDsmBrandTokenUpdateInput,
+  AutoDsmWorkspacePreviewCssResult,
+  AutoDsmChangeSetCreateInput,
+  AutoDsmChangeSetIdInput,
+  AutoDsmChangeSetMutationResult,
+  AutoDsmComponentRegistry,
+  AutoDsmCwdInput,
+  AutoDsmCreateWorkspaceInput,
+  AutoDsmCreateWorkspaceResult,
+  AutoDsmListWorkspaceHistoryInput,
+  AutoDsmListWorkspaceHistoryResult,
+  AutoDsmWorkspaceBuildInput,
+  AutoDsmWorkspaceBuildResult,
+  AutoDsmGenerationPlanAssembleInput,
+  AutoDsmGenerationPlanResult,
+  AutoDsmGitSessionBranchInput,
+  AutoDsmGitSessionBranchResult,
+  AutoDsmIssuesForPromptInput,
+  AutoDsmIssuesForPromptResult,
+  AutoDsmProjectProfile,
+  AutoDsmPublishedSnapshotExportInput,
+  AutoDsmPublishedSnapshotExportResult,
+  AutoDsmRegistryEntryInput,
+  AutoDsmRegistryEntryResult,
+  AutoDsmRenderEnvironmentProfile,
+  AutoDsmRenderManifest,
+  AutoDsmRenderManifestLookupInput,
+  AutoDsmRenderPlanInput,
+  AutoDsmRenderPlanResult,
+  AutoDsmExecuteRenderPlanResult,
+  AutoDsmRpcError,
+  AutoDsmScanArtifact,
+  AutoDsmScanArtifactLookupInput,
+  AutoDsmScanRunInput,
+  AutoDsmScanRunResult,
+  AutoDsmSidecarStartInput,
+  AutoDsmSidecarStatusInput,
+  AutoDsmSidecarStatusResult,
+  AutoDsmIndexingProgressEvent,
+  AutoDsmProviderCatalogResult,
+} from "./autodsmArtifacts.ts";
+import {
   TerminalClearInput,
   TerminalCloseInput,
   TerminalError,
@@ -118,6 +164,37 @@ export const WS_METHODS = {
   projectsReadFile: "projects.readFile",
   projectsAnalyzeReactComponent: "projects.analyzeReactComponent",
   projectsBuildComponentPreview: "projects.buildComponentPreview",
+
+  autodsmGetProjectProfile: "autodsm.getProjectProfile",
+  autodsmGetBrandProfile: "autodsm.getBrandProfile",
+  autodsmAddBrandToken: "autodsm.addBrandToken",
+  autodsmRemoveBrandToken: "autodsm.removeBrandToken",
+  autodsmUpdateBrandToken: "autodsm.updateBrandToken",
+  autodsmResyncBrandTokens: "autodsm.resyncBrandTokens",
+  autodsmGetWorkspacePreviewCss: "autodsm.getWorkspacePreviewCss",
+  autodsmGetComponentRegistry: "autodsm.getComponentRegistry",
+  autodsmRunWorkspaceBuild: "autodsm.runWorkspaceBuild",
+  autodsmGetComponentRegistryEntry: "autodsm.getComponentRegistryEntry",
+  autodsmGetRenderEnvironmentProfile: "autodsm.getRenderEnvironmentProfile",
+  autodsmGetRenderManifest: "autodsm.getRenderManifest",
+  autodsmGetScanArtifact: "autodsm.getScanArtifact",
+  autodsmSubscribeIndexingProgress: "autodsm.subscribeIndexingProgress",
+  autodsmRunScan: "autodsm.runScan",
+  autodsmBuildRenderPlan: "autodsm.buildRenderPlan",
+  autodsmExecuteRenderPlan: "autodsm.executeRenderPlan",
+  autodsmGetSidecarStatus: "autodsm.getSidecarStatus",
+  autodsmStartSidecar: "autodsm.startSidecar",
+  autodsmGetProviderCatalog: "autodsm.getProviderCatalog",
+  autodsmChangeSetCreate: "autodsm.changeSetCreate",
+  autodsmChangeSetPreview: "autodsm.changeSetPreview",
+  autodsmChangeSetApply: "autodsm.changeSetApply",
+  autodsmChangeSetRollback: "autodsm.changeSetRollback",
+  autodsmAssembleGenerationPlan: "autodsm.assembleGenerationPlan",
+  autodsmExportPublishedSnapshot: "autodsm.exportPublishedSnapshot",
+  autodsmPrepareSessionBranch: "autodsm.prepareSessionBranch",
+  autodsmGetIssuesForPrompt: "autodsm.getIssuesForPrompt",
+  autodsmCreateWorkspace: "autodsm.createWorkspace",
+  autodsmListWorkspaceHistory: "autodsm.listWorkspaceHistory",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -311,6 +388,205 @@ export const WsProjectsBuildComponentPreviewRpc = Rpc.make(
     error: ProjectBuildComponentPreviewError,
   },
 );
+
+export const WsAutodsmGetProjectProfileRpc = Rpc.make(WS_METHODS.autodsmGetProjectProfile, {
+  payload: AutoDsmCwdInput,
+  success: AutoDsmProjectProfile,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmGetBrandProfileRpc = Rpc.make(WS_METHODS.autodsmGetBrandProfile, {
+  payload: AutoDsmCwdInput,
+  success: AutoDsmBrandProfile,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmAddBrandTokenRpc = Rpc.make(WS_METHODS.autodsmAddBrandToken, {
+  payload: AutoDsmBrandTokenAddInput,
+  success: AutoDsmBrandProfile,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmRemoveBrandTokenRpc = Rpc.make(WS_METHODS.autodsmRemoveBrandToken, {
+  payload: AutoDsmBrandTokenRemoveInput,
+  success: AutoDsmBrandProfile,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmUpdateBrandTokenRpc = Rpc.make(WS_METHODS.autodsmUpdateBrandToken, {
+  payload: AutoDsmBrandTokenUpdateInput,
+  success: AutoDsmBrandProfile,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmResyncBrandTokensRpc = Rpc.make(WS_METHODS.autodsmResyncBrandTokens, {
+  payload: AutoDsmBrandTokenResyncInput,
+  success: AutoDsmBrandProfile,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmGetWorkspacePreviewCssRpc = Rpc.make(
+  WS_METHODS.autodsmGetWorkspacePreviewCss,
+  {
+    payload: AutoDsmCwdInput,
+    success: AutoDsmWorkspacePreviewCssResult,
+    error: AutoDsmRpcError,
+  },
+);
+
+export const WsAutodsmGetComponentRegistryRpc = Rpc.make(WS_METHODS.autodsmGetComponentRegistry, {
+  payload: AutoDsmCwdInput,
+  success: AutoDsmComponentRegistry,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmRunWorkspaceBuildRpc = Rpc.make(WS_METHODS.autodsmRunWorkspaceBuild, {
+  payload: AutoDsmWorkspaceBuildInput,
+  success: AutoDsmWorkspaceBuildResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmGetComponentRegistryEntryRpc = Rpc.make(
+  WS_METHODS.autodsmGetComponentRegistryEntry,
+  {
+    payload: AutoDsmRegistryEntryInput,
+    success: AutoDsmRegistryEntryResult,
+    error: AutoDsmRpcError,
+  },
+);
+
+export const WsAutodsmGetRenderEnvironmentProfileRpc = Rpc.make(
+  WS_METHODS.autodsmGetRenderEnvironmentProfile,
+  {
+    payload: AutoDsmCwdInput,
+    success: AutoDsmRenderEnvironmentProfile,
+    error: AutoDsmRpcError,
+  },
+);
+
+export const WsAutodsmGetRenderManifestRpc = Rpc.make(WS_METHODS.autodsmGetRenderManifest, {
+  payload: AutoDsmRenderManifestLookupInput,
+  success: Schema.Struct({ manifest: Schema.NullOr(AutoDsmRenderManifest) }),
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmGetScanArtifactRpc = Rpc.make(WS_METHODS.autodsmGetScanArtifact, {
+  payload: AutoDsmScanArtifactLookupInput,
+  success: Schema.Struct({ scan: Schema.NullOr(AutoDsmScanArtifact) }),
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmSubscribeIndexingProgressRpc = Rpc.make(
+  WS_METHODS.autodsmSubscribeIndexingProgress,
+  {
+    payload: AutoDsmCwdInput,
+    success: AutoDsmIndexingProgressEvent,
+    error: AutoDsmRpcError,
+    stream: true,
+  },
+);
+
+export const WsAutodsmRunScanRpc = Rpc.make(WS_METHODS.autodsmRunScan, {
+  payload: AutoDsmScanRunInput,
+  success: AutoDsmScanRunResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmBuildRenderPlanRpc = Rpc.make(WS_METHODS.autodsmBuildRenderPlan, {
+  payload: AutoDsmRenderPlanInput,
+  success: AutoDsmRenderPlanResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmExecuteRenderPlanRpc = Rpc.make(WS_METHODS.autodsmExecuteRenderPlan, {
+  payload: AutoDsmRenderPlanInput,
+  success: AutoDsmExecuteRenderPlanResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmGetSidecarStatusRpc = Rpc.make(WS_METHODS.autodsmGetSidecarStatus, {
+  payload: AutoDsmSidecarStatusInput,
+  success: AutoDsmSidecarStatusResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmStartSidecarRpc = Rpc.make(WS_METHODS.autodsmStartSidecar, {
+  payload: AutoDsmSidecarStartInput,
+  success: AutoDsmSidecarStatusResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmGetProviderCatalogRpc = Rpc.make(WS_METHODS.autodsmGetProviderCatalog, {
+  payload: Schema.Struct({}),
+  success: AutoDsmProviderCatalogResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmChangeSetCreateRpc = Rpc.make(WS_METHODS.autodsmChangeSetCreate, {
+  payload: AutoDsmChangeSetCreateInput,
+  success: AutoDsmChangeSetMutationResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmChangeSetPreviewRpc = Rpc.make(WS_METHODS.autodsmChangeSetPreview, {
+  payload: AutoDsmChangeSetIdInput,
+  success: AutoDsmChangeSetMutationResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmChangeSetApplyRpc = Rpc.make(WS_METHODS.autodsmChangeSetApply, {
+  payload: AutoDsmChangeSetIdInput,
+  success: AutoDsmChangeSetMutationResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmChangeSetRollbackRpc = Rpc.make(WS_METHODS.autodsmChangeSetRollback, {
+  payload: AutoDsmChangeSetIdInput,
+  success: AutoDsmChangeSetMutationResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmAssembleGenerationPlanRpc = Rpc.make(
+  WS_METHODS.autodsmAssembleGenerationPlan,
+  {
+    payload: AutoDsmGenerationPlanAssembleInput,
+    success: AutoDsmGenerationPlanResult,
+    error: AutoDsmRpcError,
+  },
+);
+
+export const WsAutodsmExportPublishedSnapshotRpc = Rpc.make(
+  WS_METHODS.autodsmExportPublishedSnapshot,
+  {
+    payload: AutoDsmPublishedSnapshotExportInput,
+    success: AutoDsmPublishedSnapshotExportResult,
+    error: AutoDsmRpcError,
+  },
+);
+
+export const WsAutodsmPrepareSessionBranchRpc = Rpc.make(WS_METHODS.autodsmPrepareSessionBranch, {
+  payload: AutoDsmGitSessionBranchInput,
+  success: AutoDsmGitSessionBranchResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmGetIssuesForPromptRpc = Rpc.make(WS_METHODS.autodsmGetIssuesForPrompt, {
+  payload: AutoDsmIssuesForPromptInput,
+  success: AutoDsmIssuesForPromptResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmCreateWorkspaceRpc = Rpc.make(WS_METHODS.autodsmCreateWorkspace, {
+  payload: AutoDsmCreateWorkspaceInput,
+  success: AutoDsmCreateWorkspaceResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmListWorkspaceHistoryRpc = Rpc.make(WS_METHODS.autodsmListWorkspaceHistory, {
+  payload: AutoDsmListWorkspaceHistoryInput,
+  success: AutoDsmListWorkspaceHistoryResult,
+  error: AutoDsmRpcError,
+});
 
 export const WsShellOpenInEditorRpc = Rpc.make(WS_METHODS.shellOpenInEditor, {
   payload: LaunchEditorInput,
@@ -529,6 +805,36 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsReadFileRpc,
   WsProjectsAnalyzeReactComponentRpc,
   WsProjectsBuildComponentPreviewRpc,
+  WsAutodsmGetProjectProfileRpc,
+  WsAutodsmGetBrandProfileRpc,
+  WsAutodsmAddBrandTokenRpc,
+  WsAutodsmRemoveBrandTokenRpc,
+  WsAutodsmUpdateBrandTokenRpc,
+  WsAutodsmResyncBrandTokensRpc,
+  WsAutodsmGetWorkspacePreviewCssRpc,
+  WsAutodsmGetComponentRegistryRpc,
+  WsAutodsmRunWorkspaceBuildRpc,
+  WsAutodsmGetComponentRegistryEntryRpc,
+  WsAutodsmGetRenderEnvironmentProfileRpc,
+  WsAutodsmGetRenderManifestRpc,
+  WsAutodsmGetScanArtifactRpc,
+  WsAutodsmSubscribeIndexingProgressRpc,
+  WsAutodsmRunScanRpc,
+  WsAutodsmBuildRenderPlanRpc,
+  WsAutodsmExecuteRenderPlanRpc,
+  WsAutodsmGetSidecarStatusRpc,
+  WsAutodsmStartSidecarRpc,
+  WsAutodsmGetProviderCatalogRpc,
+  WsAutodsmChangeSetCreateRpc,
+  WsAutodsmChangeSetPreviewRpc,
+  WsAutodsmChangeSetApplyRpc,
+  WsAutodsmChangeSetRollbackRpc,
+  WsAutodsmAssembleGenerationPlanRpc,
+  WsAutodsmExportPublishedSnapshotRpc,
+  WsAutodsmPrepareSessionBranchRpc,
+  WsAutodsmGetIssuesForPromptRpc,
+  WsAutodsmCreateWorkspaceRpc,
+  WsAutodsmListWorkspaceHistoryRpc,
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,
   WsSubscribeVcsStatusRpc,

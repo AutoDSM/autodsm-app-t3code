@@ -1,0 +1,17 @@
+{
+  "name": "@autodsm/chakra-starter",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node -e \"process.exit(0)\""
+  },
+  "dependencies": {
+    "@chakra-ui/react": "^2.10.9",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "framer-motion": "^11.18.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  }
+}

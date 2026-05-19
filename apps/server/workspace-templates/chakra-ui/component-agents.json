@@ -1,0 +1,6 @@
+{
+  "agents": [
+    { "title": "Chakra button", "componentPath": "/src/components/ChakraSolidButton.tsx" },
+    { "title": "Chakra badge row", "componentPath": "/src/components/ChakraBadgeRow.tsx" }
+  ]
+}

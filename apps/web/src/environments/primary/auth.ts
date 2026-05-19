@@ -14,6 +14,10 @@ import {
   getPairingTokenFromUrl,
   stripPairingTokenFromUrl as stripPairingTokenUrl,
 } from "../../pairingUrl";
+import {
+  ensureDevPairingBypassAuthenticated,
+  shouldSkipPairingRedirect,
+} from "../../lib/devPairingBypass";
 
 import { resolvePrimaryEnvironmentHttpUrl } from "./target";
 import * as Data from "effect/Data";
@@ -227,11 +231,62 @@ function isTransientBootstrapError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }
 
+const DESKTOP_BOOTSTRAP_CREDENTIAL_WAIT_MS = 5_000;
+const DESKTOP_BOOTSTRAP_CREDENTIAL_STEP_MS = 50;
+const DESKTOP_PRODUCT_AUTH_POLL_MS = 250;
+const DESKTOP_PRODUCT_AUTH_WAIT_MS = 20_000;
+
+export function hasDesktopBootstrapCapability(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.desktopBridge?.getLocalEnvironmentBootstrap === "function"
+  );
+}
+
+export function resetServerAuthBootstrap(): void {
+  bootstrapPromise = null;
+  resolvedAuthenticatedGateState = null;
+}
+
+async function waitForDesktopBootstrapCredential(): Promise<string | null> {
+  if (typeof window.desktopBridge?.getLocalEnvironmentBootstrap !== "function") {
+    return null;
+  }
+
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < DESKTOP_BOOTSTRAP_CREDENTIAL_WAIT_MS) {
+    const handoff = window.desktopBridge?.getLocalEnvironmentBootstrap?.() ?? null;
+    if (handoff === null) {
+      await waitForBootstrapRetry(DESKTOP_BOOTSTRAP_CREDENTIAL_STEP_MS);
+      continue;
+    }
+
+    const credential = handoff.bootstrapToken;
+    if (typeof credential === "string" && credential.length > 0) {
+      return credential;
+    }
+
+    return null;
+  }
+
+  return getDesktopBootstrapCredential();
+}
+
 async function bootstrapServerAuth(): Promise<ServerAuthGateState> {
-  const bootstrapCredential = getDesktopBootstrapCredential();
+  let bootstrapCredential = getDesktopBootstrapCredential();
+  if (!bootstrapCredential && hasDesktopBootstrapCapability()) {
+    bootstrapCredential = await waitForDesktopBootstrapCredential();
+  }
   const currentSession = await fetchSessionState();
   if (currentSession.authenticated) {
     return { status: "authenticated" };
+  }
+
+  if (shouldSkipPairingRedirect(currentSession.auth)) {
+    const bypassResult = await ensureDevPairingBypassAuthenticated();
+    if (bypassResult.status === "authenticated") {
+      return bypassResult;
+    }
   }
 
   if (!bootstrapCredential) {
@@ -375,6 +430,76 @@ export async function revokeOtherServerClientSessions(): Promise<number> {
 
   const result = (await response.json()) as { revokedCount?: number };
   return result.revokedCount ?? 0;
+}
+
+export async function resolveInitialServerAuthGateStateWithElectronRetry(): Promise<ServerAuthGateState> {
+  let result = await resolveInitialServerAuthGateState();
+  if (result.status === "requires-auth" && hasDesktopBootstrapCapability()) {
+    resetServerAuthBootstrap();
+    result = await resolveInitialServerAuthGateState();
+  }
+  return result;
+}
+
+/**
+ * Desktop product path: keep polling silent desktop-bootstrap until the local backend
+ * handoff is ready. Avoids manual pairing tokens during local Electron development.
+ */
+export async function resolveInitialServerAuthGateStateForLocalDev(): Promise<ServerAuthGateState> {
+  const currentSession = await fetchSessionState();
+  if (currentSession.authenticated) {
+    return { status: "authenticated" };
+  }
+
+  const bypassResult = await ensureDevPairingBypassAuthenticated();
+  if (bypassResult.status === "authenticated") {
+    return bypassResult;
+  }
+
+  if (hasDesktopBootstrapCapability()) {
+    return resolveInitialServerAuthGateStateForDesktopProduct();
+  }
+
+  return resolveInitialServerAuthGateState();
+}
+
+export async function resolveInitialServerAuthGateStateForDesktopProduct(): Promise<ServerAuthGateState> {
+  if (!hasDesktopBootstrapCapability()) {
+    return resolveInitialServerAuthGateStateWithElectronRetry();
+  }
+
+  const deadline = Date.now() + DESKTOP_PRODUCT_AUTH_WAIT_MS;
+  while (Date.now() < deadline) {
+    resetServerAuthBootstrap();
+    const result = await resolveInitialServerAuthGateState();
+    if (result.status === "authenticated") {
+      return result;
+    }
+    await waitForBootstrapRetry(DESKTOP_PRODUCT_AUTH_POLL_MS);
+  }
+
+  resetServerAuthBootstrap();
+  return resolveInitialServerAuthGateState();
+}
+
+export async function retryDesktopProductAuthUntilAuthenticated(options?: {
+  readonly maxWaitMs?: number;
+}): Promise<ServerAuthGateState> {
+  if (!hasDesktopBootstrapCapability()) {
+    return resolveInitialServerAuthGateStateWithElectronRetry();
+  }
+
+  const deadline = Date.now() + (options?.maxWaitMs ?? DESKTOP_PRODUCT_AUTH_WAIT_MS);
+  while (Date.now() < deadline) {
+    resetServerAuthBootstrap();
+    const result = await resolveInitialServerAuthGateState();
+    if (result.status === "authenticated") {
+      return result;
+    }
+    await waitForBootstrapRetry(DESKTOP_PRODUCT_AUTH_POLL_MS);
+  }
+
+  return resolveInitialServerAuthGateState();
 }
 
 export async function resolveInitialServerAuthGateState(): Promise<ServerAuthGateState> {

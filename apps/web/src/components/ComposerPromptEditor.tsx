@@ -5,7 +5,7 @@ import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
-import { type ServerProviderSkill } from "@t3tools/contracts";
+import { type ServerProviderSkill, type AutoDsmBrandToken } from "@t3tools/contracts";
 import {
   $applyNodeReplacement,
   $createRangeSelection,
@@ -46,6 +46,7 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
 } from "react";
 
 import {
@@ -55,9 +56,11 @@ import {
   isCollapsedCursorAdjacentToInlineToken,
 } from "~/composer-logic";
 import {
+  activeBrandTokenTypeaheadQuery,
   selectionTouchesMentionBoundary,
   splitPromptIntoComposerSegments,
 } from "~/composer-editor-mentions";
+import { tokenDisplayName } from "~/lib/designTokenGroups";
 import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   type TerminalContextDraft,
@@ -212,6 +215,107 @@ class ComposerMentionNode extends DecoratorNode<React.ReactElement> {
 
 function $createComposerMentionNode(path: string): ComposerMentionNode {
   return $applyNodeReplacement(new ComposerMentionNode(path));
+}
+
+type SerializedComposerBrandTokenNode = Spread<
+  {
+    name: string;
+    type: "composer-brand-token";
+    version: 1;
+  },
+  SerializedLexicalNode
+>;
+
+function ComposerBrandTokenDecorator(props: { name: string; swatch?: string | undefined }) {
+  const chip = (
+    <span
+      className={COMPOSER_INLINE_CHIP_CLASS_NAME}
+      contentEditable={false}
+      spellCheck={false}
+      data-composer-brand-token-chip="true"
+    >
+      {props.swatch ? (
+        <span
+          aria-hidden
+          className="inline-block size-3 shrink-0 rounded-full border border-border/70"
+          style={{ backgroundColor: props.swatch }}
+        />
+      ) : null}
+      <span className={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}>@{props.name}</span>
+    </span>
+  );
+
+  return (
+    <Tooltip>
+      <TooltipTrigger render={chip} />
+      <TooltipPopup side="top" className="max-w-120 whitespace-normal leading-tight wrap-anywhere">
+        Design token @{props.name}
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
+
+class ComposerBrandTokenNode extends DecoratorNode<React.ReactElement> {
+  __name: string;
+  __swatch?: string | undefined;
+
+  static override getType(): string {
+    return "composer-brand-token";
+  }
+
+  static override clone(node: ComposerBrandTokenNode): ComposerBrandTokenNode {
+    return new ComposerBrandTokenNode(node.__name, node.__swatch, node.__key);
+  }
+
+  static override importJSON(
+    serializedNode: SerializedComposerBrandTokenNode,
+  ): ComposerBrandTokenNode {
+    return $createComposerBrandTokenNode(serializedNode.name).updateFromJSON(serializedNode);
+  }
+
+  constructor(name: string, swatch?: string | undefined, key?: NodeKey) {
+    super(key);
+    this.__name = name.startsWith("@") ? name.slice(1) : name;
+    this.__swatch = swatch;
+  }
+
+  override exportJSON(): SerializedComposerBrandTokenNode {
+    return {
+      ...super.exportJSON(),
+      name: this.__name,
+      type: "composer-brand-token",
+      version: 1,
+    };
+  }
+
+  override createDOM(): HTMLElement {
+    const dom = document.createElement("span");
+    dom.className = "inline-flex align-middle leading-none";
+    return dom;
+  }
+
+  override updateDOM(): false {
+    return false;
+  }
+
+  override getTextContent(): string {
+    return `@${this.__name} `;
+  }
+
+  override isInline(): true {
+    return true;
+  }
+
+  override decorate(): React.ReactElement {
+    return <ComposerBrandTokenDecorator name={this.__name} swatch={this.__swatch} />;
+  }
+}
+
+function $createComposerBrandTokenNode(
+  name: string,
+  swatch?: string | undefined,
+): ComposerBrandTokenNode {
+  return $applyNodeReplacement(new ComposerBrandTokenNode(name, swatch));
 }
 
 function resolveSkillDescription(
@@ -427,12 +531,14 @@ function $createComposerTerminalContextNode(
 
 type ComposerInlineTokenNode =
   | ComposerMentionNode
+  | ComposerBrandTokenNode
   | ComposerSkillNode
   | ComposerTerminalContextNode;
 
 function isComposerInlineTokenNode(candidate: unknown): candidate is ComposerInlineTokenNode {
   return (
     candidate instanceof ComposerMentionNode ||
+    candidate instanceof ComposerBrandTokenNode ||
     candidate instanceof ComposerSkillNode ||
     candidate instanceof ComposerTerminalContextNode
   );
@@ -473,6 +579,20 @@ function skillSignature(skills: ReadonlyArray<ServerProviderSkill>): string {
       ].join("\u001f"),
     )
     .join("\u001e");
+}
+
+function brandTokenLookupMaps(tokens: ReadonlyArray<AutoDsmBrandToken> | undefined): {
+  readonly names: ReadonlySet<string>;
+  readonly swatches: ReadonlyMap<string, string | undefined>;
+} {
+  const names = new Set<string>();
+  const swatches = new Map<string, string | undefined>();
+  for (const token of tokens ?? []) {
+    const key = tokenDisplayName(token).toLowerCase();
+    names.add(key);
+    swatches.set(key, token.color?.light ?? token.value);
+  }
+  return { names, swatches };
 }
 
 function clampExpandedCursor(value: string, cursor: number): number {
@@ -822,16 +942,29 @@ function $setComposerEditorPrompt(
   prompt: string,
   terminalContexts: ReadonlyArray<TerminalContextDraft>,
   skillMetadata: ReadonlyMap<string, ComposerSkillMetadata>,
+  brandTokenNames: ReadonlySet<string>,
+  brandTokenSwatches: ReadonlyMap<string, string | undefined>,
 ): void {
   const root = $getRoot();
   root.clear();
   const paragraph = $createParagraphNode();
   root.append(paragraph);
 
-  const segments = splitPromptIntoComposerSegments(prompt, terminalContexts);
+  const segments = splitPromptIntoComposerSegments(prompt, terminalContexts, {
+    brandTokenNames,
+  });
   for (const segment of segments) {
     if (segment.type === "mention") {
       paragraph.append($createComposerMentionNode(segment.path));
+      continue;
+    }
+    if (segment.type === "brand-token") {
+      paragraph.append(
+        $createComposerBrandTokenNode(
+          segment.name,
+          brandTokenSwatches.get(segment.name.toLowerCase()),
+        ),
+      );
       continue;
     }
     if (segment.type === "skill") {
@@ -882,6 +1015,7 @@ interface ComposerPromptEditorProps {
   cursor: number;
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
   skills: ReadonlyArray<ServerProviderSkill>;
+  brandTokens?: ReadonlyArray<AutoDsmBrandToken>;
   disabled: boolean;
   placeholder: string;
   className?: string;
@@ -1121,10 +1255,12 @@ function ComposerInlineTokenBackspacePlugin() {
 function ComposerSurroundSelectionPlugin(props: {
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
   skills: ReadonlyArray<ServerProviderSkill>;
+  brandTokens?: ReadonlyArray<AutoDsmBrandToken>;
 }) {
   const [editor] = useLexicalComposerContext();
   const terminalContextsRef = useRef(props.terminalContexts);
   const skillMetadataRef = useRef(skillMetadataByName(props.skills));
+  const brandTokenMapsRef = useRef(brandTokenLookupMaps(props.brandTokens));
   const pendingSurroundSelectionRef = useRef<{
     value: string;
     expandedStart: number;
@@ -1143,6 +1279,10 @@ function ComposerSurroundSelectionPlugin(props: {
   useEffect(() => {
     skillMetadataRef.current = skillMetadataByName(props.skills);
   }, [props.skills]);
+
+  useEffect(() => {
+    brandTokenMapsRef.current = brandTokenLookupMaps(props.brandTokens);
+  }, [props.brandTokens]);
 
   const applySurroundInsertion = useEffectEvent((inputData: string): boolean => {
     const surroundCloseSymbol = SURROUND_SYMBOLS_MAP.get(inputData);
@@ -1188,7 +1328,13 @@ function ComposerSurroundSelectionPlugin(props: {
         selectionSnapshot.expandedEnd,
       );
       const nextValue = `${selectionSnapshot.value.slice(0, selectionSnapshot.expandedStart)}${inputData}${selectedText}${surroundCloseSymbol}${selectionSnapshot.value.slice(selectionSnapshot.expandedEnd)}`;
-      $setComposerEditorPrompt(nextValue, terminalContextsRef.current, skillMetadataRef.current);
+      $setComposerEditorPrompt(
+        nextValue,
+        terminalContextsRef.current,
+        skillMetadataRef.current,
+        brandTokenMapsRef.current.names,
+        brandTokenMapsRef.current.swatches,
+      );
       const selectionStart = collapseExpandedComposerCursor(
         nextValue,
         selectionSnapshot.expandedStart,
@@ -1384,11 +1530,99 @@ function ComposerSurroundSelectionPlugin(props: {
   return null;
 }
 
+function ComposerBrandTokenTypeaheadPlugin(props: {
+  readonly brandTokens: ReadonlyArray<AutoDsmBrandToken>;
+  readonly terminalContexts: ReadonlyArray<TerminalContextDraft>;
+  readonly skills: ReadonlyArray<ServerProviderSkill>;
+}) {
+  const [editor] = useLexicalComposerContext();
+  const [query, setQuery] = useState<string | null>(null);
+  const skillMetadata = useMemo(() => skillMetadataByName(props.skills), [props.skills]);
+  const brandMaps = useMemo(() => brandTokenLookupMaps(props.brandTokens), [props.brandTokens]);
+
+  useEffect(() => {
+    return editor.registerUpdateListener(({ editorState }) => {
+      editorState.read(() => {
+        const selection = $getSelection();
+        if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
+          setQuery(null);
+          return;
+        }
+        const value = $getRoot().getTextContent();
+        const cursor = $readSelectionOffsetFromEditorState(0);
+        setQuery(activeBrandTokenTypeaheadQuery(value, cursor));
+      });
+    });
+  }, [editor]);
+
+  const matches = useMemo(() => {
+    if (query === null || props.brandTokens.length === 0) {
+      return [];
+    }
+    const needle = query.toLowerCase();
+    return props.brandTokens
+      .filter((token) => tokenDisplayName(token).toLowerCase().startsWith(needle))
+      .slice(0, 8);
+  }, [props.brandTokens, query]);
+
+  if (query === null || matches.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="absolute bottom-full left-0 z-20 mb-1 max-h-48 w-full overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md">
+      {matches.map((token) => {
+        const name = tokenDisplayName(token);
+        return (
+          <button
+            key={token.id}
+            type="button"
+            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
+            onMouseDown={(event) => {
+              event.preventDefault();
+              editor.update(() => {
+                const value = $getRoot().getTextContent();
+                const cursor = $readSelectionOffsetFromEditorState(0);
+                const activeQuery = activeBrandTokenTypeaheadQuery(value, cursor);
+                if (activeQuery === null) {
+                  return;
+                }
+                const atIndex = value.lastIndexOf(`@${activeQuery}`, cursor);
+                if (atIndex < 0) {
+                  return;
+                }
+                const nextValue = `${value.slice(0, atIndex)}@${name} ${value.slice(cursor)}`;
+                $setComposerEditorPrompt(
+                  nextValue,
+                  props.terminalContexts,
+                  skillMetadata,
+                  brandMaps.names,
+                  brandMaps.swatches,
+                );
+                $setSelectionAtComposerOffset(atIndex + name.length + 2);
+              });
+              setQuery(null);
+            }}
+          >
+            <span
+              aria-hidden
+              className="inline-block size-3 rounded-full border border-border/70"
+              style={{ backgroundColor: token.color?.light ?? token.value }}
+            />
+            <span className="font-mono text-xs">@{name}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function ComposerPromptEditorInner({
   value,
   cursor,
   terminalContexts,
   skills,
+  brandTokens = [],
   disabled,
   placeholder,
   className,
@@ -1406,6 +1640,8 @@ function ComposerPromptEditorInner({
   const skillsSignature = skillSignature(skills);
   const skillsSignatureRef = useRef(skillsSignature);
   const skillMetadataRef = useRef(skillMetadataByName(skills));
+  const brandTokenMaps = useMemo(() => brandTokenLookupMaps(brandTokens), [brandTokens]);
+  const brandTokenMapsRef = useRef(brandTokenMaps);
   const snapshotRef = useRef({
     value,
     cursor: initialCursor,
@@ -1424,7 +1660,8 @@ function ComposerPromptEditorInner({
 
   useLayoutEffect(() => {
     skillMetadataRef.current = skillMetadataByName(skills);
-  }, [skills]);
+    brandTokenMapsRef.current = brandTokenMaps;
+  }, [brandTokenMaps, skills]);
 
   useEffect(() => {
     editor.setEditable(!disabled);
@@ -1464,7 +1701,13 @@ function ComposerPromptEditorInner({
       const shouldRewriteEditorState =
         previousSnapshot.value !== value || contextsChanged || skillsChanged;
       if (shouldRewriteEditorState) {
-        $setComposerEditorPrompt(value, terminalContexts, skillMetadataRef.current);
+        $setComposerEditorPrompt(
+          value,
+          terminalContexts,
+          skillMetadataRef.current,
+          brandTokenMapsRef.current.names,
+          brandTokenMapsRef.current.swatches,
+        );
       }
       if (shouldRewriteEditorState || isFocused) {
         $setSelectionAtComposerOffset(normalizedCursor);
@@ -1631,7 +1874,18 @@ function ComposerPromptEditorInner({
         />
         <OnChangePlugin onChange={handleEditorChange} />
         <ComposerCommandKeyPlugin {...(onCommandKeyDown ? { onCommandKeyDown } : {})} />
-        <ComposerSurroundSelectionPlugin terminalContexts={terminalContexts} skills={skills} />
+        <ComposerSurroundSelectionPlugin
+          terminalContexts={terminalContexts}
+          skills={skills}
+          brandTokens={brandTokens}
+        />
+        {brandTokens.length > 0 ? (
+          <ComposerBrandTokenTypeaheadPlugin
+            brandTokens={brandTokens}
+            terminalContexts={terminalContexts}
+            skills={skills}
+          />
+        ) : null}
         <ComposerInlineTokenArrowPlugin />
         <ComposerInlineTokenSelectionNormalizePlugin />
         <ComposerInlineTokenBackspacePlugin />
@@ -1646,6 +1900,7 @@ export function ComposerPromptEditor({
   cursor,
   terminalContexts,
   skills,
+  brandTokens = [],
   disabled,
   placeholder,
   className,
@@ -1658,16 +1913,24 @@ export function ComposerPromptEditor({
   const initialValueRef = useRef(value);
   const initialTerminalContextsRef = useRef(terminalContexts);
   const initialSkillMetadataRef = useRef(skillMetadataByName(skills));
+  const initialBrandMapsRef = useRef(brandTokenLookupMaps(brandTokens));
   const initialConfig = useMemo<InitialConfigType>(
     () => ({
       namespace: "t3tools-composer-editor",
       editable: true,
-      nodes: [ComposerMentionNode, ComposerSkillNode, ComposerTerminalContextNode],
+      nodes: [
+        ComposerMentionNode,
+        ComposerBrandTokenNode,
+        ComposerSkillNode,
+        ComposerTerminalContextNode,
+      ],
       editorState: () => {
         $setComposerEditorPrompt(
           initialValueRef.current,
           initialTerminalContextsRef.current,
           initialSkillMetadataRef.current,
+          initialBrandMapsRef.current.names,
+          initialBrandMapsRef.current.swatches,
         );
       },
       onError: (error) => {
@@ -1684,6 +1947,7 @@ export function ComposerPromptEditor({
         cursor={cursor}
         terminalContexts={terminalContexts}
         skills={skills}
+        brandTokens={brandTokens}
         disabled={disabled}
         placeholder={placeholder}
         onRemoveTerminalContext={onRemoveTerminalContext}

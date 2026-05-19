@@ -58,3 +58,28 @@ export const ApprovalRequestId = makeEntityId("ApprovalRequestId");
 export type ApprovalRequestId = typeof ApprovalRequestId.Type;
 export const CheckpointRef = makeEntityId("CheckpointRef");
 export type CheckpointRef = typeof CheckpointRef.Type;
+
+/** Stable component identity within a workspace (content-derived). */
+export const AutoDsmComponentId = makeEntityId("AutoDsmComponentId");
+export type AutoDsmComponentId = typeof AutoDsmComponentId.Type;
+
+export const AutoDsmRegistryEntryId = makeEntityId("AutoDsmRegistryEntryId");
+export type AutoDsmRegistryEntryId = typeof AutoDsmRegistryEntryId.Type;
+
+export const AutoDsmRenderPlanId = makeEntityId("AutoDsmRenderPlanId");
+export type AutoDsmRenderPlanId = typeof AutoDsmRenderPlanId.Type;
+
+export const AutoDsmRenderManifestId = makeEntityId("AutoDsmRenderManifestId");
+export type AutoDsmRenderManifestId = typeof AutoDsmRenderManifestId.Type;
+
+export const AutoDsmScanArtifactId = makeEntityId("AutoDsmScanArtifactId");
+export type AutoDsmScanArtifactId = typeof AutoDsmScanArtifactId.Type;
+
+export const AutoDsmChangeSetId = makeEntityId("AutoDsmChangeSetId");
+export type AutoDsmChangeSetId = typeof AutoDsmChangeSetId.Type;
+
+export const AutoDsmPublishedSnapshotId = makeEntityId("AutoDsmPublishedSnapshotId");
+export type AutoDsmPublishedSnapshotId = typeof AutoDsmPublishedSnapshotId.Type;
+
+export const AutoDsmGenerationPlanId = makeEntityId("AutoDsmGenerationPlanId");
+export type AutoDsmGenerationPlanId = typeof AutoDsmGenerationPlanId.Type;

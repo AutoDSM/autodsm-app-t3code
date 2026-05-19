@@ -1,328 +1,89 @@
 <!doctype html>
-<html lang="en">
+<html>
   <head>
     <meta charset="utf-8" />
-    <title>AutoDSM — Process Model</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>AutoDSM Process Model</title>
     <style>
-      :root {
-        --bg: #0b0d12;
-        --panel: #141821;
-        --line: #262c38;
-        --ink: #e7ecf3;
-        --muted: #8b94a7;
-        --accent: #7cc4ff;
-        --good: #8ee089;
-        --warm: #ffb86b;
-        --bad: #ff7a85;
-      }
       body {
-        background: var(--bg);
-        color: var(--ink);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         margin: 0;
-        font:
-          14px/1.5 ui-sans-serif,
-          system-ui,
-          sans-serif;
+        background: #0b1020;
+        color: #eef2ff;
       }
-      .wrap {
-        max-width: 1180px;
-        margin: 24px auto;
-        padding: 0 20px;
+      main {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 48px;
       }
       h1 {
-        margin: 0 0 4px;
-        font-size: 22px;
+        font-size: 42px;
+        margin: 0 0 12px;
       }
-      .sub {
-        color: var(--muted);
-        margin-bottom: 20px;
+      h2 {
+        margin-top: 32px;
+        color: #c4b5fd;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
       }
       .card {
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(255, 255, 255, 0.06);
+        border-radius: 18px;
         padding: 18px;
       }
-      .legend {
-        font-size: 12px;
-        color: var(--muted);
-        margin-top: 8px;
+      .flow {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
       }
-      svg {
-        width: 100%;
-        height: auto;
-        display: block;
+      .pill {
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: #312e81;
+        border: 1px solid #818cf8;
       }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 14px;
-        font-size: 13px;
+      .muted {
+        color: #bac2d9;
       }
-      th,
-      td {
-        border-bottom: 1px solid var(--line);
-        padding: 8px 10px;
-        text-align: left;
-      }
-      th {
-        color: var(--accent);
-        font-weight: 600;
+      code {
+        color: #a7f3d0;
       }
     </style>
   </head>
   <body>
-    <div class="wrap">
-      <h1>AutoDSM — Process Model</h1>
-      <div class="sub">
-        Main / UI renderer / Preview WebContentsView / Server / Sidecar Vite runtime / Worker pool.
-      </div>
-
-      <div class="card">
-        <svg viewBox="0 0 1140 560" xmlns="http://www.w3.org/2000/svg" aria-label="Process model">
-          <defs>
-            <marker
-              id="arr"
-              viewBox="0 0 10 10"
-              refX="9"
-              refY="5"
-              markerWidth="8"
-              markerHeight="8"
-              orient="auto-start-reverse"
-            >
-              <path d="M0,0 L10,5 L0,10 z" fill="#7cc4ff" />
-            </marker>
-            <marker
-              id="arrG"
-              viewBox="0 0 10 10"
-              refX="9"
-              refY="5"
-              markerWidth="8"
-              markerHeight="8"
-              orient="auto-start-reverse"
-            >
-              <path d="M0,0 L10,5 L0,10 z" fill="#8ee089" />
-            </marker>
-            <marker
-              id="arrW"
-              viewBox="0 0 10 10"
-              refX="9"
-              refY="5"
-              markerWidth="8"
-              markerHeight="8"
-              orient="auto-start-reverse"
-            >
-              <path d="M0,0 L10,5 L0,10 z" fill="#ffb86b" />
-            </marker>
-          </defs>
-
-          <!-- Main process container -->
-          <g>
-            <rect x="20" y="20" width="540" height="240" rx="14" fill="#11151d" stroke="#262c38" />
-            <text x="40" y="48" fill="#7cc4ff" font-size="13" font-weight="700">
-              ELECTRON MAIN (Node, privileged)
-            </text>
-
-            <rect x="40" y="64" width="240" height="60" rx="8" fill="#141821" stroke="#262c38" />
-            <text x="160" y="88" text-anchor="middle" fill="#e7ecf3" font-size="13">
-              BaseWindow
-            </text>
-            <text x="160" y="106" text-anchor="middle" fill="#8b94a7" font-size="11">
-              hosts UI &amp; Preview views
-            </text>
-
-            <rect x="300" y="64" width="240" height="60" rx="8" fill="#141821" stroke="#262c38" />
-            <text x="420" y="88" text-anchor="middle" fill="#e7ecf3" font-size="13">
-              PreviewViewController
-            </text>
-            <text x="420" y="106" text-anchor="middle" fill="#8b94a7" font-size="11">
-              owns preview WebContentsView
-            </text>
-
-            <rect x="40" y="140" width="240" height="50" rx="8" fill="#141821" stroke="#262c38" />
-            <text x="160" y="170" text-anchor="middle" fill="#e7ecf3" font-size="13">
-              Worker pool
-            </text>
-
-            <rect x="300" y="140" width="240" height="50" rx="8" fill="#141821" stroke="#262c38" />
-            <text x="420" y="170" text-anchor="middle" fill="#e7ecf3" font-size="13">
-              Git engine • Settings • Keychain
-            </text>
-
-            <rect x="40" y="200" width="500" height="44" rx="8" fill="#141821" stroke="#262c38" />
-            <text x="290" y="227" text-anchor="middle" fill="#e7ecf3" font-size="13">
-              Typed RPC server (effect/Schema)
-            </text>
-          </g>
-
-          <!-- UI Renderer -->
-          <g>
-            <rect x="600" y="20" width="520" height="110" rx="14" fill="#11151d" stroke="#262c38" />
-            <text x="620" y="48" fill="#7cc4ff" font-size="13" font-weight="700">
-              UI RENDERER (Chromium, sandbox)
-            </text>
-            <rect x="620" y="60" width="220" height="50" rx="8" fill="#141821" stroke="#262c38" />
-            <text x="730" y="90" text-anchor="middle" fill="#e7ecf3" font-size="12">
-              App shell • Workbench • DiffPanel
-            </text>
-            <rect x="860" y="60" width="240" height="50" rx="8" fill="#141821" stroke="#262c38" />
-            <text x="980" y="90" text-anchor="middle" fill="#e7ecf3" font-size="12">
-              No preview webContents handle
-            </text>
-          </g>
-
-          <!-- Preview view -->
-          <g>
-            <rect
-              x="600"
-              y="150"
-              width="520"
-              height="110"
-              rx="14"
-              fill="#11151d"
-              stroke="#262c38"
-            />
-            <text x="620" y="178" fill="#8ee089" font-size="13" font-weight="700">
-              PREVIEW WebContentsView (sibling)
-            </text>
-            <rect x="620" y="190" width="240" height="50" rx="8" fill="#141821" stroke="#262c38" />
-            <text x="740" y="220" text-anchor="middle" fill="#e7ecf3" font-size="12">
-              loadURL → 127.0.0.1 sidecar
-            </text>
-            <rect x="880" y="190" width="220" height="50" rx="8" fill="#141821" stroke="#262c38" />
-            <text x="990" y="220" text-anchor="middle" fill="#e7ecf3" font-size="12">
-              CDP screenshots • diagnostics
-            </text>
-          </g>
-
-          <!-- Local server -->
-          <g>
-            <rect x="20" y="290" width="540" height="120" rx="14" fill="#11151d" stroke="#262c38" />
-            <text x="40" y="318" fill="#7cc4ff" font-size="13" font-weight="700">
-              LOCAL SERVER (Node)
-            </text>
-            <rect x="40" y="330" width="240" height="60" rx="8" fill="#141821" stroke="#262c38" />
-            <text x="160" y="354" text-anchor="middle" fill="#e7ecf3" font-size="13">
-              WS NativeApi + events
-            </text>
-            <text x="160" y="372" text-anchor="middle" fill="#8b94a7" font-size="11">
-              loopback by default
-            </text>
-            <rect x="300" y="330" width="240" height="60" rx="8" fill="#141821" stroke="#262c38" />
-            <text x="420" y="354" text-anchor="middle" fill="#e7ecf3" font-size="13">
-              Provider session manager
-            </text>
-            <text x="420" y="372" text-anchor="middle" fill="#8b94a7" font-size="11">
-              Codex app-server, Claude, …
-            </text>
-          </g>
-
-          <!-- Sidecar -->
-          <g>
-            <rect
-              x="600"
-              y="290"
-              width="520"
-              height="120"
-              rx="14"
-              fill="#11151d"
-              stroke="#262c38"
-            />
-            <text x="620" y="318" fill="#ffb86b" font-size="13" font-weight="700">
-              SIDECAR Vite RUNTIME (per project)
-            </text>
-            <rect x="620" y="330" width="240" height="60" rx="8" fill="#141821" stroke="#262c38" />
-            <text x="740" y="354" text-anchor="middle" fill="#e7ecf3" font-size="12">
-              RenderEnvironmentProfile
-            </text>
-            <text x="740" y="372" text-anchor="middle" fill="#8b94a7" font-size="11">
-              ProviderPack stack
-            </text>
-            <rect x="880" y="330" width="220" height="60" rx="8" fill="#141821" stroke="#262c38" />
-            <text x="990" y="354" text-anchor="middle" fill="#e7ecf3" font-size="12">
-              HMR for component edits
-            </text>
-            <text x="990" y="372" text-anchor="middle" fill="#8b94a7" font-size="11">
-              loopback bind only
-            </text>
-          </g>
-
-          <!-- Worker pool (visual stub) -->
-          <g>
-            <rect x="20" y="440" width="540" height="100" rx="14" fill="#11151d" stroke="#262c38" />
-            <text x="40" y="468" fill="#7cc4ff" font-size="13" font-weight="700">
-              WORKER POOL (off-main)
-            </text>
-            <rect x="40" y="480" width="160" height="50" rx="8" fill="#141821" stroke="#262c38" />
-            <text x="120" y="510" text-anchor="middle" fill="#e7ecf3" font-size="12">Indexer</text>
-            <rect x="220" y="480" width="160" height="50" rx="8" fill="#141821" stroke="#262c38" />
-            <text x="300" y="510" text-anchor="middle" fill="#e7ecf3" font-size="12">Scanner</text>
-            <rect x="400" y="480" width="140" height="50" rx="8" fill="#141821" stroke="#262c38" />
-            <text x="470" y="510" text-anchor="middle" fill="#e7ecf3" font-size="12">
-              Screenshot
-            </text>
-          </g>
-
-          <!-- Edges -->
-          <g stroke="#7cc4ff" stroke-width="2" fill="none">
-            <line x1="560" y1="80" x2="600" y2="80" marker-end="url(#arr)" />
-            <line x1="560" y1="200" x2="600" y2="200" marker-end="url(#arr)" />
-          </g>
-          <g stroke="#8ee089" stroke-width="2" fill="none" stroke-dasharray="4 4">
-            <line x1="860" y1="240" x2="860" y2="290" marker-end="url(#arrG)" />
-          </g>
-          <g stroke="#ffb86b" stroke-width="2" fill="none">
-            <line x1="290" y1="244" x2="290" y2="290" marker-end="url(#arrW)" />
-            <line x1="290" y1="440" x2="290" y2="410" marker-end="url(#arrW)" />
-          </g>
-        </svg>
-        <div class="legend">
-          Blue = main↔renderer typed RPC. Green = preview reaching the sidecar over loopback. Orange
-          = main↔server / main↔workers.
+    <main>
+      <h1>AutoDSM Process Model</h1>
+      <p class="muted">Renderer UI → main services → T3 Code agent / Storybook / filesystem.</p>
+      <div class="grid">
+        <div class="card">
+          <b>Renderer</b>
+          <p>Sandboxed AutoDSM screens.</p>
+        </div>
+        <div class="card">
+          <b>Main</b>
+          <p>IPC, services, WebContentsView.</p>
+        </div>
+        <div class="card">
+          <b>T3 Code</b>
+          <p>Codex provider loop and events.</p>
+        </div>
+        <div class="card">
+          <b>Storybook</b>
+          <p>Local render server per workspace.</p>
+        </div>
+        <div class="card">
+          <b>Filesystem</b>
+          <p><code>~/.autodsm/systems</code> and exports.</p>
+        </div>
+        <div class="card">
+          <b>Supabase</b>
+          <p>Auth, telemetry, feedback only.</p>
         </div>
       </div>
-
-      <table>
-        <thead>
-          <tr>
-            <th>Process</th>
-            <th>Owns</th>
-            <th>Never does</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>Main</td>
-            <td>Windows, views, workers, git, keychain, RPC</td>
-            <td>Render JSX; talk to non-loopback hosts</td>
-          </tr>
-          <tr>
-            <td>UI renderer</td>
-            <td>App UX, DiffPanel, conversation</td>
-            <td>Hold the preview's webContents; read disk directly</td>
-          </tr>
-          <tr>
-            <td>Preview view</td>
-            <td>Mounting user components via sidecar</td>
-            <td>Run Node APIs; navigate off loopback</td>
-          </tr>
-          <tr>
-            <td>Local server</td>
-            <td>WS NativeApi, provider sessions, FS reads under project root</td>
-            <td>Bind non-loopback by default</td>
-          </tr>
-          <tr>
-            <td>Sidecar runtime</td>
-            <td>Component graph + provider packs</td>
-            <td>Eval arbitrary host code; bind non-loopback</td>
-          </tr>
-          <tr>
-            <td>Worker pool</td>
-            <td>Indexer, scanner, screenshot diff</td>
-            <td>Hold renderer or main singletons</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    </main>
   </body>
 </html>

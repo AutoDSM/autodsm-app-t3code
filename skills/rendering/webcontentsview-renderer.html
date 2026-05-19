@@ -1,288 +1,79 @@
 <!doctype html>
-<html lang="en">
+<html>
   <head>
     <meta charset="utf-8" />
-    <title>AutoDSM — Preview WebContentsView</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Storybook Preview Renderer</title>
     <style>
-      :root {
-        --bg: #0b0d12;
-        --panel: #141821;
-        --line: #262c38;
-        --ink: #e7ecf3;
-        --muted: #8b94a7;
-        --accent: #7cc4ff;
-        --good: #8ee089;
-        --warm: #ffb86b;
-      }
       body {
-        background: var(--bg);
-        color: var(--ink);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         margin: 0;
-        font:
-          14px/1.5 ui-sans-serif,
-          system-ui,
-          sans-serif;
+        background: #0b1020;
+        color: #eef2ff;
       }
-      .wrap {
-        max-width: 1180px;
-        margin: 24px auto;
-        padding: 0 20px;
+      main {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 48px;
       }
       h1 {
-        margin: 0 0 4px;
-        font-size: 22px;
+        font-size: 42px;
+        margin: 0 0 12px;
       }
-      .sub {
-        color: var(--muted);
-        margin-bottom: 20px;
+      h2 {
+        margin-top: 32px;
+        color: #c4b5fd;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
       }
       .card {
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(255, 255, 255, 0.06);
+        border-radius: 18px;
         padding: 18px;
       }
-      .legend {
-        font-size: 12px;
-        color: var(--muted);
-        margin-top: 8px;
+      .flow {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
       }
-      svg {
-        width: 100%;
-        height: auto;
-        display: block;
+      .pill {
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: #312e81;
+        border: 1px solid #818cf8;
+      }
+      .muted {
+        color: #bac2d9;
       }
       code {
-        background: #11151d;
-        padding: 1px 6px;
-        border-radius: 4px;
-        color: var(--accent);
-      }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 14px;
-        font-size: 13px;
-      }
-      th,
-      td {
-        border-bottom: 1px solid var(--line);
-        padding: 8px 10px;
-        text-align: left;
-      }
-      th {
-        color: var(--accent);
-        font-weight: 600;
+        color: #a7f3d0;
       }
     </style>
   </head>
   <body>
-    <div class="wrap">
-      <h1>Preview WebContentsView — Topology &amp; Message Flow</h1>
-      <div class="sub">
-        Sibling child view under a <code>BaseWindow</code>. Not an iframe. Owned by
-        <code>PreviewViewController</code>.
-      </div>
-
-      <div class="card">
-        <svg
-          viewBox="0 0 1100 460"
-          xmlns="http://www.w3.org/2000/svg"
-          aria-label="WebContentsView topology"
-        >
-          <defs>
-            <marker
-              id="arr"
-              viewBox="0 0 10 10"
-              refX="9"
-              refY="5"
-              markerWidth="8"
-              markerHeight="8"
-              orient="auto-start-reverse"
-            >
-              <path d="M0,0 L10,5 L0,10 z" fill="#7cc4ff" />
-            </marker>
-            <marker
-              id="arrG"
-              viewBox="0 0 10 10"
-              refX="9"
-              refY="5"
-              markerWidth="8"
-              markerHeight="8"
-              orient="auto-start-reverse"
-            >
-              <path d="M0,0 L10,5 L0,10 z" fill="#8ee089" />
-            </marker>
-            <marker
-              id="arrW"
-              viewBox="0 0 10 10"
-              refX="9"
-              refY="5"
-              markerWidth="8"
-              markerHeight="8"
-              orient="auto-start-reverse"
-            >
-              <path d="M0,0 L10,5 L0,10 z" fill="#ffb86b" />
-            </marker>
-          </defs>
-
-          <!-- BaseWindow box -->
-          <rect x="20" y="20" width="1060" height="320" rx="14" fill="#11151d" stroke="#262c38" />
-          <text x="40" y="48" fill="#7cc4ff" font-size="13" font-weight="700">
-            BaseWindow (main owns)
-          </text>
-
-          <!-- UI view -->
-          <rect x="40" y="68" width="490" height="250" rx="10" fill="#141821" stroke="#262c38" />
-          <text x="60" y="92" fill="#e7ecf3" font-size="13" font-weight="700">
-            WebContentsView "ui"
-          </text>
-          <text x="60" y="112" fill="#8b94a7" font-size="12">
-            React app, DiffPanel, conversation, settings
-          </text>
-          <text x="60" y="132" fill="#8b94a7" font-size="12">
-            Has typed
-            <tspan fill="#7cc4ff">window.api.*</tspan>
-            preload bridge
-          </text>
-          <text x="60" y="160" fill="#8ee089" font-size="12">Never holds preview webContents</text>
-          <text x="60" y="180" fill="#8ee089" font-size="12">
-            Sends bounds + intent via typed RPC
-          </text>
-
-          <!-- Preview view -->
-          <rect x="560" y="68" width="500" height="250" rx="10" fill="#141821" stroke="#262c38" />
-          <text x="580" y="92" fill="#8ee089" font-size="13" font-weight="700">
-            WebContentsView "preview"
-          </text>
-          <text x="580" y="112" fill="#8b94a7" font-size="12">
-            Partition:
-            <tspan fill="#7cc4ff">persist:autodsm-&lt;projectId&gt;</tspan>
-          </text>
-          <text x="580" y="132" fill="#8b94a7" font-size="12">
-            loadURL:
-            <tspan fill="#7cc4ff">http://127.0.0.1:&lt;port&gt;</tspan>
-          </text>
-          <text x="580" y="160" fill="#8ee089" font-size="12">
-            Receives
-            <tspan fill="#7cc4ff">preview:state</tspan>
-            via webContents.send
-          </text>
-          <text x="580" y="180" fill="#8ee089" font-size="12">
-            Emits diagnostics + CDP screenshots
-          </text>
-
-          <!-- PreviewViewController bridge -->
-          <rect
-            x="200"
-            y="220"
-            width="700"
-            height="80"
-            rx="10"
-            fill="#0b0d12"
-            stroke="#7cc4ff"
-            stroke-dasharray="4 4"
-          />
-          <text
-            x="550"
-            y="248"
-            text-anchor="middle"
-            fill="#7cc4ff"
-            font-size="13"
-            font-weight="700"
-          >
-            PreviewViewController (main process)
-          </text>
-          <text x="550" y="270" text-anchor="middle" fill="#8b94a7" font-size="12">
-            loadComponent • setBounds • setPropsAndTheme • capture • dispatchInput • diagnostics •
-            dispose
-          </text>
-
-          <!-- arrows -->
-          <g stroke="#7cc4ff" stroke-width="2" fill="none">
-            <line x1="280" y1="200" x2="280" y2="220" marker-end="url(#arr)" />
-            <line x1="800" y1="200" x2="800" y2="220" marker-end="url(#arr)" />
-          </g>
-          <g stroke="#8ee089" stroke-width="2" fill="none">
-            <line x1="900" y1="260" x2="970" y2="260" />
-            <line x1="970" y1="260" x2="970" y2="380" />
-            <line x1="970" y1="380" x2="600" y2="380" />
-            <line x1="600" y1="380" x2="600" y2="420" marker-end="url(#arrG)" />
-          </g>
-
-          <!-- Sidecar -->
-          <rect x="460" y="360" width="280" height="80" rx="10" fill="#11151d" stroke="#ffb86b" />
-          <text
-            x="600"
-            y="388"
-            text-anchor="middle"
-            fill="#ffb86b"
-            font-size="13"
-            font-weight="700"
-          >
-            SIDECAR Vite RUNTIME
-          </text>
-          <text x="600" y="408" text-anchor="middle" fill="#8b94a7" font-size="12">
-            loopback bind • ProviderPack stack
-          </text>
-          <text x="600" y="425" text-anchor="middle" fill="#8b94a7" font-size="12">
-            HMR for component edits
-          </text>
-        </svg>
-        <div class="legend">
-          Blue dashed = typed RPC into controller. Green = controller → preview webContents.send /
-          capture. Orange = preview HTTP/WS to sidecar (loopback only).
+    <main>
+      <h1>Storybook Preview Renderer</h1>
+      <p class="muted">
+        AutoDSM v1 renders generated stories through a locked-down WebContentsView.
+      </p>
+      <div class="grid">
+        <div class="card">
+          <b>StorybookOrchestrator</b>
+          <p>Generates stories and starts local server.</p>
+        </div>
+        <div class="card">
+          <b>PreviewView</b>
+          <p>Loads selected story URL.</p>
+        </div>
+        <div class="card">
+          <b>Render Health</b>
+          <p>Reports component failures.</p>
         </div>
       </div>
-
-      <table>
-        <thead>
-          <tr>
-            <th>Channel</th>
-            <th>Direction</th>
-            <th>Schema</th>
-            <th>Purpose</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><code>preview:set-bounds</code></td>
-            <td>UI → main</td>
-            <td><code>SetBoundsRequest</code></td>
-            <td>Position/size preview view</td>
-          </tr>
-          <tr>
-            <td><code>preview:load</code></td>
-            <td>UI → main</td>
-            <td><code>RenderPlan</code></td>
-            <td>Load a component at a given state</td>
-          </tr>
-          <tr>
-            <td><code>preview:state</code></td>
-            <td>main → preview</td>
-            <td><code>PreviewPropsAndTheme</code></td>
-            <td>Live props/theme without reload</td>
-          </tr>
-          <tr>
-            <td><code>preview:capture</code></td>
-            <td>UI → main → preview</td>
-            <td><code>CaptureOptions / ScreenshotId</code></td>
-            <td>CDP screenshot pipeline</td>
-          </tr>
-          <tr>
-            <td><code>preview:input</code></td>
-            <td>UI → main → preview</td>
-            <td><code>InputEvent</code></td>
-            <td>Dispatch synthetic input via CDP</td>
-          </tr>
-          <tr>
-            <td><code>preview:diagnostics</code></td>
-            <td>preview → main → UI</td>
-            <td><code>DiagnosticsEvent</code></td>
-            <td>Console, errors, denials, timings</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    </main>
   </body>
 </html>

@@ -197,6 +197,19 @@ const startup = Effect.gen(function* () {
   yield* shellEnvironment.installIntoProcess;
   const userDataPath = yield* appIdentity.resolveUserDataPath;
   yield* electronApp.setPath("userData", userDataPath);
+  if (environment.isDevelopment) {
+    // Dev runs are restarted often; isolate Chromium session caches from stale process trees.
+    yield* electronApp.setPath(
+      "sessionData",
+      environment.path.join(userDataPath, "Session Data", String(process.pid)),
+    );
+    yield* electronApp.appendCommandLineSwitch("disable-http-cache");
+    yield* electronApp.appendCommandLineSwitch(
+      "disable-features",
+      "CompressionDictionaryTransport,CompressionDictionaryTransportBackend,SharedDictionary",
+    );
+    yield* electronApp.appendCommandLineSwitch("disable-logging");
+  }
   yield* logStartupInfo("runtime logging configured", { logDir: environment.logDir });
   yield* desktopSettings.load;
 

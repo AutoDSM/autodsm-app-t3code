@@ -1,5 +1,13 @@
+import type { EnvironmentId, ProjectId, ScopedProjectRef } from "@t3tools/contracts";
 import { Debouncer } from "@tanstack/react-pacer";
 import { create } from "zustand";
+
+import {
+  defaultAutodsmOnboardingState,
+  mergeAutodsmOnboarding,
+  sanitizeAutodsmOnboarding,
+  type AutoDsmOnboardingState,
+} from "./lib/autoDsmOnboarding";
 
 export const PERSISTED_STATE_KEY = "t3code:ui-state:v1";
 const LEGACY_PERSISTED_STATE_KEYS = [
@@ -21,6 +29,18 @@ export interface PersistedUiState {
   projectOrderCwds?: string[];
   defaultAdvertisedEndpointKey?: string | null;
   threadChangedFilesExpandedById?: Record<string, Record<string, boolean>>;
+  /** Folder opened from AutoDSM launch (Open folder / clone intake). */
+  autoDsmWorkspaceProjectRef?: {
+    readonly environmentId: string;
+    readonly projectId: string;
+  } | null;
+  /** AutoDSM product onboarding wizard (fake auth + starter selection until real fork ships). */
+  autodsmOnboarding?: AutoDsmOnboardingState;
+  /**
+   * Thread id → workspace-relative preview path (`src/components/...`), seeded by
+   * `autodsm.createWorkspace` for COMPONENTS-as-threads navigation.
+   */
+  autoDsmThreadComponentPathById?: Record<string, string>;
 }
 
 export interface UiProjectState {
@@ -37,7 +57,20 @@ export interface UiEndpointState {
   defaultAdvertisedEndpointKey: string | null;
 }
 
-export interface UiState extends UiProjectState, UiThreadState, UiEndpointState {}
+export interface UiAutoDsmWorkspaceState {
+  /**
+   * Explicit AutoDSM product workspace (launch-page folder choice).
+   * When null, AutoDSM surfaces fall back to route/thread or sidebar ordering.
+   */
+  autoDsmWorkspaceProjectRef: ScopedProjectRef | null;
+}
+
+export interface UiState
+  extends UiProjectState, UiThreadState, UiEndpointState, UiAutoDsmWorkspaceState {
+  autodsmOnboarding: AutoDsmOnboardingState;
+  /** Maps scoped thread key → `src/components/...` path for AutoDSM preview search params. */
+  autoDsmThreadComponentPathById: Record<string, string>;
+}
 
 export interface SyncProjectInput {
   /** Physical project key (env + cwd). Used for manual sort order. */
@@ -45,6 +78,8 @@ export interface SyncProjectInput {
   /** Logical group key. Used for expand/collapse state. */
   logicalKey: string;
   cwd: string;
+  environmentId: EnvironmentId;
+  projectId: ProjectId;
 }
 
 export interface SyncThreadInput {
@@ -58,6 +93,9 @@ const initialState: UiState = {
   threadLastVisitedAtById: {},
   threadChangedFilesExpandedById: {},
   defaultAdvertisedEndpointKey: null,
+  autoDsmWorkspaceProjectRef: null,
+  autodsmOnboarding: defaultAutodsmOnboardingState,
+  autoDsmThreadComponentPathById: {},
 };
 
 const persistedCollapsedProjectCwds = new Set<string>();
@@ -92,6 +130,22 @@ function readPersistedState(): UiState {
     }
     const parsed = JSON.parse(raw) as PersistedUiState;
     hydratePersistedProjectState(parsed);
+    const persistedAutoDsm =
+      parsed.autoDsmWorkspaceProjectRef &&
+      typeof parsed.autoDsmWorkspaceProjectRef.environmentId === "string" &&
+      parsed.autoDsmWorkspaceProjectRef.environmentId.length > 0 &&
+      typeof parsed.autoDsmWorkspaceProjectRef.projectId === "string" &&
+      parsed.autoDsmWorkspaceProjectRef.projectId.length > 0
+        ? {
+            environmentId: parsed.autoDsmWorkspaceProjectRef.environmentId as EnvironmentId,
+            projectId: parsed.autoDsmWorkspaceProjectRef.projectId as ProjectId,
+          }
+        : null;
+    const persistedOnboarding =
+      sanitizeAutodsmOnboarding(parsed.autodsmOnboarding) ?? defaultAutodsmOnboardingState;
+    const persistedPreviewPaths = sanitizeAutoDsmThreadComponentPathById(
+      parsed.autoDsmThreadComponentPathById,
+    );
     return {
       ...initialState,
       defaultAdvertisedEndpointKey:
@@ -102,10 +156,33 @@ function readPersistedState(): UiState {
       threadChangedFilesExpandedById: sanitizePersistedThreadChangedFilesExpanded(
         parsed.threadChangedFilesExpandedById,
       ),
+      autoDsmWorkspaceProjectRef: persistedAutoDsm,
+      autodsmOnboarding: persistedOnboarding,
+      autoDsmThreadComponentPathById: persistedPreviewPaths,
     };
   } catch {
     return initialState;
   }
+}
+
+function sanitizeAutoDsmThreadComponentPathById(
+  value: PersistedUiState["autoDsmThreadComponentPathById"],
+): Record<string, string> {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+  const next: Record<string, string> = {};
+  for (const [threadId, path] of Object.entries(value)) {
+    if (
+      typeof threadId === "string" &&
+      threadId.length > 0 &&
+      typeof path === "string" &&
+      path.length > 0
+    ) {
+      next[threadId] = path;
+    }
+  }
+  return next;
 }
 
 function sanitizePersistedThreadChangedFilesExpanded(
@@ -192,6 +269,9 @@ export function persistState(state: UiState): void {
         projectOrderCwds,
         defaultAdvertisedEndpointKey: state.defaultAdvertisedEndpointKey,
         threadChangedFilesExpandedById,
+        autoDsmWorkspaceProjectRef: state.autoDsmWorkspaceProjectRef,
+        autodsmOnboarding: state.autodsmOnboarding,
+        autoDsmThreadComponentPathById: state.autoDsmThreadComponentPathById,
       } satisfies PersistedUiState),
     );
     if (!legacyKeysCleanedUp) {
@@ -244,7 +324,44 @@ function nestedBooleanRecordsEqual(
   return true;
 }
 
+function pruneStaleAutoDsmWorkspaceProjectRef(
+  state: UiState,
+  projects: readonly SyncProjectInput[],
+): UiState {
+  const ref = state.autoDsmWorkspaceProjectRef;
+  if (!ref) {
+    return state;
+  }
+  const alive = projects.some(
+    (project) => project.environmentId === ref.environmentId && project.projectId === ref.projectId,
+  );
+  if (alive) {
+    return state;
+  }
+  return { ...state, autoDsmWorkspaceProjectRef: null };
+}
+
+export function applyAutoDsmWorkspaceProjectRef(
+  state: UiState,
+  ref: ScopedProjectRef | null,
+): UiState {
+  if (ref === null) {
+    if (state.autoDsmWorkspaceProjectRef === null) {
+      return state;
+    }
+    return { ...state, autoDsmWorkspaceProjectRef: null };
+  }
+  if (
+    state.autoDsmWorkspaceProjectRef?.environmentId === ref.environmentId &&
+    state.autoDsmWorkspaceProjectRef?.projectId === ref.projectId
+  ) {
+    return state;
+  }
+  return { ...state, autoDsmWorkspaceProjectRef: ref };
+}
+
 export function syncProjects(state: UiState, projects: readonly SyncProjectInput[]): UiState {
+  state = pruneStaleAutoDsmWorkspaceProjectRef(state, projects);
   const previousProjectCwdById = new Map(currentProjectCwdById);
   const previousLogicalKeyByPhysicalKey = new Map(currentLogicalKeyByPhysicalKey);
   currentProjectCwdById.clear();
@@ -416,12 +533,18 @@ export function syncThreads(state: UiState, threads: readonly SyncThreadInput[])
       retainedThreadIds.has(threadId),
     ),
   );
+  const nextAutoDsmPaths = Object.fromEntries(
+    Object.entries(state.autoDsmThreadComponentPathById).filter(([threadId]) =>
+      retainedThreadIds.has(threadId),
+    ),
+  );
   if (
     recordsEqual(state.threadLastVisitedAtById, nextThreadLastVisitedAtById) &&
     nestedBooleanRecordsEqual(
       state.threadChangedFilesExpandedById,
       nextThreadChangedFilesExpandedById,
-    )
+    ) &&
+    recordsEqual(state.autoDsmThreadComponentPathById, nextAutoDsmPaths)
   ) {
     return state;
   }
@@ -429,6 +552,7 @@ export function syncThreads(state: UiState, threads: readonly SyncThreadInput[])
     ...state,
     threadLastVisitedAtById: nextThreadLastVisitedAtById,
     threadChangedFilesExpandedById: nextThreadChangedFilesExpandedById,
+    autoDsmThreadComponentPathById: nextAutoDsmPaths,
   };
 }
 
@@ -481,17 +605,21 @@ export function markThreadUnread(
 export function clearThreadUi(state: UiState, threadId: string): UiState {
   const hasVisitedState = threadId in state.threadLastVisitedAtById;
   const hasChangedFilesState = threadId in state.threadChangedFilesExpandedById;
-  if (!hasVisitedState && !hasChangedFilesState) {
+  const hasPreviewPath = threadId in state.autoDsmThreadComponentPathById;
+  if (!hasVisitedState && !hasChangedFilesState && !hasPreviewPath) {
     return state;
   }
   const nextThreadLastVisitedAtById = { ...state.threadLastVisitedAtById };
   const nextThreadChangedFilesExpandedById = { ...state.threadChangedFilesExpandedById };
+  const nextAutoDsmPaths = { ...state.autoDsmThreadComponentPathById };
   delete nextThreadLastVisitedAtById[threadId];
   delete nextThreadChangedFilesExpandedById[threadId];
+  delete nextAutoDsmPaths[threadId];
   return {
     ...state,
     threadLastVisitedAtById: nextThreadLastVisitedAtById,
     threadChangedFilesExpandedById: nextThreadChangedFilesExpandedById,
+    autoDsmThreadComponentPathById: nextAutoDsmPaths,
   };
 }
 
@@ -630,6 +758,10 @@ interface UiStateStore extends UiState {
   clearThreadUi: (threadId: string) => void;
   setThreadChangedFilesExpanded: (threadId: string, turnId: string, expanded: boolean) => void;
   setDefaultAdvertisedEndpointKey: (key: string | null) => void;
+  setAutoDsmWorkspaceProjectRef: (ref: ScopedProjectRef | null) => void;
+  patchAutodsmOnboarding: (patch: Partial<AutoDsmOnboardingState>) => void;
+  completeAutodsmOnboarding: () => void;
+  mergeAutoDsmThreadComponentPaths: (paths: Record<string, string>) => void;
   toggleProject: (projectId: string) => void;
   setProjectExpanded: (projectId: string, expanded: boolean) => void;
   reorderProjects: (
@@ -651,6 +783,25 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
     set((state) => setThreadChangedFilesExpanded(state, threadId, turnId, expanded)),
   setDefaultAdvertisedEndpointKey: (key) =>
     set((state) => setDefaultAdvertisedEndpointKey(state, key)),
+  setAutoDsmWorkspaceProjectRef: (ref) =>
+    set((state) => applyAutoDsmWorkspaceProjectRef(state, ref)),
+  patchAutodsmOnboarding: (patch) =>
+    set((state) => ({
+      ...state,
+      autodsmOnboarding: mergeAutodsmOnboarding(state.autodsmOnboarding, patch),
+    })),
+  completeAutodsmOnboarding: () =>
+    set((state) => ({
+      ...state,
+      autodsmOnboarding: mergeAutodsmOnboarding(state.autodsmOnboarding, {
+        completed: true,
+      }),
+    })),
+  mergeAutoDsmThreadComponentPaths: (paths) =>
+    set((state) => ({
+      ...state,
+      autoDsmThreadComponentPathById: { ...state.autoDsmThreadComponentPathById, ...paths },
+    })),
   toggleProject: (projectId) => set((state) => toggleProject(state, projectId)),
   setProjectExpanded: (projectId, expanded) =>
     set((state) => setProjectExpanded(state, projectId, expanded)),

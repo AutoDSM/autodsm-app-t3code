@@ -28,6 +28,7 @@ import {
   parseRemoteRefWithRemoteNames,
 } from "../git/remoteRefs.ts";
 import { ServerConfig } from "../config.ts";
+import { vitestGitArgsPrefix, vitestGitSpawnEnv } from "./gitVitestSandboxHooks.ts";
 const isGitCommandError = Schema.is(GitCommandError);
 
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -615,7 +616,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     function* (input) {
       const commandInput = {
         ...input,
-        args: [...input.args],
+        args: [...vitestGitArgsPrefix(), ...input.args],
       } as const;
       const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS;
       const maxOutputBytes = input.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
@@ -633,6 +634,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
               cwd: commandInput.cwd,
               env: {
                 ...process.env,
+                ...vitestGitSpawnEnv(),
                 ...input.env,
                 ...trace2Monitor.env,
               },

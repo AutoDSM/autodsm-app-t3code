@@ -125,7 +125,7 @@ export function buildThreadActionItems<TThread extends BuildThreadActionItemsThr
   renderLeadingContent?: (thread: TThread) => ReactNode;
   /** Optional content rendered inline after the title text per-thread. */
   renderTrailingContent?: (thread: TThread) => ReactNode;
-  runThread: (thread: Pick<SidebarThreadSummary, "environmentId" | "id">) => Promise<void>;
+  runThread: (thread: TThread) => Promise<void>;
   limit?: number;
 }): CommandPaletteActionItem[] {
   const sortedThreads = sortThreads(

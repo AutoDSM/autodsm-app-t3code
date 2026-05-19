@@ -136,6 +136,7 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
+  devDisablePairing: Config.boolean("T3CODE_DEV_DISABLE_PAIRING").pipe(Config.withDefault(false)),
 });
 
 export interface CliServerFlags {
@@ -298,6 +299,7 @@ export const resolveServerConfig = (
       () => mode === "desktop",
     );
     const desktopBootstrapToken = bootstrap?.desktopBootstrapToken;
+    const devDisablePairing = env.devDisablePairing && (devUrl !== undefined || mode === "desktop");
     const autoBootstrapProjectFromCwd = Option.getOrElse(
       resolveOptionPrecedence(
         Option.fromUndefinedOr(options?.forceAutoBootstrapProjectFromCwd),
@@ -370,6 +372,7 @@ export const resolveServerConfig = (
       noBrowser,
       startupPresentation,
       desktopBootstrapToken,
+      devDisablePairing,
       autoBootstrapProjectFromCwd,
       logWebSocketEvents,
       tailscaleServeEnabled,

@@ -1,3 +1,5 @@
+import * as crypto from "node:crypto";
+
 import * as Electron from "electron";
 
 /** Must stay aligned with `apps/web/src/lib/componentPreviewMessages.ts`. */
@@ -23,13 +25,29 @@ function resolveWebContentsViewCtor(): WebContentsViewCtor | undefined {
   return (Electron as unknown as { WebContentsView?: WebContentsViewCtor }).WebContentsView;
 }
 
-const registry = new Map<
-  string,
-  {
-    readonly view: WebContentsViewInstance;
-    readonly owner: Electron.BrowserWindow;
+type PreviewRegistryEntry = {
+  readonly view: WebContentsViewInstance;
+  readonly owner: Electron.BrowserWindow;
+};
+
+const registry = new Map<string, PreviewRegistryEntry>();
+
+function previewPartitionFor(viewId: string): string {
+  const digest = crypto.createHash("sha256").update(viewId).digest("hex").slice(0, 24);
+  return `persist:t3-component-preview-${digest}`;
+}
+
+function isLoopbackHttpUrl(rawUrl: string): boolean {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return false;
+    }
+    return parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost";
+  } catch {
+    return false;
   }
->();
+}
 
 export function isWebContentsViewPreviewSupported(): boolean {
   return resolveWebContentsViewCtor() !== undefined;
@@ -46,6 +64,11 @@ export async function attachPreviewView(input: {
     return false;
   }
 
+  const partition = previewPartitionFor(input.viewId);
+  Electron.session
+    .fromPartition(partition)
+    .setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
+
   let entry = registry.get(input.viewId);
   if (!entry) {
     const view = new Ctor({
@@ -53,23 +76,53 @@ export async function attachPreviewView(input: {
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
+        partition,
       },
     });
     entry = { view, owner: input.browserWindow };
     registry.set(input.viewId, entry);
     input.browserWindow.contentView.addChildView(view as unknown as Electron.View);
+
+    view.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    view.webContents.removeAllListeners("will-navigate");
+    view.webContents.on("will-navigate", (event, navigationUrl) => {
+      if (!isLoopbackHttpUrl(navigationUrl)) {
+        event.preventDefault();
+      }
+    });
   }
 
   entry.view.setBounds(input.bounds);
-  await entry.view.webContents.loadURL(input.url);
-  await new Promise<void>((resolve, reject) => {
-    const fail = (code: number, desc: string) => {
-      reject(new Error(`Preview WebContentsView failed to load (${code}): ${desc}`));
-    };
-    entry!.view.webContents.once("did-finish-load", () => resolve());
-    entry!.view.webContents.once("did-fail-load", (_event, code, desc) => fail(code, desc));
-  });
-  return true;
+
+  const webContents = entry.view.webContents;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const cleanup = () => {
+        webContents.removeListener("did-finish-load", onFinish);
+        webContents.removeListener("did-fail-load", onFail);
+      };
+      const onFinish = () => {
+        cleanup();
+        resolve();
+      };
+      const onFail = (_event: Electron.Event, code: number, desc: string) => {
+        cleanup();
+        reject(new Error(`Preview WebContentsView failed to load (${code}): ${desc}`));
+      };
+
+      if (!webContents.isLoading() && webContents.getURL() === input.url) {
+        resolve();
+        return;
+      }
+
+      webContents.once("did-finish-load", onFinish);
+      webContents.once("did-fail-load", onFail);
+      void webContents.loadURL(input.url);
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function detachPreviewView(browserWindow: Electron.BrowserWindow, viewId: string): void {
@@ -78,6 +131,7 @@ export function detachPreviewView(browserWindow: Electron.BrowserWindow, viewId:
     return;
   }
   registry.delete(viewId);
+  entry.view.webContents.removeAllListeners("will-navigate");
   browserWindow.contentView.removeChildView(entry.view as unknown as Electron.View);
   entry.view.webContents.close();
 }
@@ -111,4 +165,18 @@ export async function primePreviewView(
     true,
   );
   return true;
+}
+
+export async function capturePreviewView(viewId: string): Promise<string | null> {
+  const entry = registry.get(viewId);
+  if (!entry) {
+    return null;
+  }
+
+  try {
+    const image = await entry.view.webContents.capturePage();
+    return image.toDataURL();
+  } catch {
+    return null;
+  }
 }

@@ -13,6 +13,10 @@ export type ComposerPromptSegment =
       path: string;
     }
   | {
+      type: "brand-token";
+      name: string;
+    }
+  | {
       type: "skill";
       name: string;
     }
@@ -21,7 +25,12 @@ export type ComposerPromptSegment =
       context: TerminalContextDraft | null;
     };
 
+export interface SplitPromptOptions {
+  readonly brandTokenNames?: ReadonlySet<string>;
+}
+
 const MENTION_TOKEN_REGEX = /(^|\s)@([^\s@]+)(?=\s)/g;
+const BRAND_TOKEN_REGEX = /(^|\s)@([a-zA-Z][a-zA-Z0-9-_]*)(?=\s|$|[.,!?;:])/g;
 const SKILL_TOKEN_REGEX = /(^|\s)\$([a-zA-Z][a-zA-Z0-9:_-]*)(?=\s)/g;
 
 function rangeIncludesIndex(start: number, end: number, index: number): boolean {
@@ -46,13 +55,35 @@ type InlineTokenMatch =
       end: number;
     }
   | {
+      type: "brand-token";
+      value: string;
+      start: number;
+      end: number;
+    }
+  | {
       type: "skill";
       value: string;
       start: number;
       end: number;
     };
 
-function collectInlineTokenMatches(text: string): InlineTokenMatch[] {
+function classifyMentionValue(
+  value: string,
+  brandTokenNames: ReadonlySet<string> | undefined,
+): "mention" | "brand-token" {
+  if (value.includes("/") || value.includes(".")) {
+    return "mention";
+  }
+  if (brandTokenNames?.has(value.toLowerCase()) === true) {
+    return "brand-token";
+  }
+  return "mention";
+}
+
+function collectInlineTokenMatches(
+  text: string,
+  brandTokenNames: ReadonlySet<string> | undefined,
+): InlineTokenMatch[] {
   const matches: InlineTokenMatch[] = [];
 
   for (const match of text.matchAll(MENTION_TOKEN_REGEX)) {
@@ -63,8 +94,28 @@ function collectInlineTokenMatches(text: string): InlineTokenMatch[] {
     const start = matchIndex + prefix.length;
     const end = start + fullMatch.length - prefix.length;
     if (path.length > 0) {
-      matches.push({ type: "mention", value: path, start, end });
+      const kind = classifyMentionValue(path, brandTokenNames);
+      matches.push({ type: kind, value: path, start, end });
     }
+  }
+
+  for (const match of text.matchAll(BRAND_TOKEN_REGEX)) {
+    const fullMatch = match[0];
+    const prefix = match[1] ?? "";
+    const name = match[2] ?? "";
+    const matchIndex = match.index ?? 0;
+    const start = matchIndex + prefix.length;
+    const end = start + fullMatch.length - prefix.length;
+    if (name.length === 0) {
+      continue;
+    }
+    if (classifyMentionValue(name, brandTokenNames) !== "brand-token") {
+      continue;
+    }
+    if (matches.some((existing) => existing.start === start && existing.end === end)) {
+      continue;
+    }
+    matches.push({ type: "brand-token", value: name, start, end });
   }
 
   for (const match of text.matchAll(SKILL_TOKEN_REGEX)) {
@@ -156,17 +207,25 @@ function forEachMentionMatch(
         return true;
       }
     }
+    for (const match of text.matchAll(BRAND_TOKEN_REGEX)) {
+      if (visitor(match, promptOffset) === true) {
+        return true;
+      }
+    }
     return false;
   });
 }
 
-function splitPromptTextIntoComposerSegments(text: string): ComposerPromptSegment[] {
+function splitPromptTextIntoComposerSegments(
+  text: string,
+  brandTokenNames: ReadonlySet<string> | undefined,
+): ComposerPromptSegment[] {
   const segments: ComposerPromptSegment[] = [];
   if (!text) {
     return segments;
   }
 
-  const tokenMatches = collectInlineTokenMatches(text);
+  const tokenMatches = collectInlineTokenMatches(text, brandTokenNames);
   let cursor = 0;
   for (const match of tokenMatches) {
     if (match.start < cursor) {
@@ -179,6 +238,8 @@ function splitPromptTextIntoComposerSegments(text: string): ComposerPromptSegmen
 
     if (match.type === "mention") {
       segments.push({ type: "mention", path: match.value });
+    } else if (match.type === "brand-token") {
+      segments.push({ type: "brand-token", name: match.value });
     } else {
       segments.push({ type: "skill", name: match.value });
     }
@@ -233,6 +294,7 @@ export function selectionTouchesMentionBoundary(
 export function splitPromptIntoComposerSegments(
   prompt: string,
   terminalContexts: ReadonlyArray<TerminalContextDraft> = [],
+  options: SplitPromptOptions = {},
 ): ComposerPromptSegment[] {
   if (!prompt) {
     return [];
@@ -242,7 +304,7 @@ export function splitPromptIntoComposerSegments(
   let terminalContextIndex = 0;
   forEachPromptSegmentSlice(prompt, (slice) => {
     if (slice.type === "text") {
-      segments.push(...splitPromptTextIntoComposerSegments(slice.text));
+      segments.push(...splitPromptTextIntoComposerSegments(slice.text, options.brandTokenNames));
       return false;
     }
 
@@ -255,4 +317,11 @@ export function splitPromptIntoComposerSegments(
   });
 
   return segments;
+}
+
+/** Active @query before the cursor for brand-token typeahead (without leading @). */
+export function activeBrandTokenTypeaheadQuery(prompt: string, cursor: number): string | null {
+  const before = prompt.slice(0, cursor);
+  const match = /(?:^|\s)@([a-zA-Z][a-zA-Z0-9-_]*)$/.exec(before);
+  return match?.[1] ?? null;
 }

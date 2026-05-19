@@ -73,6 +73,50 @@ export interface WsRpcClient {
     readonly analyzeReactComponent: RpcUnaryMethod<typeof WS_METHODS.projectsAnalyzeReactComponent>;
     readonly buildComponentPreview: RpcUnaryMethod<typeof WS_METHODS.projectsBuildComponentPreview>;
   };
+  readonly autodsm: {
+    readonly getProjectProfile: RpcUnaryMethod<typeof WS_METHODS.autodsmGetProjectProfile>;
+    readonly getBrandProfile: RpcUnaryMethod<typeof WS_METHODS.autodsmGetBrandProfile>;
+    readonly addBrandToken: RpcUnaryMethod<typeof WS_METHODS.autodsmAddBrandToken>;
+    readonly removeBrandToken: RpcUnaryMethod<typeof WS_METHODS.autodsmRemoveBrandToken>;
+    readonly updateBrandToken: RpcUnaryMethod<typeof WS_METHODS.autodsmUpdateBrandToken>;
+    readonly resyncBrandTokens: RpcUnaryMethod<typeof WS_METHODS.autodsmResyncBrandTokens>;
+    readonly getWorkspacePreviewCss: RpcUnaryMethod<
+      typeof WS_METHODS.autodsmGetWorkspacePreviewCss
+    >;
+    readonly getComponentRegistry: RpcUnaryMethod<typeof WS_METHODS.autodsmGetComponentRegistry>;
+    readonly runWorkspaceBuild: RpcUnaryMethod<typeof WS_METHODS.autodsmRunWorkspaceBuild>;
+    readonly getComponentRegistryEntry: RpcUnaryMethod<
+      typeof WS_METHODS.autodsmGetComponentRegistryEntry
+    >;
+    readonly getRenderEnvironmentProfile: RpcUnaryMethod<
+      typeof WS_METHODS.autodsmGetRenderEnvironmentProfile
+    >;
+    readonly getRenderManifest: RpcUnaryMethod<typeof WS_METHODS.autodsmGetRenderManifest>;
+    readonly getScanArtifact: RpcUnaryMethod<typeof WS_METHODS.autodsmGetScanArtifact>;
+    readonly subscribeIndexingProgress: RpcInputStreamMethod<
+      typeof WS_METHODS.autodsmSubscribeIndexingProgress
+    >;
+    readonly runScan: RpcUnaryMethod<typeof WS_METHODS.autodsmRunScan>;
+    readonly buildRenderPlan: RpcUnaryMethod<typeof WS_METHODS.autodsmBuildRenderPlan>;
+    readonly executeRenderPlan: RpcUnaryMethod<typeof WS_METHODS.autodsmExecuteRenderPlan>;
+    readonly getSidecarStatus: RpcUnaryMethod<typeof WS_METHODS.autodsmGetSidecarStatus>;
+    readonly startSidecar: RpcUnaryMethod<typeof WS_METHODS.autodsmStartSidecar>;
+    readonly getProviderCatalog: RpcUnaryNoArgMethod<typeof WS_METHODS.autodsmGetProviderCatalog>;
+    readonly changeSetCreate: RpcUnaryMethod<typeof WS_METHODS.autodsmChangeSetCreate>;
+    readonly changeSetPreview: RpcUnaryMethod<typeof WS_METHODS.autodsmChangeSetPreview>;
+    readonly changeSetApply: RpcUnaryMethod<typeof WS_METHODS.autodsmChangeSetApply>;
+    readonly changeSetRollback: RpcUnaryMethod<typeof WS_METHODS.autodsmChangeSetRollback>;
+    readonly assembleGenerationPlan: RpcUnaryMethod<
+      typeof WS_METHODS.autodsmAssembleGenerationPlan
+    >;
+    readonly exportPublishedSnapshot: RpcUnaryMethod<
+      typeof WS_METHODS.autodsmExportPublishedSnapshot
+    >;
+    readonly prepareSessionBranch: RpcUnaryMethod<typeof WS_METHODS.autodsmPrepareSessionBranch>;
+    readonly getIssuesForPrompt: RpcUnaryMethod<typeof WS_METHODS.autodsmGetIssuesForPrompt>;
+    readonly createWorkspace: RpcUnaryMethod<typeof WS_METHODS.autodsmCreateWorkspace>;
+    readonly listWorkspaceHistory: RpcUnaryMethod<typeof WS_METHODS.autodsmListWorkspaceHistory>;
+  };
   readonly filesystem: {
     readonly browse: RpcUnaryMethod<typeof WS_METHODS.filesystemBrowse>;
   };
@@ -190,6 +234,71 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
         transport.request((client) => client[WS_METHODS.projectsAnalyzeReactComponent](input)),
       buildComponentPreview: (input) =>
         transport.request((client) => client[WS_METHODS.projectsBuildComponentPreview](input)),
+    },
+    autodsm: {
+      getProjectProfile: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmGetProjectProfile](input)),
+      getBrandProfile: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmGetBrandProfile](input)),
+      addBrandToken: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmAddBrandToken](input)),
+      removeBrandToken: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmRemoveBrandToken](input)),
+      updateBrandToken: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmUpdateBrandToken](input)),
+      resyncBrandTokens: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmResyncBrandTokens](input)),
+      getWorkspacePreviewCss: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmGetWorkspacePreviewCss](input)),
+      getComponentRegistry: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmGetComponentRegistry](input)),
+      runWorkspaceBuild: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmRunWorkspaceBuild](input)),
+      getComponentRegistryEntry: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmGetComponentRegistryEntry](input)),
+      getRenderEnvironmentProfile: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmGetRenderEnvironmentProfile](input)),
+      getRenderManifest: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmGetRenderManifest](input)),
+      getScanArtifact: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmGetScanArtifact](input)),
+      subscribeIndexingProgress: (input, listener, options) =>
+        transport.subscribe(
+          (client) => client[WS_METHODS.autodsmSubscribeIndexingProgress](input),
+          listener,
+          { ...options, tag: WS_METHODS.autodsmSubscribeIndexingProgress },
+        ),
+      runScan: (input) => transport.request((client) => client[WS_METHODS.autodsmRunScan](input)),
+      buildRenderPlan: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmBuildRenderPlan](input)),
+      executeRenderPlan: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmExecuteRenderPlan](input)),
+      getSidecarStatus: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmGetSidecarStatus](input)),
+      startSidecar: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmStartSidecar](input)),
+      getProviderCatalog: () =>
+        transport.request((client) => client[WS_METHODS.autodsmGetProviderCatalog]({})),
+      changeSetCreate: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmChangeSetCreate](input)),
+      changeSetPreview: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmChangeSetPreview](input)),
+      changeSetApply: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmChangeSetApply](input)),
+      changeSetRollback: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmChangeSetRollback](input)),
+      assembleGenerationPlan: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmAssembleGenerationPlan](input)),
+      exportPublishedSnapshot: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmExportPublishedSnapshot](input)),
+      prepareSessionBranch: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmPrepareSessionBranch](input)),
+      getIssuesForPrompt: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmGetIssuesForPrompt](input)),
+      createWorkspace: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmCreateWorkspace](input)),
+      listWorkspaceHistory: (input = {}) =>
+        transport.request((client) => client[WS_METHODS.autodsmListWorkspaceHistory](input)),
     },
     filesystem: {
       browse: (input) => transport.request((client) => client[WS_METHODS.filesystemBrowse](input)),

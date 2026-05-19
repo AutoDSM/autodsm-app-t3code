@@ -38,7 +38,12 @@ function PreviewComponentsSandboxRouteView() {
             />
           </div>
         </aside>
-        <ComponentPreviewShell componentPath={previewPath} onClosePreview={closePreview} />
+        <ComponentPreviewShell
+          catalogPaths={catalog.paths}
+          componentPath={previewPath}
+          onSelectComponentPath={onPickComponentPath}
+          onClosePreview={closePreview}
+        />
       </div>
     </SidebarInset>
   );

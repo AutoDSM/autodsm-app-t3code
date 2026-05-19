@@ -1,15 +1,44 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useState, type JSX } from "react";
 
+import { AutoDsmComponentsWorkspace } from "~/components/autodsm/AutoDsmComponentsWorkspace";
+import { AutoDsmCreateComponentWorkspace } from "~/components/autodsm/AutoDsmCreateComponentWorkspace";
+import { ToggleGroup, Toggle } from "~/components/ui/toggle-group";
 import { SidebarNavInsetPage } from "../components/SidebarNavInsetPage";
 
-function DesignComponentsRouteView() {
+type DesignComponentsMode = "create" | "browse";
+
+function DesignComponentsRouteView(): JSX.Element {
+  const [mode, setMode] = useState<DesignComponentsMode>("create");
+
   return (
     <SidebarNavInsetPage navLabel="Create component">
-      <div className="mx-auto w-full max-w-2xl">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground">Create component</h1>
-        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-          Scaffold and iterate on UI building blocks—layouts, primitives, and composite components.
-        </p>
+      <div className="mx-auto w-full max-w-6xl space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <ToggleGroup
+            aria-label="Components workspace mode"
+            onValueChange={(value) => {
+              if (value.length === 0) {
+                return;
+              }
+              const next = value[0];
+              if (next === "create" || next === "browse") {
+                setMode(next);
+              }
+            }}
+            value={[mode]}
+            variant="outline"
+          >
+            <Toggle aria-label="Create component" value="create">
+              Create
+            </Toggle>
+            <Toggle aria-label="Browse components" value="browse">
+              Browse
+            </Toggle>
+          </ToggleGroup>
+        </div>
+
+        {mode === "create" ? <AutoDsmCreateComponentWorkspace /> : <AutoDsmComponentsWorkspace />}
       </div>
     </SidebarNavInsetPage>
   );

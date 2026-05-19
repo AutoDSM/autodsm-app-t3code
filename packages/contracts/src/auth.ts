@@ -97,6 +97,7 @@ export const ServerAuthDescriptor = Schema.Struct({
   bootstrapMethods: Schema.Array(ServerAuthBootstrapMethod),
   sessionMethods: Schema.Array(ServerAuthSessionMethod),
   sessionCookieName: TrimmedNonEmptyString,
+  devPairingDisabled: Schema.optionalKey(Schema.Boolean),
 });
 export type ServerAuthDescriptor = typeof ServerAuthDescriptor.Type;
 

@@ -34,6 +34,7 @@ import {
 } from "./methods/updates.ts";
 import {
   attachComponentPreview,
+  captureComponentPreview,
   detachComponentPreview,
   primeComponentPreview,
   setComponentPreviewBounds,
@@ -86,6 +87,7 @@ export const installDesktopIpcHandlers = Effect.gen(function* () {
   yield* ipc.handle(detachComponentPreview);
   yield* ipc.handle(setComponentPreviewBounds);
   yield* ipc.handle(primeComponentPreview);
+  yield* ipc.handle(captureComponentPreview);
 
   yield* ipc.handle(getUpdateState);
   yield* ipc.handle(setUpdateChannel);

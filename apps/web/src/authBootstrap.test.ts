@@ -216,6 +216,66 @@ describe("resolveInitialServerAuthGateState", () => {
     });
   });
 
+  it("auto-bootstraps when dev pairing bypass is active", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        sessionResponse({
+          authenticated: false,
+          auth: {
+            policy: "loopback-browser",
+            bootstrapMethods: ["one-time-token"],
+            sessionMethods: ["browser-session-cookie"],
+            sessionCookieName: "t3_session",
+            devPairingDisabled: true,
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        sessionResponse({
+          authenticated: false,
+          auth: {
+            policy: "loopback-browser",
+            bootstrapMethods: ["one-time-token"],
+            sessionMethods: ["browser-session-cookie"],
+            sessionCookieName: "t3_session",
+            devPairingDisabled: true,
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          authenticated: true,
+          sessionMethod: "browser-session-cookie",
+          expiresAt: "2026-04-05T00:00:00.000Z",
+        }),
+      )
+      .mockResolvedValueOnce(
+        sessionResponse({
+          authenticated: true,
+          auth: {
+            policy: "loopback-browser",
+            bootstrapMethods: ["one-time-token"],
+            sessionMethods: ["browser-session-cookie"],
+            sessionCookieName: "t3_session",
+            devPairingDisabled: true,
+          },
+          sessionMethod: "browser-session-cookie",
+          expiresAt: "2026-04-05T00:00:00.000Z",
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    installTestBrowser("http://127.0.0.1:5733/");
+    vi.stubEnv("VITE_DEV_SERVER_URL", "http://127.0.0.1:5733");
+
+    const { resolveInitialServerAuthGateState } = await import("./environments/primary");
+
+    await expect(resolveInitialServerAuthGateState()).resolves.toEqual({
+      status: "authenticated",
+    });
+    expect(fetchMock.mock.calls[2]?.[0]).toBe("http://127.0.0.1:5733/api/auth/dev-auto-bootstrap");
+  });
+
   it("returns a requires-auth state instead of throwing when no bootstrap credential exists", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
       sessionResponse({
@@ -519,5 +579,94 @@ describe("resolveInitialServerAuthGateState", () => {
       },
       method: "POST",
     });
+  });
+});
+
+describe("resolveInitialServerAuthGateStateWithElectronRetry", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+    installTestBrowser("http://localhost/");
+  });
+
+  afterEach(async () => {
+    const { __resetServerAuthBootstrapForTests } = await import("./environments/primary");
+    __resetServerAuthBootstrapForTests();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("retries desktop bootstrap once when the first attempt still requires auth", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        sessionResponse({
+          authenticated: false,
+          auth: {
+            policy: "desktop-managed-local",
+            bootstrapMethods: ["desktop-bootstrap"],
+            sessionMethods: ["browser-session-cookie"],
+            sessionCookieName: "t3_session",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(
+          { error: "Invalid bootstrap credential." },
+          {
+            status: 401,
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        sessionResponse({
+          authenticated: false,
+          auth: {
+            policy: "desktop-managed-local",
+            bootstrapMethods: ["desktop-bootstrap"],
+            sessionMethods: ["browser-session-cookie"],
+            sessionCookieName: "t3_session",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          authenticated: true,
+          sessionMethod: "browser-session-cookie",
+          expiresAt: "2026-04-05T00:00:00.000Z",
+        }),
+      )
+      .mockResolvedValueOnce(
+        sessionResponse({
+          authenticated: true,
+          auth: {
+            policy: "desktop-managed-local",
+            bootstrapMethods: ["desktop-bootstrap"],
+            sessionMethods: ["browser-session-cookie"],
+            sessionCookieName: "t3_session",
+          },
+          sessionMethod: "browser-session-cookie",
+          expiresAt: "2026-04-05T00:00:00.000Z",
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const testWindow = installTestBrowser("http://localhost/");
+    testWindow.desktopBridge = {
+      getLocalEnvironmentBootstrap: () => ({
+        label: "Local environment",
+        httpBaseUrl: "http://localhost:3773",
+        wsBaseUrl: "ws://localhost:3773",
+        bootstrapToken: "desktop-bootstrap-token",
+      }),
+    } as DesktopBridge;
+
+    const { resolveInitialServerAuthGateStateWithElectronRetry } =
+      await import("./environments/primary");
+
+    await expect(resolveInitialServerAuthGateStateWithElectronRetry()).resolves.toEqual({
+      status: "authenticated",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 });

@@ -11,4 +11,5 @@ export const COMPONENT_PREVIEW_INTERACTION = `${COMPONENT_PREVIEW_MESSAGE_SOURCE
 export interface ComponentPreviewInitPayload {
   readonly javascript: string;
   readonly propsJson: string;
+  readonly workspaceStyleCss?: string;
 }

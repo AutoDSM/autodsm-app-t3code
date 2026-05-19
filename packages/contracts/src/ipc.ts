@@ -31,6 +31,51 @@ import type {
   ProjectWriteFileInput,
   ProjectWriteFileResult,
 } from "./project.ts";
+import type {
+  AutoDsmBrandProfile,
+  AutoDsmBrandTokenAddInput,
+  AutoDsmBrandTokenRemoveInput,
+  AutoDsmBrandTokenResyncInput,
+  AutoDsmBrandTokenUpdateInput,
+  AutoDsmWorkspacePreviewCssResult,
+  AutoDsmChangeSetCreateInput,
+  AutoDsmChangeSetIdInput,
+  AutoDsmChangeSetMutationResult,
+  AutoDsmComponentRegistry,
+  AutoDsmCwdInput,
+  AutoDsmCreateWorkspaceInput,
+  AutoDsmCreateWorkspaceResult,
+  AutoDsmListWorkspaceHistoryInput,
+  AutoDsmListWorkspaceHistoryResult,
+  AutoDsmExecuteRenderPlanResult,
+  AutoDsmGenerationPlanAssembleInput,
+  AutoDsmGenerationPlanResult,
+  AutoDsmGitSessionBranchInput,
+  AutoDsmGitSessionBranchResult,
+  AutoDsmIndexingProgressEvent,
+  AutoDsmIssuesForPromptInput,
+  AutoDsmIssuesForPromptResult,
+  AutoDsmProjectProfile,
+  AutoDsmPublishedSnapshotExportInput,
+  AutoDsmPublishedSnapshotExportResult,
+  AutoDsmRegistryEntryInput,
+  AutoDsmRegistryEntryResult,
+  AutoDsmRenderEnvironmentProfile,
+  AutoDsmRenderManifest,
+  AutoDsmRenderManifestLookupInput,
+  AutoDsmRenderPlanInput,
+  AutoDsmRenderPlanResult,
+  AutoDsmScanArtifact,
+  AutoDsmScanArtifactLookupInput,
+  AutoDsmScanRunInput,
+  AutoDsmScanRunResult,
+  AutoDsmSidecarStartInput,
+  AutoDsmSidecarStatusInput,
+  AutoDsmSidecarStatusResult,
+  AutoDsmProviderCatalogResult,
+  AutoDsmWorkspaceBuildInput,
+  AutoDsmWorkspaceBuildResult,
+} from "./autodsmArtifacts.ts";
 import type { ProviderInstanceId } from "./providerInstance.ts";
 import type {
   ServerConfig,
@@ -456,7 +501,8 @@ export interface DesktopBridge {
     readonly viewId: string;
     readonly javascript: string;
     readonly propsJson: string;
-  }) => Promise<void>;
+  }) => Promise<boolean>;
+  captureComponentPreview?: (input: { readonly viewId: string }) => Promise<string | null>;
 }
 
 /**
@@ -549,6 +595,62 @@ export interface EnvironmentApi {
     buildComponentPreview: (
       input: ProjectBuildComponentPreviewInput,
     ) => Promise<ProjectBuildComponentPreviewResult>;
+  };
+  autodsm: {
+    getProjectProfile: (input: AutoDsmCwdInput) => Promise<AutoDsmProjectProfile>;
+    getBrandProfile: (input: AutoDsmCwdInput) => Promise<AutoDsmBrandProfile>;
+    addBrandToken: (input: AutoDsmBrandTokenAddInput) => Promise<AutoDsmBrandProfile>;
+    removeBrandToken: (input: AutoDsmBrandTokenRemoveInput) => Promise<AutoDsmBrandProfile>;
+    updateBrandToken: (input: AutoDsmBrandTokenUpdateInput) => Promise<AutoDsmBrandProfile>;
+    resyncBrandTokens: (input: AutoDsmBrandTokenResyncInput) => Promise<AutoDsmBrandProfile>;
+    getWorkspacePreviewCss: (input: AutoDsmCwdInput) => Promise<AutoDsmWorkspacePreviewCssResult>;
+    getComponentRegistry: (input: AutoDsmCwdInput) => Promise<AutoDsmComponentRegistry>;
+    runWorkspaceBuild: (input: AutoDsmWorkspaceBuildInput) => Promise<AutoDsmWorkspaceBuildResult>;
+    getComponentRegistryEntry: (
+      input: AutoDsmRegistryEntryInput,
+    ) => Promise<AutoDsmRegistryEntryResult>;
+    getRenderEnvironmentProfile: (
+      input: AutoDsmCwdInput,
+    ) => Promise<AutoDsmRenderEnvironmentProfile>;
+    getRenderManifest: (
+      input: AutoDsmRenderManifestLookupInput,
+    ) => Promise<{ manifest: AutoDsmRenderManifest | null }>;
+    getScanArtifact: (
+      input: AutoDsmScanArtifactLookupInput,
+    ) => Promise<{ scan: AutoDsmScanArtifact | null }>;
+    subscribeIndexingProgress: (
+      input: AutoDsmCwdInput,
+      callback: (event: AutoDsmIndexingProgressEvent) => void,
+      options?: { onResubscribe?: () => void },
+    ) => () => void;
+    runScan: (input: AutoDsmScanRunInput) => Promise<AutoDsmScanRunResult>;
+    buildRenderPlan: (input: AutoDsmRenderPlanInput) => Promise<AutoDsmRenderPlanResult>;
+    executeRenderPlan: (input: AutoDsmRenderPlanInput) => Promise<AutoDsmExecuteRenderPlanResult>;
+    getSidecarStatus: (input: AutoDsmSidecarStatusInput) => Promise<AutoDsmSidecarStatusResult>;
+    startSidecar: (input: AutoDsmSidecarStartInput) => Promise<AutoDsmSidecarStatusResult>;
+    getProviderCatalog: () => Promise<AutoDsmProviderCatalogResult>;
+    changeSetCreate: (
+      input: AutoDsmChangeSetCreateInput,
+    ) => Promise<AutoDsmChangeSetMutationResult>;
+    changeSetPreview: (input: AutoDsmChangeSetIdInput) => Promise<AutoDsmChangeSetMutationResult>;
+    changeSetApply: (input: AutoDsmChangeSetIdInput) => Promise<AutoDsmChangeSetMutationResult>;
+    changeSetRollback: (input: AutoDsmChangeSetIdInput) => Promise<AutoDsmChangeSetMutationResult>;
+    assembleGenerationPlan: (
+      input: AutoDsmGenerationPlanAssembleInput,
+    ) => Promise<AutoDsmGenerationPlanResult>;
+    exportPublishedSnapshot: (
+      input: AutoDsmPublishedSnapshotExportInput,
+    ) => Promise<AutoDsmPublishedSnapshotExportResult>;
+    prepareSessionBranch: (
+      input: AutoDsmGitSessionBranchInput,
+    ) => Promise<AutoDsmGitSessionBranchResult>;
+    getIssuesForPrompt: (
+      input: AutoDsmIssuesForPromptInput,
+    ) => Promise<AutoDsmIssuesForPromptResult>;
+    createWorkspace: (input: AutoDsmCreateWorkspaceInput) => Promise<AutoDsmCreateWorkspaceResult>;
+    listWorkspaceHistory: (
+      input?: AutoDsmListWorkspaceHistoryInput,
+    ) => Promise<AutoDsmListWorkspaceHistoryResult>;
   };
   filesystem: {
     browse: (input: FilesystemBrowseInput) => Promise<FilesystemBrowseResult>;

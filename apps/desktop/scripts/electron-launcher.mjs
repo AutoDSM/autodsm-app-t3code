@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
 const APP_DISPLAY_NAME = isDevelopment ? "T3 Code (Dev)" : "T3 Code (Alpha)";
 const APP_BUNDLE_ID = isDevelopment ? "com.t3tools.t3code.dev" : "com.t3tools.t3code";
-const LAUNCHER_VERSION = 2;
+const LAUNCHER_VERSION = 4;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const desktopDir = resolve(__dirname, "..");
@@ -120,6 +120,53 @@ function patchMainBundleInfoPlist(appBundlePath, iconPath) {
   copyFileSync(iconPath, join(resourcesDir, "electron.icns"));
 }
 
+// Stock Electron uses the same helper bundle id for every helper process.
+const HELPER_BUNDLE_ID = `${APP_BUNDLE_ID}.helper`;
+const HELPER_APP_NAMES = [
+  "Electron Helper.app",
+  "Electron Helper (GPU).app",
+  "Electron Helper (Renderer).app",
+  "Electron Helper (Plugin).app",
+];
+
+function patchHelperBundleInfoPlists(appBundlePath) {
+  for (const helperApp of HELPER_APP_NAMES) {
+    const infoPlistPath = join(
+      appBundlePath,
+      "Contents/Frameworks",
+      helperApp,
+      "Contents/Info.plist",
+    );
+    if (existsSync(infoPlistPath)) {
+      setPlistString(infoPlistPath, "CFBundleIdentifier", HELPER_BUNDLE_ID);
+    }
+  }
+}
+
+function helpersMatchExpected(appBundlePath) {
+  for (const helperApp of HELPER_APP_NAMES) {
+    const plistPath = join(appBundlePath, "Contents/Frameworks", helperApp, "Contents/Info.plist");
+    if (!existsSync(plistPath)) {
+      continue;
+    }
+
+    const idResult = spawnSync(
+      "plutil",
+      ["-extract", "CFBundleIdentifier", "raw", "-o", "-", plistPath],
+      { encoding: "utf8" },
+    );
+    if (idResult.status !== 0 || idResult.stdout.trim() !== HELPER_BUNDLE_ID) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function adHocCodesignAppBundle(appBundlePath) {
+  runChecked("codesign", ["--force", "--deep", "-s", "-", appBundlePath]);
+}
+
 function readJson(path) {
   try {
     return JSON.parse(readFileSync(path, "utf8"));
@@ -146,20 +193,38 @@ function buildMacLauncher(electronBinaryPath) {
   };
 
   const currentMetadata = readJson(metadataPath);
-  if (
+  let cacheHit =
     existsSync(targetBinaryPath) &&
     currentMetadata &&
-    JSON.stringify(currentMetadata) === JSON.stringify(expectedMetadata)
-  ) {
+    JSON.stringify(currentMetadata) === JSON.stringify(expectedMetadata);
+
+  if (cacheHit && !helpersMatchExpected(targetAppBundlePath)) {
+    cacheHit = false;
+  }
+
+  if (cacheHit) {
     return targetBinaryPath;
   }
 
   rmSync(targetAppBundlePath, { recursive: true, force: true });
-  cpSync(sourceAppBundlePath, targetAppBundlePath, { recursive: true });
+  if (process.platform === "darwin") {
+    runChecked("ditto", [sourceAppBundlePath, targetAppBundlePath]);
+  } else {
+    cpSync(sourceAppBundlePath, targetAppBundlePath, { recursive: true });
+  }
   patchMainBundleInfoPlist(targetAppBundlePath, iconPath);
+  patchHelperBundleInfoPlists(targetAppBundlePath);
+  adHocCodesignAppBundle(targetAppBundlePath);
   writeFileSync(metadataPath, `${JSON.stringify(expectedMetadata, null, 2)}\n`);
 
   return targetBinaryPath;
+}
+
+/** Last resolved launch metadata (for dev-electron startup logs). */
+let lastLaunchInfo = null;
+
+export function getElectronLaunchInfo() {
+  return lastLaunchInfo;
 }
 
 export function resolveElectronPath() {
@@ -167,14 +232,33 @@ export function resolveElectronPath() {
   const electronBinaryPath = require("electron");
 
   if (process.platform !== "darwin") {
+    lastLaunchInfo = {
+      platform: process.platform,
+      binaryPath: electronBinaryPath,
+      bundleId: "com.github.Electron",
+      appBundlePath: null,
+      usesCopiedMacApp: false,
+      isDevelopment,
+    };
     return electronBinaryPath;
   }
 
-  // Dev launches do not need a renamed app bundle badly enough to risk breaking
-  // Electron helper resource lookup on macOS.
-  if (isDevelopment) {
-    return electronBinaryPath;
-  }
-
-  return buildMacLauncher(electronBinaryPath);
+  // Always use a copied .app with a distinct CFBundleIdentifier. Stock
+  // `com.github.Electron` dev launches have been observed to abort() inside
+  // HIServices `_RegisterApplication` / `NSApplication` init on newer macOS
+  // (Launch Services registration), especially when spawned from IDE tooling.
+  const resolved = buildMacLauncher(electronBinaryPath);
+  const appBundlePath = resolve(resolved, "../../..");
+  lastLaunchInfo = {
+    platform: process.platform,
+    binaryPath: resolved,
+    bundleId: APP_BUNDLE_ID,
+    appBundlePath,
+    usesCopiedMacApp: true,
+    isDevelopment,
+  };
+  console.info(
+    `[desktop-launcher] resolved electron binary=${resolved} bundleId=${APP_BUNDLE_ID} app=${appBundlePath}`,
+  );
+  return resolved;
 }

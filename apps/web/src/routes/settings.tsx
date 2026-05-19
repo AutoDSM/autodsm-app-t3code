@@ -13,6 +13,7 @@ import { useSettingsRestore } from "../components/settings/SettingsPanels";
 import { Button } from "../components/ui/button";
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
 import { isElectron } from "../env";
+import { shouldSkipPairingRedirect } from "~/lib/devPairingBypass";
 
 function RestoreDefaultsButton({ onRestored }: { onRestored: () => void }) {
   const { changedSettingLabels, restoreDefaults } = useSettingsRestore(onRestored);
@@ -106,7 +107,10 @@ export const Route = createFileRoute("/settings")({
   beforeLoad: async ({ context, location }) => {
     if (
       context.authGateState.status !== "authenticated" &&
-      context.authGateState.status !== "hosted-static"
+      context.authGateState.status !== "hosted-static" &&
+      !shouldSkipPairingRedirect(
+        context.authGateState.status === "requires-auth" ? context.authGateState.auth : undefined,
+      )
     ) {
       throw redirect({ to: "/pair", replace: true });
     }

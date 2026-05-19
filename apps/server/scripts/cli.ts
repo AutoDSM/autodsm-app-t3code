@@ -175,6 +175,17 @@ const buildCmd = Command.make(
       } else {
         yield* Effect.logWarning("[cli] Web dist not found — skipping client bundle.");
       }
+
+      const workspaceTemplatesSource = path.join(serverDir, "workspace-templates");
+      const workspaceTemplatesTarget = path.join(serverDir, "dist/workspace-templates");
+      if (yield* fs.exists(workspaceTemplatesSource)) {
+        yield* fs.copy(workspaceTemplatesSource, workspaceTemplatesTarget);
+        yield* Effect.log("[cli] Copied workspace-templates to dist/workspace-templates");
+      } else {
+        yield* Effect.logWarning(
+          "[cli] workspace-templates not found — AutoDSM createWorkspace will not find bundled templates.",
+        );
+      }
     }),
 ).pipe(Command.withDescription("Build the server package (tsdown + bundle web client)."));
 

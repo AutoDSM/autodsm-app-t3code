@@ -1,4 +1,5 @@
 import type {
+  AutoDsmBrandToken,
   ApprovalRequestId,
   EnvironmentId,
   ModelSelection,
@@ -443,6 +444,7 @@ export interface ChatComposerProps {
   keybindings: ResolvedKeybindingsConfig;
   terminalOpen: boolean;
   gitCwd: string | null;
+  brandTokens?: ReadonlyArray<AutoDsmBrandToken>;
 
   // Refs the parent needs kept in sync
   promptRef: React.RefObject<string>;
@@ -2241,6 +2243,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     : []
                 }
                 skills={selectedProviderStatus?.skills ?? []}
+                brandTokens={props.brandTokens ?? []}
                 {...(showMobilePendingAnswerActions ? { className: "max-sm:pb-11" } : {})}
                 onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
                 onChange={onPromptChange}

@@ -1,0 +1,6 @@
+{
+  "agents": [
+    { "title": "MUI Button", "componentPath": "/src/components/MuiPrimaryButton.tsx" },
+    { "title": "MUI Chip row", "componentPath": "/src/components/MuiChipRow.tsx" }
+  ]
+}

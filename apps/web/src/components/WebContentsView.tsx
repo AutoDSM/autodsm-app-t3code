@@ -1,19 +1,28 @@
-import type { EnvironmentId } from "@t3tools/contracts";
-import type { ComponentPreviewManifest, ComponentPreviewPropSpec } from "@t3tools/contracts";
+import type {
+  AutoDsmRenderManifest,
+  ComponentPreviewManifest,
+  ComponentPreviewPropSpec,
+  EnvironmentId,
+} from "@t3tools/contracts";
 import { useQuery } from "@tanstack/react-query";
 import type { JSX } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "~/components/ui/button";
 import { Label } from "~/components/ui/label";
+import { ComponentPreviewLoadingSkeleton } from "~/components/ComponentPreviewLoadingSkeleton";
+import { cn } from "~/lib/utils";
 import { ensureEnvironmentApi } from "~/environmentApi";
 import {
   COMPONENT_PREVIEW_CHILD_READY,
   COMPONENT_PREVIEW_INIT,
   COMPONENT_PREVIEW_INTERACTION,
+  COMPONENT_PREVIEW_RENDERED,
   COMPONENT_PREVIEW_RUNTIME_ERROR,
 } from "~/lib/componentPreviewMessages";
 import { randomUUID } from "~/lib/utils";
+import { autodsmWorkspaceQueryKeys } from "~/lib/autodsmWorkspaceReactQuery";
+import { normalizeSidebarComponentCatalogPath } from "~/lib/srcComponentsWorkspacePaths";
 
 const MAX_RELATIVE_PREVIEW_PATH_CHARS = 512;
 
@@ -25,6 +34,8 @@ export interface WebContentsViewProps {
   readonly registerPromptAppendix?: (getter: () => string | null) => void;
   /** Optional: pre-fill composer (e.g. quick actions). */
   readonly onInjectComposerText?: (text: string) => void;
+  /** Product mode hides dev-only preview chrome (export picker, prop editor, quick prompts). */
+  readonly variant?: "dev" | "product";
 }
 
 function pickInitialExport(manifest: ComponentPreviewManifest): string {
@@ -41,6 +52,13 @@ function propsForExport(
   return manifest.propsByExport.find((entry) => entry.exportName === exportNameValue)?.props ?? [];
 }
 
+function summarizePropSpecsForAppendix(specs: readonly ComponentPreviewPropSpec[]): string {
+  if (specs.length === 0) {
+    return "none";
+  }
+  return specs.map((spec) => `${spec.name}:${spec.kind}${spec.optional ? "?" : ""}`).join(", ");
+}
+
 function buildDefaultProps(specs: readonly ComponentPreviewPropSpec[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const spec of specs) {
@@ -53,6 +71,16 @@ function buildDefaultProps(specs: readonly ComponentPreviewPropSpec[]): Record<s
       }
     }
     if (spec.optional) {
+      if (spec.kind === "enum" || spec.kind === "literalUnion") {
+        const values = spec.enumValues ?? [];
+        const preferred =
+          values.find((value) => value === "default") ??
+          values.find((value) => value === "contained") ??
+          values[0];
+        if (preferred !== undefined) {
+          out[spec.name] = preferred;
+        }
+      }
       continue;
     }
     switch (spec.kind) {
@@ -90,6 +118,19 @@ function bundleDepsReady(manifest: ComponentPreviewManifest, exportNameValue: st
   return manifest.exports.some((ex) => ex.name === exportNameValue);
 }
 
+function manifestMatchesPath(
+  manifest: ComponentPreviewManifest | undefined,
+  relativePath: string | undefined,
+): boolean {
+  if (!manifest || !relativePath) {
+    return false;
+  }
+  return (
+    normalizeSidebarComponentCatalogPath(manifest.relativePath) ===
+    normalizeSidebarComponentCatalogPath(relativePath)
+  );
+}
+
 /**
  * Hybrid preview pane: prefers Electron {@link window.desktopBridge.attachComponentPreview} when implemented;
  * otherwise renders a sandboxed iframe pointed at {@link ComponentPreviewRuntimeApp}.
@@ -101,7 +142,10 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
     workspaceCwd = null,
     registerPromptAppendix,
     onInjectComposerText,
+    variant = "dev",
   } = props;
+
+  const isProductVariant = variant === "product";
 
   const trimmed = relativePath?.trim();
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -112,10 +156,20 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
   const [exportName, setExportName] = useState<string>("default");
   const [nativeViewId] = useState(() => randomUUID());
   const childReadyRef = useRef(false);
+  const [iframeRendered, setIframeRendered] = useState(false);
+  const [nativePriming, setNativePriming] = useState(false);
+  const [nativeAttached, setNativeAttached] = useState(false);
+  const nativeAttachedRef = useRef(false);
+
+  const [previewScreenshot, setPreviewScreenshot] = useState<string | null>(null);
 
   const bridgeNative =
     typeof window !== "undefined" &&
     typeof window.desktopBridge?.attachComponentPreview === "function";
+
+  const bridgeCapture =
+    typeof window !== "undefined" &&
+    typeof window.desktopBridge?.captureComponentPreview === "function";
 
   const analyzeEnabled =
     Boolean(trimmed && trimmed.length <= MAX_RELATIVE_PREVIEW_PATH_CHARS) &&
@@ -123,9 +177,17 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
     workspaceCwd.length > 0 &&
     environmentId !== null;
 
+  const productStaleWhileRevalidate = isProductVariant
+    ? {
+        staleTime: 0,
+        placeholderData: <T,>(previous: T | undefined) => previous,
+      }
+    : {};
+
   const manifestQuery = useQuery({
     queryKey: ["component-preview-manifest", environmentId, workspaceCwd, trimmed],
     enabled: analyzeEnabled && trimmed !== undefined && trimmed !== null,
+    ...productStaleWhileRevalidate,
     queryFn: async () => {
       const api = ensureEnvironmentApi(environmentId!);
       return api.projects.analyzeReactComponent({
@@ -137,6 +199,45 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
 
   const manifest = manifestQuery.data?.manifest;
 
+  const normalizedCatalogPath = useMemo(
+    () =>
+      trimmed === undefined || trimmed === null
+        ? null
+        : normalizeSidebarComponentCatalogPath(trimmed),
+    [trimmed],
+  );
+
+  const registryQuery = useQuery({
+    queryKey: autodsmWorkspaceQueryKeys.componentRegistry(environmentId, workspaceCwd),
+    enabled: analyzeEnabled,
+    queryFn: async () => {
+      const api = ensureEnvironmentApi(environmentId!);
+      return api.autodsm.getComponentRegistry({ cwd: workspaceCwd! });
+    },
+  });
+
+  const workspacePreviewCssQuery = useQuery({
+    queryKey: ["autodsm", "workspace-preview-css", environmentId, workspaceCwd],
+    enabled: analyzeEnabled && environmentId !== null && workspaceCwd !== null,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const api = ensureEnvironmentApi(environmentId!);
+      return api.autodsm.getWorkspacePreviewCss({ cwd: workspaceCwd! });
+    },
+  });
+  const workspaceStyleCss = workspacePreviewCssQuery.data?.css ?? "";
+
+  const matchedRegistryEntry = useMemo(() => {
+    if (!normalizedCatalogPath || !registryQuery.data) {
+      return undefined;
+    }
+    return registryQuery.data.entries.find(
+      (entry) => normalizeSidebarComponentCatalogPath(entry.relativePath) === normalizedCatalogPath,
+    );
+  }, [normalizedCatalogPath, registryQuery.data]);
+
+  const stablePropsJson = useMemo(() => JSON.stringify(propsRecord), [propsRecord]);
+
   useEffect(() => {
     if (!manifest) return;
     const nextExport = pickInitialExport(manifest);
@@ -144,10 +245,12 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
     setPropsRecord(buildDefaultProps(propsForExport(manifest, nextExport)));
   }, [manifest]);
 
-  const bundleQuery = useQuery({
+  const legacyBundleQuery = useQuery({
     queryKey: ["component-preview-bundle", environmentId, workspaceCwd, trimmed, exportName],
+    ...productStaleWhileRevalidate,
     enabled:
       analyzeEnabled &&
+      matchedRegistryEntry === undefined &&
       Boolean(
         trimmed && manifest && exportName.length > 0 && bundleDepsReady(manifest, exportName),
       ),
@@ -161,24 +264,124 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
     },
   });
 
-  const bundle = bundleQuery.data;
+  const executePreviewQuery = useQuery({
+    queryKey: [
+      "component-preview-execute-render-plan",
+      environmentId,
+      workspaceCwd,
+      matchedRegistryEntry?.componentId,
+      trimmed,
+      exportName,
+      stablePropsJson,
+    ],
+    ...productStaleWhileRevalidate,
+    enabled:
+      analyzeEnabled &&
+      matchedRegistryEntry !== undefined &&
+      Boolean(
+        trimmed && manifest && exportName.length > 0 && bundleDepsReady(manifest, exportName),
+      ),
+    queryFn: async () => {
+      const api = ensureEnvironmentApi(environmentId!);
+      return api.autodsm.executeRenderPlan({
+        cwd: workspaceCwd!,
+        componentId: matchedRegistryEntry!.componentId,
+        exportName,
+        propsJson: stablePropsJson,
+      });
+    },
+  });
+
+  const previewJavascript =
+    executePreviewQuery.data?.bundledJavascript ??
+    (legacyBundleQuery.data?.ok === true ? legacyBundleQuery.data.javascript : undefined);
+
+  const renderManifest: AutoDsmRenderManifest | undefined = executePreviewQuery.data?.manifest;
+
+  const legacyBundle = legacyBundleQuery.data;
+
+  const compileErrors = useMemo(() => {
+    if (matchedRegistryEntry !== undefined) {
+      if (executePreviewQuery.isError) {
+        return [(executePreviewQuery.error as Error)?.message ?? "executeRenderPlan failed"];
+      }
+      if (renderManifest && renderManifest.ok === false) {
+        return renderManifest.errors;
+      }
+      return [];
+    }
+    if (legacyBundle && legacyBundle.ok === false) {
+      return legacyBundle.errors;
+    }
+    return [];
+  }, [
+    executePreviewQuery.error,
+    executePreviewQuery.isError,
+    legacyBundle,
+    matchedRegistryEntry,
+    renderManifest,
+  ]);
+
+  const compileWarnings = useMemo(() => {
+    if (matchedRegistryEntry !== undefined) {
+      return renderManifest?.warnings ?? [];
+    }
+    return legacyBundle?.warnings ?? [];
+  }, [legacyBundle, matchedRegistryEntry, renderManifest]);
+
+  const bundlePending =
+    matchedRegistryEntry !== undefined
+      ? executePreviewQuery.isPending ||
+        (isProductVariant && executePreviewQuery.isFetching && !previewJavascript)
+      : legacyBundleQuery.isPending ||
+        (isProductVariant && legacyBundleQuery.isFetching && !previewJavascript);
+
+  const manifestReady = manifestMatchesPath(manifest, trimmed);
+  const analyzePending =
+    analyzeEnabled &&
+    !manifestReady &&
+    (manifestQuery.isPending || (isProductVariant && manifestQuery.isFetching));
+
+  const bundleReady =
+    manifestReady &&
+    Boolean(previewJavascript && previewJavascript.length > 0) &&
+    compileErrors.length === 0;
+  const bundleLoading =
+    analyzeEnabled &&
+    manifestReady &&
+    !bundleReady &&
+    (bundlePending ||
+      (matchedRegistryEntry !== undefined
+        ? executePreviewQuery.isFetching
+        : legacyBundleQuery.isFetching));
+
+  const bundleRpcFailed =
+    matchedRegistryEntry !== undefined ? executePreviewQuery.isError : legacyBundleQuery.isError;
 
   useEffect(() => {
     childReadyRef.current = false;
+    setIframeRendered(false);
+    setNativePriming(false);
+    setNativeAttached(false);
+    nativeAttachedRef.current = false;
     setRuntimeError(null);
-  }, [trimmed, exportName]);
+    setPreviewScreenshot(null);
+  }, [trimmed, exportName, stablePropsJson]);
 
   const pushPreviewToChild = useCallback(() => {
     const iframe = iframeRef.current;
-    const js = bundle?.ok ? bundle.javascript : undefined;
-    if (!iframe?.contentWindow || !js) return;
+    const js = previewJavascript;
+    if (!iframe?.contentWindow || !js || js.length === 0) return;
     try {
       iframe.contentWindow.postMessage(
         {
           type: COMPONENT_PREVIEW_INIT,
           payload: {
             javascript: js,
-            propsJson: JSON.stringify(propsRecord),
+            propsJson: stablePropsJson,
+            ...(workspaceStyleCss.trim().length > 0
+              ? { workspaceStyleCss: workspaceStyleCss }
+              : {}),
           },
         },
         window.location.origin,
@@ -186,13 +389,13 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
     } catch {
       setRuntimeError("Failed to post preview payload to iframe.");
     }
-  }, [bundle, propsRecord]);
+  }, [previewJavascript, stablePropsJson, workspaceStyleCss]);
 
   useEffect(() => {
-    if (!bundle?.ok || !bundle.javascript) return;
+    if (!previewJavascript || previewJavascript.length === 0) return;
     if (!childReadyRef.current) return;
     pushPreviewToChild();
-  }, [bundle, pushPreviewToChild]);
+  }, [previewJavascript, pushPreviewToChild]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -202,10 +405,15 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
       if (!data?.type) return;
       if (data.type === COMPONENT_PREVIEW_CHILD_READY) {
         childReadyRef.current = true;
+        setIframeRendered(false);
         pushPreviewToChild();
+      }
+      if (data.type === COMPONENT_PREVIEW_RENDERED) {
+        setIframeRendered(true);
       }
       if (data.type === COMPONENT_PREVIEW_RUNTIME_ERROR) {
         setRuntimeError(data.payload?.message ?? "Preview runtime error.");
+        setIframeRendered(false);
       }
       if (data.type === COMPONENT_PREVIEW_INTERACTION) {
         setInteractionLog((prev) => [
@@ -219,9 +427,13 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
   }, [pushPreviewToChild]);
 
   useEffect(() => {
-    if (!bridgeNative || !trimmed || !analyzeEnabled) return;
+    if (!bridgeNative || !analyzeEnabled) {
+      return;
+    }
     const el = containerRef.current;
-    if (!el) return;
+    if (!el) {
+      return;
+    }
 
     const rectFromEl = () => {
       const rect = el.getBoundingClientRect();
@@ -236,6 +448,9 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
     let cancelled = false;
 
     const syncBounds = () => {
+      if (!nativeAttachedRef.current) {
+        return;
+      }
       void window.desktopBridge?.setComponentPreviewBounds?.({
         viewId: nativeViewId,
         bounds: rectFromEl(),
@@ -244,7 +459,6 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
 
     const observer = new ResizeObserver(() => syncBounds());
     observer.observe(el);
-    syncBounds();
 
     void (async () => {
       const attached = await window.desktopBridge?.attachComponentPreview?.({
@@ -252,52 +466,137 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
         url: previewRuntimeHref(),
         bounds: rectFromEl(),
       });
-      if (cancelled || !attached) return;
-      const js = bundle?.javascript;
-      if (bundle?.ok && js) {
-        await window.desktopBridge?.primeComponentPreview?.({
-          viewId: nativeViewId,
-          javascript: js,
-          propsJson: JSON.stringify(propsRecord),
-        });
+      if (cancelled || !attached) {
+        return;
       }
+      nativeAttachedRef.current = true;
+      setNativeAttached(true);
+      void window.desktopBridge?.setComponentPreviewBounds?.({
+        viewId: nativeViewId,
+        bounds: rectFromEl(),
+      });
     })();
 
     return () => {
       cancelled = true;
       observer.disconnect();
+      setNativeAttached(false);
+      nativeAttachedRef.current = false;
       void window.desktopBridge?.detachComponentPreview?.(nativeViewId);
     };
-  }, [analyzeEnabled, bridgeNative, bundle, nativeViewId, propsRecord, trimmed]);
-
-  const appendixGetter = useCallback(() => {
-    if (!trimmed || !manifest) return null;
-    const lines = [
-      `componentPath: ${trimmed}`,
-      `export: ${exportName}`,
-      `props: ${JSON.stringify(propsRecord, null, 2)}`,
-    ];
-    if (runtimeError) {
-      lines.push(`runtimeError: ${runtimeError}`);
-    }
-    if (bundle && !bundle.ok) {
-      lines.push(`bundleErrors: ${bundle.errors.join("; ")}`);
-    }
-    if (interactionLog.length > 0) {
-      lines.push("interactions:", ...interactionLog.slice(-12));
-    }
-    return lines.join("\n");
-  }, [bundle, exportName, interactionLog, manifest, propsRecord, runtimeError, trimmed]);
+  }, [analyzeEnabled, bridgeNative, nativeViewId]);
 
   useEffect(() => {
-    registerPromptAppendix?.(appendixGetter);
-    return () => registerPromptAppendix?.(() => null);
-  }, [appendixGetter, registerPromptAppendix]);
+    if (!bridgeNative || !analyzeEnabled || !nativeAttached) {
+      return;
+    }
+    const js = previewJavascript;
+    if (js === undefined || js.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    setNativePriming(true);
+
+    void (async () => {
+      try {
+        await window.desktopBridge?.primeComponentPreview?.({
+          viewId: nativeViewId,
+          javascript: js,
+          propsJson: stablePropsJson,
+        });
+      } finally {
+        if (!cancelled) {
+          setNativePriming(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    analyzeEnabled,
+    bridgeNative,
+    nativeAttached,
+    nativeViewId,
+    previewJavascript,
+    stablePropsJson,
+    trimmed,
+  ]);
 
   const propSpecs = useMemo(
     () => (manifest ? propsForExport(manifest, exportName) : []),
     [exportName, manifest],
   );
+
+  const appendixGetter = useCallback(() => {
+    if (!trimmed) {
+      return null;
+    }
+    const cwdLine = workspaceCwd?.trim();
+    const lines: string[] = [];
+    if (cwdLine) {
+      lines.push(`workspaceRoot: ${cwdLine}`);
+    }
+    lines.push(`componentRelativePath: ${trimmed}`);
+    lines.push(`activeExport: ${exportName}`);
+    if (manifest) {
+      lines.push(`propManifest (${exportName}): ${summarizePropSpecsForAppendix(propSpecs)}`);
+      lines.push(`exports: ${manifest.exports.map((ex) => ex.name).join(", ")}`);
+      lines.push(`propsSnapshot: ${JSON.stringify(propsRecord, null, 2)}`);
+    } else {
+      lines.push("propManifest: (analysis unavailable)");
+    }
+    if (matchedRegistryEntry !== undefined) {
+      lines.push(`registryComponentId: ${matchedRegistryEntry.componentId}`);
+    }
+    lines.push(
+      "Editing scope: Change only this component file unless the user explicitly asks to edit other files or expand scope.",
+    );
+    if (runtimeError) {
+      lines.push(`runtimeError: ${runtimeError}`);
+    }
+    if (compileErrors.length > 0) {
+      lines.push(`compileErrors: ${compileErrors.join("; ")}`);
+    }
+    if (compileWarnings.length > 0) {
+      lines.push(`compileWarnings: ${compileWarnings.join("; ")}`);
+    }
+    if (renderManifest !== undefined) {
+      lines.push(`renderManifestId: ${renderManifest.id}`);
+      lines.push(`renderManifestOk: ${renderManifest.ok}`);
+      lines.push(`previewSessionId: ${renderManifest.previewSessionId ?? "n/a"}`);
+      const diagPreview = renderManifest.diagnostics
+        .slice(0, 12)
+        .map((d) => `[${d.level}] ${d.source}: ${d.message}`);
+      if (diagPreview.length > 0) {
+        lines.push(`renderDiagnostics: ${diagPreview.join(" | ")}`);
+      }
+    }
+    if (interactionLog.length > 0) {
+      lines.push("interactions:", ...interactionLog.slice(-12));
+    }
+    return lines.join("\n");
+  }, [
+    compileErrors,
+    compileWarnings,
+    exportName,
+    interactionLog,
+    manifest,
+    matchedRegistryEntry,
+    propsRecord,
+    propSpecs,
+    renderManifest,
+    runtimeError,
+    trimmed,
+    workspaceCwd,
+  ]);
+
+  useEffect(() => {
+    registerPromptAppendix?.(appendixGetter);
+    return () => registerPromptAppendix?.(() => null);
+  }, [appendixGetter, registerPromptAppendix]);
 
   if (!trimmed || trimmed.length > MAX_RELATIVE_PREVIEW_PATH_CHARS) {
     return null;
@@ -305,13 +604,28 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
 
   const quick = (text: string) => onInjectComposerText?.(text);
 
+  const showProductLoading =
+    isProductVariant &&
+    (analyzePending ||
+      bundleLoading ||
+      nativePriming ||
+      (!bridgeNative &&
+        Boolean(previewJavascript && previewJavascript.length > 0) &&
+        !iframeRendered));
+
   return (
     <div
       ref={containerRef}
-      className="flex min-h-[40%] min-w-0 shrink-0 flex-col bg-background md:h-full md:min-h-0 md:w-[min(50%,42rem)] md:flex-1"
+      className={cn(
+        "flex min-w-0 shrink-0 flex-col bg-background",
+        isProductVariant
+          ? "min-h-[40%] md:h-full md:min-h-0 md:min-w-0 md:flex-1"
+          : "min-h-[40%] md:h-full md:min-h-0 md:w-[min(50%,42rem)] md:flex-1",
+      )}
       data-testid="web-contents-view"
       data-slot="web-contents-view"
       data-component-path={trimmed}
+      data-preview-variant={variant}
       aria-label="Component preview"
       role="region"
     >
@@ -319,62 +633,95 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
         <div className="border-border border-dashed p-3 text-muted-foreground text-xs">
           Connect a project workspace to preview components (cwd required).
         </div>
+      ) : isProductVariant && analyzePending ? (
+        <ComponentPreviewLoadingSkeleton className="min-h-0 flex-1" />
       ) : manifestQuery.isPending ? (
         <div className="p-3 text-muted-foreground text-xs">Analyzing component…</div>
       ) : manifestQuery.isError ? (
-        <div className="p-3 text-destructive text-xs">
-          {(manifestQuery.error as Error)?.message ?? "Failed to analyze component."}
+        <div className="space-y-2 border-b border-destructive/25 bg-destructive/5 p-3">
+          <div className="font-medium text-destructive text-xs">Analyze failed</div>
+          <div className="text-destructive text-xs">
+            {(manifestQuery.error as Error)?.message ?? "Failed to analyze component."}
+          </div>
+          <div className="text-muted-foreground text-[10px] leading-snug">
+            Fix syntax or export issues in this file, or confirm the path is inside the connected
+            workspace. Preview bundling runs only after analysis succeeds.
+          </div>
         </div>
       ) : (
         <>
-          <div className="flex flex-wrap items-center gap-2 border-border border-b px-2 py-1">
-            <Label className="text-[10px] text-muted-foreground">Export</Label>
-            <select
-              className="max-w-[12rem] rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px]"
-              value={exportName}
-              onChange={(event) => {
-                const next = event.target.value;
-                setExportName(next);
-                if (manifest) {
-                  setPropsRecord(buildDefaultProps(propsForExport(manifest, next)));
+          {!isProductVariant ? (
+            <div className="flex flex-wrap items-center gap-2 border-border border-b px-2 py-1">
+              <Label className="text-[10px] text-muted-foreground">Export</Label>
+              <select
+                className="max-w-[12rem] rounded border border-border bg-background px-1 py-0.5 font-mono text-[10px]"
+                value={exportName}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setExportName(next);
+                  if (manifest) {
+                    setPropsRecord(buildDefaultProps(propsForExport(manifest, next)));
+                  }
+                }}
+              >
+                {(manifest?.exports ?? []).map((ex) => (
+                  <option key={ex.name} value={ex.name}>
+                    {ex.isDefault ? `default (${ex.name})` : ex.name}
+                  </option>
+                ))}
+              </select>
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                className="h-6 text-[10px]"
+                onClick={() =>
+                  quick(
+                    `Fix the component preview for \`${trimmed}\` (export \`${exportName}\`). Current runtime error: ${runtimeError ?? (compileErrors.length > 0 ? compileErrors.join("; ") : "none")}`,
+                  )
                 }
-              }}
-            >
-              {(manifest?.exports ?? []).map((ex) => (
-                <option key={ex.name} value={ex.name}>
-                  {ex.isDefault ? `default (${ex.name})` : ex.name}
-                </option>
-              ))}
-            </select>
-            <Button
-              type="button"
-              variant="outline"
-              size="xs"
-              className="h-6 text-[10px]"
-              onClick={() =>
-                quick(
-                  `Fix the component preview for \`${trimmed}\` (export \`${exportName}\`). Current runtime error: ${runtimeError ?? bundle?.errors.join("; ") ?? "none"}`,
-                )
-              }
-            >
-              Prompt: fix preview
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="xs"
-              className="h-6 text-[10px]"
-              onClick={() =>
-                quick(
-                  `Improve this component: \`${trimmed}\` (\`${exportName}\`). Current props: \`${JSON.stringify(propsRecord)}\``,
-                )
-              }
-            >
-              Prompt: change component
-            </Button>
-          </div>
+              >
+                Prompt: fix preview
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                className="h-6 text-[10px]"
+                onClick={() =>
+                  quick(
+                    `Improve this component: \`${trimmed}\` (\`${exportName}\`). Current props: \`${JSON.stringify(propsRecord)}\``,
+                  )
+                }
+              >
+                Prompt: change component
+              </Button>
+              {bridgeCapture ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  className="h-6 text-[10px]"
+                  onClick={() => {
+                    void (async () => {
+                      try {
+                        const shot = await window.desktopBridge?.captureComponentPreview?.({
+                          viewId: nativeViewId,
+                        });
+                        setPreviewScreenshot(shot ?? null);
+                      } catch {
+                        setPreviewScreenshot(null);
+                      }
+                    })();
+                  }}
+                >
+                  Screenshot
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
 
-          {propSpecs.length > 0 ? (
+          {!isProductVariant && propSpecs.length > 0 ? (
             <div className="max-h-40 overflow-y-auto border-border border-b px-2 py-2">
               <div className="mb-1 font-medium text-[10px] text-muted-foreground">Props</div>
               <div className="flex flex-col gap-2">
@@ -395,16 +742,61 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
             </div>
           ) : null}
 
-          {bundleQuery.isPending ? (
+          {!isProductVariant && bundleRpcFailed ? (
+            <div className="space-y-1 border-b border-destructive/25 bg-destructive/5 px-2 py-2 text-destructive text-[11px]">
+              <div className="font-medium">Preview pipeline RPC failed</div>
+              <div>
+                {matchedRegistryEntry !== undefined
+                  ? ((executePreviewQuery.error as Error)?.message ?? "executeRenderPlan failed.")
+                  : ((legacyBundleQuery.error as Error)?.message ??
+                    "buildComponentPreview failed.")}
+              </div>
+            </div>
+          ) : null}
+
+          {bundlePending && !isProductVariant ? (
             <div className="p-3 text-muted-foreground text-xs">Bundling preview…</div>
-          ) : bundle && !bundle.ok ? (
-            <pre className="max-h-48 overflow-auto whitespace-pre-wrap p-2 text-destructive text-[11px]">
-              {bundle.errors.join("\n")}
-              {bundle.warnings.length > 0 ? `\n\n${bundle.warnings.join("\n")}` : ""}
+          ) : compileErrors.length > 0 ? (
+            <div className="space-y-2 border-b border-destructive/30 bg-destructive/5 px-2 py-2">
+              <div className="font-semibold text-destructive text-[11px]">Render failure card</div>
+              <pre className="max-h-48 overflow-auto whitespace-pre-wrap text-destructive text-[11px]">
+                {compileErrors.join("\n")}
+              </pre>
+              {renderManifest?.diagnostics !== undefined &&
+              renderManifest.diagnostics.length > 0 ? (
+                <ul className="max-h-32 overflow-auto space-y-1 text-[10px] text-muted-foreground">
+                  {renderManifest.diagnostics.slice(0, 24).map((row) => (
+                    <li key={`${row.level}:${row.source}:${row.atMs}:${row.message}`}>
+                      <span className="font-semibold text-foreground">[{row.level}]</span>{" "}
+                      <span className="font-mono text-[10px]">{row.source}</span>: {row.message}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : compileWarnings.length > 0 && !isProductVariant ? (
+            <pre className="max-h-32 overflow-auto whitespace-pre-wrap border-b border-border/60 bg-muted/10 px-2 py-2 text-[10px] text-muted-foreground">
+              {compileWarnings.join("\n")}
             </pre>
           ) : runtimeError ? (
-            <div className="border-b border-destructive/40 bg-destructive/10 px-2 py-1 text-destructive text-[11px]">
+            <div
+              className={cn(
+                "border-b border-destructive/40 bg-destructive/10 px-2 py-1 text-destructive",
+                isProductVariant ? "text-xs" : "text-[11px]",
+              )}
+            >
               {runtimeError}
+            </div>
+          ) : null}
+
+          {!isProductVariant && previewScreenshot ? (
+            <div className="border-b border-border/60 bg-muted/10 px-2 py-2">
+              <div className="mb-1 text-[10px] font-medium text-muted-foreground">Last capture</div>
+              <img
+                alt="Captured component preview"
+                className="max-h-48 w-auto rounded-md border border-border/60 bg-background"
+                src={previewScreenshot}
+              />
             </div>
           ) : null}
 
@@ -417,11 +809,18 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
                 sandbox="allow-scripts"
                 src={previewRuntimeHref()}
               />
+            ) : isProductVariant ? (
+              <div
+                aria-hidden
+                className="h-full min-h-[240px] w-full bg-transparent"
+                data-testid="component-preview-native-host"
+              />
             ) : (
               <div className="flex h-full min-h-[240px] w-full items-center justify-center text-muted-foreground text-xs">
                 Native preview host active — iframe disabled.
               </div>
             )}
+            {showProductLoading ? <ComponentPreviewLoadingSkeleton overlay /> : null}
           </div>
         </>
       )}
