@@ -7,11 +7,13 @@ const shared = {
   outExtensions: () => ({ js: ".cjs" }),
 };
 
+const isDevBuild = process.env.T3CODE_DESKTOP_DEV_BUILD === "1";
+
 export default defineConfig([
   {
     ...shared,
     entry: ["src/main.ts"],
-    clean: true,
+    clean: !isDevBuild,
     noExternal: (id) => id.startsWith("@t3tools/"),
   },
   {

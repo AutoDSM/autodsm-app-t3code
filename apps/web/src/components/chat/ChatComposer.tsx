@@ -264,7 +264,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
             className={cn(
               "shrink-0 whitespace-nowrap px-2 sm:px-3",
               props.planSidebarOpen
-                ? "text-blue-400 hover:text-blue-300"
+                ? "text-primary hover:text-primary/80"
                 : "text-muted-foreground/70 hover:text-foreground/80",
             )}
             size="sm"
@@ -445,6 +445,8 @@ export interface ChatComposerProps {
   terminalOpen: boolean;
   gitCwd: string | null;
   brandTokens?: ReadonlyArray<AutoDsmBrandToken>;
+  /** When set, overrides the default composer placeholder copy. */
+  promptPlaceholder?: string | undefined;
 
   // Refs the parent needs kept in sync
   promptRef: React.RefObject<string>;
@@ -558,6 +560,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     scheduleComposerFocus,
     setThreadError,
     onExpandImage,
+    promptPlaceholder,
   } = props;
 
   // ------------------------------------------------------------------
@@ -2256,15 +2259,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       ? "Type your own answer, or leave this blank to use the selected option"
                       : showPlanFollowUpPrompt && activeProposedPlan
                         ? "Add feedback to refine the plan, or leave this blank to implement it"
-                        : environmentUnavailable
-                          ? `${environmentUnavailable.label} is ${
-                              environmentUnavailable.connectionState === "connecting"
-                                ? "connecting"
-                                : "disconnected"
-                            }`
-                          : phase === "disconnected"
-                            ? "Ask for follow-up changes or attach images"
-                            : "Ask anything, @tag files/folders, $use skills, or / for commands"
+                        : promptPlaceholder
+                          ? promptPlaceholder
+                          : environmentUnavailable
+                            ? `${environmentUnavailable.label} is ${
+                                environmentUnavailable.connectionState === "connecting"
+                                  ? "connecting"
+                                  : "disconnected"
+                              }`
+                            : phase === "disconnected"
+                              ? "Ask for follow-up changes or attach images"
+                              : "Ask anything, @tag files/folders, $use skills, or / for commands"
                 }
                 disabled={
                   isConnecting ||

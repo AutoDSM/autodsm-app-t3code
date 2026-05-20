@@ -44,7 +44,9 @@ import {
   useSavedEnvironmentRuntimeStore,
 } from "../environments/runtime";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { useAutoDsmSingleDesignSystemMode } from "../hooks/useAutoDsmWorkspaceBootstrap";
 import { useSettings } from "../hooks/useSettings";
+import { isElectron } from "../env";
 import { readLocalApi } from "../localApi";
 import {
   getSourceControlDiscoverySnapshot,
@@ -424,6 +426,8 @@ function OpenCommandPaletteDialog() {
   const primaryEnvironmentLabel = readPrimaryEnvironmentDescriptor()?.label ?? null;
   const savedEnvironmentRegistry = useSavedEnvironmentRegistryStore((state) => state.byId);
   const savedEnvironmentRuntimeById = useSavedEnvironmentRuntimeStore((state) => state.byId);
+  const { hasDesignSystemOnDisk } = useAutoDsmSingleDesignSystemMode();
+  const hideAddProjectIntake = isElectron && hasDesignSystemOnDisk;
 
   const addProjectEnvironmentOptions = useMemo(() => {
     const options: AddProjectEnvironmentOption[] = [];
@@ -1001,8 +1005,11 @@ function OpenCommandPaletteDialog() {
       return;
     }
     clearOpenIntent();
+    if (hideAddProjectIntake) {
+      return;
+    }
     openAddProjectFlow();
-  }, [clearOpenIntent, openAddProjectFlow, openIntent]);
+  }, [clearOpenIntent, hideAddProjectIntake, openAddProjectFlow, openIntent]);
 
   const actionItems: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [];
 
@@ -1046,34 +1053,36 @@ function OpenCommandPaletteDialog() {
     });
   }
 
-  actionItems.push({
-    kind: "action",
-    value: "action:add-project",
-    searchTerms: [
-      "add project",
-      "folder",
-      "directory",
-      "browse",
-      "clone",
-      "remote",
-      "repository",
-      "repo",
-      "git",
-      "github",
-      "gitlab",
-      "bitbucket",
-      "azure",
-      "devops",
-      "url",
-      "environment",
-    ],
-    title: "Add project",
-    icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
-    keepOpen: true,
-    run: async () => {
-      openAddProjectFlow();
-    },
-  });
+  if (!hideAddProjectIntake) {
+    actionItems.push({
+      kind: "action",
+      value: "action:add-project",
+      searchTerms: [
+        "add project",
+        "folder",
+        "directory",
+        "browse",
+        "clone",
+        "remote",
+        "repository",
+        "repo",
+        "git",
+        "github",
+        "gitlab",
+        "bitbucket",
+        "azure",
+        "devops",
+        "url",
+        "environment",
+      ],
+      title: "Add project",
+      icon: <FolderPlusIcon className={ITEM_ICON_CLASS} />,
+      keepOpen: true,
+      run: async () => {
+        openAddProjectFlow();
+      },
+    });
+  }
 
   actionItems.push({
     kind: "action",

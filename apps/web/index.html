@@ -13,8 +13,16 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <script>
       (() => {
+        const isComponentPreviewRuntime =
+          window.location.pathname === "/component-preview-runtime" ||
+          window.location.pathname.endsWith("/component-preview-runtime");
+        if (isComponentPreviewRuntime) {
+          document.documentElement.dataset.componentPreviewRuntime = "1";
+        }
+
         const LIGHT_BACKGROUND = "#ffffff";
         const DARK_BACKGROUND = "#161616";
+        const PREVIEW_RUNTIME_BACKGROUND = "#1b1b1b";
         const themeColorMeta = document.querySelector('meta[name="theme-color"]');
         try {
           const storedTheme = window.localStorage.getItem("t3code:theme");
@@ -25,13 +33,20 @@
           const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
           const isDark = theme === "dark" || (theme === "system" && prefersDark);
           document.documentElement.classList.toggle("dark", isDark);
-          const chromeColor = isDark ? DARK_BACKGROUND : LIGHT_BACKGROUND;
+          const chromeColor = isComponentPreviewRuntime
+            ? PREVIEW_RUNTIME_BACKGROUND
+            : isDark
+              ? DARK_BACKGROUND
+              : LIGHT_BACKGROUND;
           document.documentElement.style.backgroundColor = chromeColor;
           themeColorMeta?.setAttribute("content", chromeColor);
         } catch {
           document.documentElement.classList.add("dark");
-          document.documentElement.style.backgroundColor = DARK_BACKGROUND;
-          themeColorMeta?.setAttribute("content", DARK_BACKGROUND);
+          const chromeColor = isComponentPreviewRuntime
+            ? PREVIEW_RUNTIME_BACKGROUND
+            : DARK_BACKGROUND;
+          document.documentElement.style.backgroundColor = chromeColor;
+          themeColorMeta?.setAttribute("content", chromeColor);
         }
       })();
     </script>
@@ -77,10 +92,31 @@
         height: 96px;
       }
 
-      #boot-shell-logo {
+      .boot-shell-watermark {
         width: 64px;
         height: 64px;
         object-fit: contain;
+      }
+
+      .boot-shell-watermark--dark {
+        display: none;
+      }
+
+      html.dark .boot-shell-watermark:not(.boot-shell-watermark--dark) {
+        display: none;
+      }
+
+      html.dark .boot-shell-watermark--dark {
+        display: block;
+      }
+
+      html[data-component-preview-runtime="1"] body {
+        background: #1b1b1b;
+        color: #f5f5f5;
+      }
+
+      html[data-component-preview-runtime="1"] #boot-shell {
+        display: none;
       }
     </style>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -94,8 +130,13 @@
   <body>
     <div id="root">
       <div id="boot-shell">
-        <div id="boot-shell-card" aria-label="T3 Code splash screen">
-          <img id="boot-shell-logo" src="/apple-touch-icon.png" alt="T3 Code" />
+        <div id="boot-shell-card" aria-label="autoDSM splash screen">
+          <img class="boot-shell-watermark" src="/autodsm/watermark-default.png" alt="autoDSM" />
+          <img
+            class="boot-shell-watermark boot-shell-watermark--dark"
+            src="/autodsm/watermark-dark.png"
+            alt="autoDSM"
+          />
         </div>
       </div>
     </div>

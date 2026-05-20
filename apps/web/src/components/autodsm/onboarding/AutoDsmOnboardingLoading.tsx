@@ -12,17 +12,28 @@ import { usePrimaryEnvironmentId } from "~/environments/primary";
 import { loadingLabelForStarter } from "~/lib/autoDsmOnboarding";
 import {
   createWorkspaceInflightKey,
+  clearCreateWorkspaceSessionCache,
+  clearPersistedCreateWorkspaceRequestId,
   persistCreateWorkspaceRequestId,
   readPersistedCreateWorkspaceRequestId,
-  runCreateWorkspaceOnce,
+  runCreateWorkspaceWithTransportRetry,
 } from "~/lib/autoDsmCreateWorkspaceRequest";
+import {
+  hasAutoDsmDesignSystem,
+  isAutoDsmDesignSystemAlreadyExistsError,
+} from "~/lib/autoDsmDesignSystemPresence";
 import { formatUnknownErrorMessage } from "~/lib/formatUnknownErrorMessage";
 import { normalizeSidebarComponentCatalogPath } from "~/lib/srcComponentsWorkspacePaths";
+import {
+  waitForOrchestrationThreadInStore,
+  waitForProjectCwdInStore,
+} from "~/lib/waitForOrchestrationThread";
 import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
 
-import { AutoDsmLogoMark } from "../AutoDsmLogoMark";
+import { AutoDsmWatermark } from "../AutoDsmWatermark";
 import { AutoDsmOnboardingShell } from "./AutoDsmOnboardingShell";
+import { Button } from "~/components/ui/button";
 
 const STAGES = [
   "Copying template",
@@ -41,29 +52,25 @@ export function AutoDsmOnboardingLoading(): JSX.Element {
   const setWorkspaceRef = useUiStateStore((s) => s.setAutoDsmWorkspaceProjectRef);
   const starterId = useUiStateStore((s) => s.autodsmOnboarding.starterId);
   const designSystemName = useUiStateStore((s) => s.autodsmOnboarding.designSystemName);
-  const onboardingCompleted = useUiStateStore((s) => s.autodsmOnboarding.completed);
-  const workspaceProjectRef = useUiStateStore((s) => s.autoDsmWorkspaceProjectRef);
   const [stageIndex, setStageIndex] = useState(0);
   const [fatalError, setFatalError] = useState<string | null>(null);
+  const [showResetWorkspace, setShowResetWorkspace] = useState(false);
+  const [isResettingWorkspace, setIsResettingWorkspace] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
   const runGenerationRef = useRef(0);
   const requestIdRef = useRef<string | null>(null);
   const workspaceCreateCompletedRef = useRef(false);
 
   useEffect(() => {
+    if (workspaceCreateCompletedRef.current) {
+      return;
+    }
+
     if (!starterId) {
       void navigate({ to: "/onboarding/method", replace: true });
       return;
     }
     if (!primaryEnvironmentId) {
-      return;
-    }
-
-    if (onboardingCompleted && workspaceProjectRef !== null) {
-      void navigate({ to: "/home", replace: true });
-      return;
-    }
-
-    if (workspaceCreateCompletedRef.current) {
       return;
     }
 
@@ -105,7 +112,7 @@ export function AutoDsmOnboardingLoading(): JSX.Element {
       }
 
       try {
-        const result = await runCreateWorkspaceOnce(inflightKey, () =>
+        const result = await runCreateWorkspaceWithTransportRetry(inflightKey, () =>
           api.autodsm.createWorkspace({
             starterId,
             environmentId: primaryEnvironmentId,
@@ -120,20 +127,44 @@ export function AutoDsmOnboardingLoading(): JSX.Element {
         window.clearInterval(stageTimer);
         setStageIndex(STAGES.length - 1);
 
+        workspaceCreateCompletedRef.current = true;
+
         const paths: Record<string, string> = {};
         for (const row of result.threads) {
           const ref = scopeThreadRef(primaryEnvironmentId, row.threadId);
           paths[scopedThreadKey(ref)] = normalizeSidebarComponentCatalogPath(row.componentPath);
         }
         mergePaths(paths);
-        setWorkspaceRef({
+        const projectRef = {
           environmentId: primaryEnvironmentId,
           projectId: result.projectId,
-        });
+        };
+        setWorkspaceRef(projectRef);
         complete();
-        workspaceCreateCompletedRef.current = true;
         const firstAgent = result.threads[0];
         if (firstAgent) {
+          const firstThreadRef = scopeThreadRef(primaryEnvironmentId, firstAgent.threadId);
+          const [synced, projectReady] = await Promise.all([
+            waitForOrchestrationThreadInStore(firstThreadRef),
+            waitForProjectCwdInStore(projectRef),
+          ]);
+          if (cancelled || runGeneration !== runGenerationRef.current) {
+            return;
+          }
+          if (!synced || !projectReady) {
+            setFatalError(
+              "Workspace created, but the project did not sync in time. Open Home and try again.",
+            );
+            toastManager.add(
+              stackedThreadToast({
+                type: "warning",
+                title: "Thread sync timed out",
+                description: "Your design system was created. Open Home to continue.",
+              }),
+            );
+            void navigate({ to: "/home", replace: true });
+            return;
+          }
           void navigate({
             to: "/$environmentId/$threadId",
             params: {
@@ -151,6 +182,26 @@ export function AutoDsmOnboardingLoading(): JSX.Element {
       } catch (error) {
         window.clearInterval(stageTimer);
         if (cancelled || runGeneration !== runGenerationRef.current) {
+          return;
+        }
+        if (isAutoDsmDesignSystemAlreadyExistsError(error)) {
+          const history = await api.autodsm.listWorkspaceHistory({});
+          if (hasAutoDsmDesignSystem(history.entries)) {
+            workspaceCreateCompletedRef.current = true;
+            toastManager.add(
+              stackedThreadToast({
+                type: "success",
+                title: "Design system already exists",
+                description: "Opening your existing workspace.",
+              }),
+            );
+            complete();
+            void navigate({ to: "/home", replace: true });
+            return;
+          }
+
+          setShowResetWorkspace(true);
+          setFatalError("Workspace metadata is inconsistent. Reset the workspace and try again.");
           return;
         }
         const message = formatUnknownErrorMessage(error);
@@ -173,20 +224,62 @@ export function AutoDsmOnboardingLoading(): JSX.Element {
     complete,
     mergePaths,
     navigate,
-    onboardingCompleted,
     primaryEnvironmentId,
     setWorkspaceRef,
     starterId,
-    workspaceProjectRef,
     designSystemName,
+    retryNonce,
   ]);
+
+  const handleResetWorkspace = () => {
+    if (!starterId || !primaryEnvironmentId || isResettingWorkspace) {
+      return;
+    }
+
+    const displayName = designSystemName?.trim() || undefined;
+    const inflightKey = createWorkspaceInflightKey(starterId, primaryEnvironmentId, displayName);
+    const api = readEnvironmentApi(primaryEnvironmentId);
+    if (!api) {
+      setFatalError("Connect to your workspace environment, then try again.");
+      return;
+    }
+
+    void (async () => {
+      setIsResettingWorkspace(true);
+      try {
+        const history = await api.autodsm.listWorkspaceHistory({});
+        for (const entry of history.entries) {
+          await api.autodsm.deleteWorkspace({ workspaceId: entry.workspaceId });
+        }
+        clearCreateWorkspaceSessionCache(inflightKey);
+        clearPersistedCreateWorkspaceRequestId(starterId, primaryEnvironmentId, displayName);
+        requestIdRef.current = null;
+        workspaceCreateCompletedRef.current = false;
+        setFatalError(null);
+        setShowResetWorkspace(false);
+        setStageIndex(0);
+        setRetryNonce((value) => value + 1);
+      } catch (resetError) {
+        setFatalError(formatUnknownErrorMessage(resetError));
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Could not reset workspace",
+            description: formatUnknownErrorMessage(resetError),
+          }),
+        );
+      } finally {
+        setIsResettingWorkspace(false);
+      }
+    })();
+  };
 
   const headline = loadingLabelForStarter(starterId);
 
   return (
     <AutoDsmOnboardingShell>
       <div className="flex flex-col items-center gap-10 text-center">
-        <AutoDsmLogoMark className="size-20 sm:size-24" />
+        <AutoDsmWatermark className="size-20 sm:size-24" />
         <div className="space-y-2">
           <p className="text-lg font-semibold text-foreground sm:text-xl">{headline}</p>
           <p className="text-sm text-muted-foreground">
@@ -210,6 +303,11 @@ export function AutoDsmOnboardingLoading(): JSX.Element {
             />
           ))}
         </div>
+        {showResetWorkspace ? (
+          <Button disabled={isResettingWorkspace} onClick={handleResetWorkspace} type="button">
+            {isResettingWorkspace ? "Resetting workspace…" : "Reset workspace"}
+          </Button>
+        ) : null}
       </div>
     </AutoDsmOnboardingShell>
   );

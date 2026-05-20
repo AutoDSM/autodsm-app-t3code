@@ -13,6 +13,7 @@ import { QueryClient, useQueryClient } from "@tanstack/react-query";
 import { APP_DISPLAY_NAME } from "../branding";
 import { isElectron } from "../env";
 import { ElectronDesktopAuthRecovery } from "../components/autodsm/ElectronDesktopAuthRecovery";
+import { DesktopBackendStatusGate } from "../components/autodsm/DesktopBackendStatusGate";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
 import { CommandPalette } from "../components/CommandPalette";
 import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
@@ -127,7 +128,6 @@ export const Route = createRootRouteWithContext<{
 function RootRouteView() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { authGateState } = Route.useRouteContext();
-  const primaryEnvironmentAuthenticated = authGateState.status === "authenticated";
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -137,6 +137,22 @@ function RootRouteView() {
       window.cancelAnimationFrame(frame);
     };
   }, [pathname]);
+
+  return (
+    <DesktopBackendStatusGate>
+      <RootRouteViewContent pathname={pathname} authGateState={authGateState} />
+    </DesktopBackendStatusGate>
+  );
+}
+
+function RootRouteViewContent({
+  pathname,
+  authGateState,
+}: {
+  readonly pathname: string;
+  readonly authGateState: Awaited<ReturnType<typeof Route.useRouteContext>>["authGateState"];
+}) {
+  const primaryEnvironmentAuthenticated = authGateState.status === "authenticated";
 
   if (pathname === "/pair") {
     return <Outlet />;

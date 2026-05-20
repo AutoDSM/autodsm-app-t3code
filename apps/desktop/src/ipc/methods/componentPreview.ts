@@ -6,6 +6,7 @@ import * as ElectronWindow from "../../electron/ElectronWindow.ts";
 import {
   attachPreviewView,
   capturePreviewView,
+  detachAllPreviewViews,
   detachPreviewView,
   isWebContentsViewPreviewSupported,
   primePreviewView,
@@ -73,7 +74,18 @@ export const detachComponentPreview = makeIpcMethod({
     if (Option.isNone(owner)) {
       return;
     }
-    detachPreviewView(owner.value, input.viewId);
+    detachPreviewView(input.viewId);
+  }),
+});
+
+export const detachAllComponentPreview = makeIpcMethod({
+  channel: IpcChannels.COMPONENT_PREVIEW_DETACH_ALL_CHANNEL,
+  payload: Schema.Void,
+  result: Schema.Void,
+  handler: Effect.fn("desktop.ipc.componentPreview.detachAll")(function* () {
+    yield* Effect.sync(() => {
+      detachAllPreviewViews();
+    });
   }),
 });
 
@@ -96,11 +108,13 @@ export const primeComponentPreview = makeIpcMethod({
     viewId: Schema.String,
     javascript: Schema.String,
     propsJson: Schema.String,
+    workspaceStyleCss: Schema.optional(Schema.String),
   }),
   result: Schema.Boolean,
   handler: Effect.fn("desktop.ipc.componentPreview.prime")(function* (input) {
     return yield* Effect.tryPromise({
-      try: () => primePreviewView(input.viewId, input.javascript, input.propsJson),
+      try: () =>
+        primePreviewView(input.viewId, input.javascript, input.propsJson, input.workspaceStyleCss),
       catch: () => false,
     });
   }),

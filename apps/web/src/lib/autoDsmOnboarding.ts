@@ -133,8 +133,9 @@ export function loadingLabelForStarter(starterId: AutoDsmStarterId | null): stri
 export function getOnboardingGuardRedirect(
   segment: AutoDsmOnboardingRouteSegment,
   state: AutoDsmOnboardingState,
+  input?: { readonly allowCompletedReentry?: boolean },
 ): `/onboarding/${AutoDsmOnboardingRouteSegment}` | null {
-  if (state.completed) {
+  if (state.completed && !input?.allowCompletedReentry) {
     return "/onboarding/welcome";
   }
   switch (segment) {
@@ -172,16 +173,47 @@ export function getOnboardingGuardRedirect(
   }
 }
 
+export function isAutoDsmProjectCreationOnboardingSegment(
+  segment: AutoDsmOnboardingRouteSegment | "index",
+): segment is AutoDsmOnboardingRouteSegment {
+  return (
+    segment === "create" ||
+    segment === "name" ||
+    segment === "method" ||
+    segment === "library" ||
+    segment === "loading"
+  );
+}
+
+export function canReenterProjectCreationOnboarding(input: {
+  readonly onboardingCompleted: boolean;
+  readonly hasDesignSystemOnDisk: boolean;
+  readonly segment: AutoDsmOnboardingRouteSegment | "index";
+}): boolean {
+  return (
+    input.onboardingCompleted &&
+    !input.hasDesignSystemOnDisk &&
+    isAutoDsmProjectCreationOnboardingSegment(input.segment)
+  );
+}
+
 export function resolveChatIndexOnboarding(
   onboarding: AutoDsmOnboardingState,
   isElectron: boolean,
   isAuthenticated: boolean,
+  input: {
+    readonly hasActiveWorkspaceProject: boolean;
+    readonly hasDesignSystemOnDisk: boolean;
+  } = { hasActiveWorkspaceProject: true, hasDesignSystemOnDisk: false },
 ): ChatIndexOnboardingResolution | null {
   if (!isElectron || !isAuthenticated) {
     return null;
   }
   if (onboarding.completed) {
-    return { kind: "home", to: "/home" };
+    if (input.hasActiveWorkspaceProject || input.hasDesignSystemOnDisk) {
+      return { kind: "home", to: "/home" };
+    }
+    return null;
   }
   return { kind: "onboarding", to: "/onboarding/welcome" };
 }

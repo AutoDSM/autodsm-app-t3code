@@ -1,7 +1,9 @@
-import type { DesktopBridge } from "@t3tools/contracts";
+import type { DesktopAppBranding, DesktopBridge } from "@t3tools/contracts";
 import { contextBridge, ipcRenderer } from "electron";
 
 import * as IpcChannels from "./ipc/channels.ts";
+
+let cachedAppBranding: DesktopAppBranding | null | undefined;
 
 function unwrapEnsureSshEnvironmentResult(result: unknown) {
   if (
@@ -21,11 +23,20 @@ function unwrapEnsureSshEnvironmentResult(result: unknown) {
 
 contextBridge.exposeInMainWorld("desktopBridge", {
   getAppBranding: () => {
-    const result = ipcRenderer.sendSync(IpcChannels.GET_APP_BRANDING_CHANNEL);
-    if (typeof result !== "object" || result === null) {
-      return null;
+    if (cachedAppBranding !== undefined) {
+      return cachedAppBranding;
     }
-    return result as ReturnType<DesktopBridge["getAppBranding"]>;
+    try {
+      const result = ipcRenderer.sendSync(IpcChannels.GET_APP_BRANDING_CHANNEL);
+      if (typeof result !== "object" || result === null) {
+        cachedAppBranding = null;
+        return cachedAppBranding;
+      }
+      cachedAppBranding = result as ReturnType<DesktopBridge["getAppBranding"]>;
+      return cachedAppBranding;
+    } catch {
+      return cachedAppBranding ?? null;
+    }
   },
   getLocalEnvironmentBootstrap: () => {
     const result = ipcRenderer.sendSync(IpcChannels.GET_LOCAL_ENVIRONMENT_BOOTSTRAP_CHANNEL);
@@ -100,6 +111,8 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     ipcRenderer.invoke(IpcChannels.COMPONENT_PREVIEW_ATTACH_CHANNEL, input),
   detachComponentPreview: (viewId) =>
     ipcRenderer.invoke(IpcChannels.COMPONENT_PREVIEW_DETACH_CHANNEL, { viewId }),
+  detachAllComponentPreview: () =>
+    ipcRenderer.invoke(IpcChannels.COMPONENT_PREVIEW_DETACH_ALL_CHANNEL),
   setComponentPreviewBounds: (input) =>
     ipcRenderer.invoke(IpcChannels.COMPONENT_PREVIEW_SET_BOUNDS_CHANNEL, input),
   primeComponentPreview: (input) =>
@@ -132,6 +145,30 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     ipcRenderer.on(IpcChannels.UPDATE_STATE_CHANNEL, wrappedListener);
     return () => {
       ipcRenderer.removeListener(IpcChannels.UPDATE_STATE_CHANNEL, wrappedListener);
+    };
+  },
+  onBackendStatus: (listener) => {
+    const wrappedListener = (_event: Electron.IpcRendererEvent, status: unknown) => {
+      if (typeof status !== "object" || status === null) return;
+      if (!("kind" in status) || typeof status.kind !== "string") return;
+      listener(status as Parameters<typeof listener>[0]);
+    };
+
+    ipcRenderer.on(IpcChannels.BACKEND_STATUS_CHANNEL, wrappedListener);
+    return () => {
+      ipcRenderer.removeListener(IpcChannels.BACKEND_STATUS_CHANNEL, wrappedListener);
+    };
+  },
+  restartDesktopBackend: () => ipcRenderer.invoke(IpcChannels.RESTART_DESKTOP_BACKEND_CHANNEL),
+  onComponentPreviewStatus: (listener) => {
+    const wrappedListener = (_event: Electron.IpcRendererEvent, payload: unknown) => {
+      if (typeof payload !== "object" || payload === null) return;
+      listener(payload as Parameters<typeof listener>[0]);
+    };
+
+    ipcRenderer.on(IpcChannels.COMPONENT_PREVIEW_STATUS_CHANNEL, wrappedListener);
+    return () => {
+      ipcRenderer.removeListener(IpcChannels.COMPONENT_PREVIEW_STATUS_CHANNEL, wrappedListener);
     };
   },
 } satisfies DesktopBridge);

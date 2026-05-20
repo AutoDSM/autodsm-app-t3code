@@ -5,6 +5,9 @@
  */
 import type { AutoDsmWorkspaceStarterId } from "@t3tools/contracts";
 
+/** Matches AutoDSM shell `apps/web/src/index.css` — `--primary` / `--ring`. */
+const SYSTEM_PRIMARY = "#830cfa";
+
 /** Canonical shadcn-style semantic CSS variables (light + dark). */
 export const SHADCN_THEME_CSS = `:root {
   --background: oklch(1 0 0);
@@ -13,7 +16,7 @@ export const SHADCN_THEME_CSS = `:root {
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.511 0.262 276.966);
+  --primary: ${SYSTEM_PRIMARY};
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.967 0.001 286.375);
   --secondary-foreground: oklch(0.21 0.006 285.885);
@@ -25,7 +28,7 @@ export const SHADCN_THEME_CSS = `:root {
   --destructive-foreground: oklch(0.985 0 0);
   --border: oklch(0.92 0.004 286.32);
   --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.511 0.262 276.966);
+  --ring: ${SYSTEM_PRIMARY};
   --radius: 0.625rem;
   --font-sans: ui-sans-serif, system-ui, sans-serif;
   --font-size-base: 16px;
@@ -48,7 +51,7 @@ export const SHADCN_THEME_CSS = `:root {
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.627 0.265 303.9);
+  --primary: ${SYSTEM_PRIMARY};
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
@@ -60,16 +63,16 @@ export const SHADCN_THEME_CSS = `:root {
   --destructive-foreground: oklch(0.985 0 0);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.627 0.265 303.9);
+  --ring: ${SYSTEM_PRIMARY};
 }
 `;
 
 export const TAILWIND_THEME_CSS = `@import "tailwindcss";
 
 @theme {
-  --color-brand-50: oklch(0.985 0.02 280);
-  --color-brand-500: oklch(0.511 0.262 276.966);
-  --color-brand-900: oklch(0.25 0.08 280);
+  --color-brand-50: oklch(0.985 0.02 264);
+  --color-brand-500: ${SYSTEM_PRIMARY};
+  --color-brand-900: oklch(0.25 0.08 264);
   --font-sans: ui-sans-serif, system-ui, sans-serif;
   --spacing-4: 1rem;
   --spacing-8: 2rem;
@@ -88,7 +91,7 @@ export const TAILWIND_THEME_CSS = `@import "tailwindcss";
 }
 
 .dark {
-  --primary: oklch(0.627 0.265 303.9);
+  --primary: ${SYSTEM_PRIMARY};
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
 }
@@ -99,7 +102,7 @@ export const MODERN_STARTER_THEME_CSS = `@import "tailwindcss";
 :root {
   --background: #ffffff;
   --foreground: #0f172a;
-  --primary: #6366f1;
+  --primary: ${SYSTEM_PRIMARY};
   --primary-foreground: #ffffff;
   --muted: #f1f5f9;
   --muted-foreground: #64748b;
@@ -116,8 +119,8 @@ export const MODERN_STARTER_THEME_CSS = `@import "tailwindcss";
 .dark {
   --background: #0f172a;
   --foreground: #f8fafc;
-  --primary: #818cf8;
-  --primary-foreground: #0f172a;
+  --primary: ${SYSTEM_PRIMARY};
+  --primary-foreground: #ffffff;
   --muted: #1e293b;
   --muted-foreground: #94a3b8;
   --border: #334155;
@@ -126,7 +129,7 @@ export const MODERN_STARTER_THEME_CSS = `@import "tailwindcss";
 
 /** MUI / Chakra workspaces share CSS vars consumed by preview theme shells. */
 export const MUI_CHAKRA_THEME_CSS = `:root {
-  --primary: #7c3aed;
+  --primary: ${SYSTEM_PRIMARY};
   --primary-foreground: #ffffff;
   --secondary: #64748b;
   --background: #ffffff;
@@ -142,8 +145,8 @@ export const MUI_CHAKRA_THEME_CSS = `:root {
 }
 
 .dark {
-  --primary: #a78bfa;
-  --primary-foreground: #1e1b4b;
+  --primary: ${SYSTEM_PRIMARY};
+  --primary-foreground: #ffffff;
   --background: #0f172a;
   --foreground: #f8fafc;
   --muted: #1e293b;

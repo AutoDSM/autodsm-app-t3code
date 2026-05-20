@@ -10,11 +10,16 @@
  * Tune poll interval (ms): T3CODE_DESKTOP_TSDOWN_POLL_MS (default 400)
  */
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, statSync, writeFileSync } from "node:fs";
 import { access, glob } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
+
+import {
+  DEV_BUILD_READY_SENTINEL_RELATIVE,
+  fingerprintWatchedOutputFiles,
+} from "./dev-electron-supervisor-utils.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const desktopDir = resolve(__dirname, "..");
@@ -42,11 +47,32 @@ function resolveTsdownBin() {
   return existsSync(bin) ? bin : null;
 }
 
+const desktopOutputWatchTargets = [
+  { directory: "dist-electron", files: new Set(["main.cjs", "preload.cjs"]) },
+];
+
+function writeDevBuildReadySentinel() {
+  const outputFingerprint = fingerprintWatchedOutputFiles(desktopDir, desktopOutputWatchTargets);
+  const payload = {
+    writtenAtMs: Date.now(),
+    outputFingerprint,
+  };
+  writeFileSync(
+    join(desktopDir, DEV_BUILD_READY_SENTINEL_RELATIVE),
+    `${JSON.stringify(payload, null, 2)}\n`,
+    "utf8",
+  );
+}
+
 function runTsdownOnce() {
   const bin = resolveTsdownBin();
+  const env = {
+    ...process.env,
+    T3CODE_DESKTOP_DEV_BUILD: "1",
+  };
   const result = bin
-    ? spawnSync(bin, [], { cwd: desktopDir, stdio: "inherit", env: process.env })
-    : spawnSync("tsdown", [], { cwd: desktopDir, stdio: "inherit", env: process.env, shell: true });
+    ? spawnSync(bin, [], { cwd: desktopDir, stdio: "inherit", env })
+    : spawnSync("tsdown", [], { cwd: desktopDir, stdio: "inherit", env, shell: true });
 
   if (result.error) {
     throw result.error;
@@ -54,6 +80,8 @@ function runTsdownOnce() {
   if (result.status !== 0) {
     throw new Error(`tsdown exited with status ${result.status ?? "unknown"}`);
   }
+
+  writeDevBuildReadySentinel();
 }
 
 /** @param {string} dir */

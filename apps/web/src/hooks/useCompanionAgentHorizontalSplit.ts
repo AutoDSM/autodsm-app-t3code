@@ -8,6 +8,11 @@ import {
   type RefObject,
 } from "react";
 
+import {
+  isComponentPreviewOverlaySuppressed,
+  subscribeComponentPreviewOverlaySuppression,
+} from "~/lib/componentPreviewOverlaySuppression";
+
 /** Persisted companion (left) width as `%` of the split row. */
 export const CHAT_COMPANION_AGENT_SPLIT_STORAGE_KEY = "chat.companion-agent.split-left-pct-v1";
 
@@ -24,19 +29,22 @@ export const CHAT_PREVIEW_AGENT_SPLIT_DEFAULT_LEFT_PCT = 68;
 export const CHAT_LEFT_SIDEBAR_REFERENCE_WIDTH_REM = 16;
 
 /** Default coding-agent column — same scale as left sidebar, slightly wider. */
-export const CHAT_PREVIEW_AGENT_DEFAULT_RIGHT_WIDTH_REM = 18;
+export const CHAT_PREVIEW_AGENT_DEFAULT_RIGHT_WIDTH_REM = 20;
 
-const SPLITTER_HIT_PX = 9;
+export const PREVIEW_AGENT_SPLITTER_HIT_PX = 9;
+
+export const PREVIEW_AGENT_MIN_RIGHT_WIDTH_REM = 15;
+export const PREVIEW_AGENT_MAX_RIGHT_WIDTH_REM = 26;
+/** Preview column flexes freely — no fixed minimum (avoids grid jumps when overlays open). */
+export const PREVIEW_AGENT_MIN_PREVIEW_WIDTH_REM = 0;
+
+const SPLITTER_HIT_PX = PREVIEW_AGENT_SPLITTER_HIT_PX;
 const REM_PX = 16;
 
 const SPLIT_MIN_LEFT_PCT = 18;
 const SPLIT_MAX_LEFT_PCT = 78;
 
-const PREVIEW_AGENT_MIN_RIGHT_WIDTH_REM = 15;
-const PREVIEW_AGENT_MAX_RIGHT_WIDTH_REM = 26;
-const PREVIEW_AGENT_MIN_PREVIEW_WIDTH_REM = 22;
-
-function remToPx(rem: number): number {
+export function previewAgentRemToPx(rem: number): number {
   return Math.round(rem * REM_PX);
 }
 
@@ -53,22 +61,29 @@ function clampRightWidthPx(value: number, defaultPx: number): number {
     return defaultPx;
   }
   const rounded = Math.round(value);
-  const minPx = remToPx(PREVIEW_AGENT_MIN_RIGHT_WIDTH_REM);
-  const maxPx = remToPx(PREVIEW_AGENT_MAX_RIGHT_WIDTH_REM);
+  const minPx = previewAgentRemToPx(PREVIEW_AGENT_MIN_RIGHT_WIDTH_REM);
+  const maxPx = previewAgentRemToPx(PREVIEW_AGENT_MAX_RIGHT_WIDTH_REM);
   return Math.min(maxPx, Math.max(minPx, rounded));
 }
 
-function clampRightWidthForPane(
+/** Keeps agent + preview columns inside a split pane (used by drag + pane resize). */
+export function clampRightWidthForPane(
   rightWidthPx: number,
   paneWidthPx: number,
   defaultPx: number,
 ): number {
-  const minPreviewPx = remToPx(PREVIEW_AGENT_MIN_PREVIEW_WIDTH_REM);
+  const minPreviewPx = previewAgentRemToPx(PREVIEW_AGENT_MIN_PREVIEW_WIDTH_REM);
   const maxRightForPane = Math.max(
-    remToPx(PREVIEW_AGENT_MIN_RIGHT_WIDTH_REM),
+    previewAgentRemToPx(PREVIEW_AGENT_MIN_RIGHT_WIDTH_REM),
     paneWidthPx - SPLITTER_HIT_PX - minPreviewPx,
   );
   return clampRightWidthPx(Math.min(rightWidthPx, maxRightForPane), defaultPx);
+}
+
+export function buildPreviewAgentGridTemplateColumns(rightWidthPx: number): string {
+  const minPreviewPx = previewAgentRemToPx(PREVIEW_AGENT_MIN_PREVIEW_WIDTH_REM);
+  const minAgentPx = previewAgentRemToPx(PREVIEW_AGENT_MIN_RIGHT_WIDTH_REM);
+  return `minmax(${String(minPreviewPx)}px, 1fr) ${String(SPLITTER_HIT_PX)}px minmax(${String(minAgentPx)}px, ${String(rightWidthPx)}px)`;
 }
 
 function readStoredLeftPct(storageKey: string): number | null {
@@ -155,7 +170,7 @@ export function useCompanionAgentHorizontalSplit(
   const defaultLeftPct = options?.defaultLeftPct ?? CHAT_COMPANION_AGENT_SPLIT_DEFAULT_LEFT_PCT;
   const defaultRightWidthRem =
     options?.defaultRightWidthRem ?? CHAT_PREVIEW_AGENT_DEFAULT_RIGHT_WIDTH_REM;
-  const defaultRightWidthPx = remToPx(defaultRightWidthRem);
+  const defaultRightWidthPx = previewAgentRemToPx(defaultRightWidthRem);
 
   const [leftPct, setLeftPct] = useState(defaultLeftPct);
   const [rightWidthPx, setRightWidthPx] = useState(defaultRightWidthPx);
@@ -192,6 +207,61 @@ export function useCompanionAgentHorizontalSplit(
       leftPctDraggingRef.current = defaultLeftPct;
     }
   }, [defaultLeftPct, defaultRightWidthPx, splitEnabled, splitMode, storageKey]);
+
+  const reclampRightWidthForCurrentPane = useCallback(() => {
+    if (!splitEnabled || splitMode !== "right-fixed" || draggingRef.current) {
+      return;
+    }
+    if (isComponentPreviewOverlaySuppressed()) {
+      return;
+    }
+    const pane = splitMeasureRef.current;
+    if (!pane) {
+      return;
+    }
+    const paneWidth = pane.clientWidth;
+    if (paneWidth <= 0) {
+      return;
+    }
+    const next = clampRightWidthForPane(
+      rightWidthDraggingRef.current,
+      paneWidth,
+      defaultRightWidthPx,
+    );
+    if (next === rightWidthDraggingRef.current) {
+      return;
+    }
+    rightWidthDraggingRef.current = next;
+    setRightWidthPx(next);
+  }, [defaultRightWidthPx, splitEnabled, splitMode]);
+
+  useLayoutEffect(() => {
+    if (!splitEnabled || splitMode !== "right-fixed") {
+      return;
+    }
+    const pane = splitMeasureRef.current;
+    if (!pane) {
+      return;
+    }
+
+    reclampRightWidthForCurrentPane();
+
+    const observer = new ResizeObserver(() => {
+      reclampRightWidthForCurrentPane();
+    });
+    observer.observe(pane);
+
+    const unsubscribeOverlaySuppression = subscribeComponentPreviewOverlaySuppression(() => {
+      if (!isComponentPreviewOverlaySuppressed()) {
+        reclampRightWidthForCurrentPane();
+      }
+    });
+
+    return () => {
+      observer.disconnect();
+      unsubscribeOverlaySuppression();
+    };
+  }, [reclampRightWidthForCurrentPane, splitEnabled, splitMode]);
 
   const onSplitterPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
@@ -275,7 +345,7 @@ export function useCompanionAgentHorizontalSplit(
   const gridTemplateColumns = useMemo(() => {
     if (!splitEnabled) return undefined;
     if (splitMode === "right-fixed") {
-      return `minmax(0, 1fr) ${String(SPLITTER_HIT_PX)}px ${String(rightWidthPx)}px`;
+      return buildPreviewAgentGridTemplateColumns(rightWidthPx);
     }
     return `${leftPct}% ${String(SPLITTER_HIT_PX)}px minmax(0, 1fr)`;
   }, [leftPct, rightWidthPx, splitEnabled, splitMode]);

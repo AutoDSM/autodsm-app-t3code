@@ -1,10 +1,10 @@
 {
   "agents": [
-    { "title": "Button", "componentPath": "/src/components/ShadcnButton.tsx" },
-    { "title": "Card", "componentPath": "/src/components/ShadcnCard.tsx" },
-    { "title": "Badge", "componentPath": "/src/components/ShadcnBadge.tsx" },
-    { "title": "Input", "componentPath": "/src/components/ShadcnInput.tsx" },
-    { "title": "Theme card", "componentPath": "/src/components/ThemeCard.tsx" },
-    { "title": "Pill label", "componentPath": "/src/components/PillLabel.tsx" }
+    { "title": "Button", "componentPath": "/src/components/ShadcnButton.tsx", "group": "Buttons" },
+    { "title": "Card", "componentPath": "/src/components/ShadcnCard.tsx", "group": "Cards" },
+    { "title": "Badge", "componentPath": "/src/components/ShadcnBadge.tsx", "group": "Badges" },
+    { "title": "Input", "componentPath": "/src/components/ShadcnInput.tsx", "group": "Inputs" },
+    { "title": "Theme card", "componentPath": "/src/components/ThemeCard.tsx", "group": "Cards" },
+    { "title": "Pill label", "componentPath": "/src/components/PillLabel.tsx", "group": "Badges" }
   ]
 }

@@ -135,7 +135,7 @@ export function ComponentPreviewRuntimeApp(): JSX.Element {
   }, []);
 
   return (
-    <div className="box-border flex min-h-svh w-full min-w-0 items-center justify-center bg-background p-2 text-foreground">
+    <div className="box-border flex min-h-svh w-full min-w-0 items-center justify-center bg-[#1b1b1b] p-2 text-foreground">
       {node}
     </div>
   );

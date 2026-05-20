@@ -112,10 +112,31 @@ export interface WsRpcClient {
     readonly exportPublishedSnapshot: RpcUnaryMethod<
       typeof WS_METHODS.autodsmExportPublishedSnapshot
     >;
+    readonly exportPublishedExport: RpcUnaryMethod<typeof WS_METHODS.autodsmExportPublishedExport>;
+    readonly createPullRequest: RpcUnaryMethod<typeof WS_METHODS.autodsmCreatePullRequest>;
+    readonly listPullRequests: RpcUnaryMethod<typeof WS_METHODS.autodsmListPullRequests>;
+    readonly listActivity: RpcUnaryMethod<typeof WS_METHODS.autodsmListActivity>;
+    readonly listComponentAgents: RpcUnaryMethod<typeof WS_METHODS.autodsmListComponentAgents>;
+    readonly registerComponentAgent: RpcUnaryMethod<
+      typeof WS_METHODS.autodsmRegisterComponentAgent
+    >;
+    readonly updateComponentAgent: RpcUnaryMethod<typeof WS_METHODS.autodsmUpdateComponentAgent>;
+    readonly getComponentConversation: RpcUnaryMethod<
+      typeof WS_METHODS.autodsmGetComponentConversation
+    >;
+    readonly appendComponentConversation: RpcUnaryMethod<
+      typeof WS_METHODS.autodsmAppendComponentConversation
+    >;
+    readonly getSession: RpcUnaryMethod<typeof WS_METHODS.autodsmGetSession>;
+    readonly createSession: RpcUnaryMethod<typeof WS_METHODS.autodsmCreateSession>;
+    readonly listChangeSetsForSession: RpcUnaryMethod<
+      typeof WS_METHODS.autodsmListChangeSetsForSession
+    >;
     readonly prepareSessionBranch: RpcUnaryMethod<typeof WS_METHODS.autodsmPrepareSessionBranch>;
     readonly getIssuesForPrompt: RpcUnaryMethod<typeof WS_METHODS.autodsmGetIssuesForPrompt>;
     readonly createWorkspace: RpcUnaryMethod<typeof WS_METHODS.autodsmCreateWorkspace>;
     readonly listWorkspaceHistory: RpcUnaryMethod<typeof WS_METHODS.autodsmListWorkspaceHistory>;
+    readonly deleteWorkspace: RpcUnaryMethod<typeof WS_METHODS.autodsmDeleteWorkspace>;
   };
   readonly filesystem: {
     readonly browse: RpcUnaryMethod<typeof WS_METHODS.filesystemBrowse>;
@@ -291,6 +312,30 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
         transport.request((client) => client[WS_METHODS.autodsmAssembleGenerationPlan](input)),
       exportPublishedSnapshot: (input) =>
         transport.request((client) => client[WS_METHODS.autodsmExportPublishedSnapshot](input)),
+      exportPublishedExport: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmExportPublishedExport](input)),
+      createPullRequest: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmCreatePullRequest](input)),
+      listPullRequests: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmListPullRequests](input)),
+      listActivity: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmListActivity](input)),
+      listComponentAgents: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmListComponentAgents](input)),
+      registerComponentAgent: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmRegisterComponentAgent](input)),
+      updateComponentAgent: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmUpdateComponentAgent](input)),
+      getComponentConversation: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmGetComponentConversation](input)),
+      appendComponentConversation: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmAppendComponentConversation](input)),
+      getSession: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmGetSession](input)),
+      createSession: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmCreateSession](input)),
+      listChangeSetsForSession: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmListChangeSetsForSession](input)),
       prepareSessionBranch: (input) =>
         transport.request((client) => client[WS_METHODS.autodsmPrepareSessionBranch](input)),
       getIssuesForPrompt: (input) =>
@@ -299,6 +344,8 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
         transport.request((client) => client[WS_METHODS.autodsmCreateWorkspace](input)),
       listWorkspaceHistory: (input = {}) =>
         transport.request((client) => client[WS_METHODS.autodsmListWorkspaceHistory](input)),
+      deleteWorkspace: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmDeleteWorkspace](input)),
     },
     filesystem: {
       browse: (input) => transport.request((client) => client[WS_METHODS.filesystemBrowse](input)),

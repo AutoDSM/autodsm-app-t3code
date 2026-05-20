@@ -19,6 +19,7 @@ import { Skeleton } from "~/components/ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useIsMobile } from "~/hooks/useMediaQuery";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
+import { setComponentPreviewOverlaySuppressed } from "~/lib/componentPreviewOverlaySuppression";
 import * as Schema from "effect/Schema";
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
@@ -146,6 +147,16 @@ function SidebarProvider({
     }),
     [state, open, setOpen, isMobile, openMobile, toggleSidebar],
   );
+
+  React.useEffect(() => {
+    if (!openMobile) {
+      return;
+    }
+    setComponentPreviewOverlaySuppressed("mobile-sidebar", true);
+    return () => {
+      setComponentPreviewOverlaySuppressed("mobile-sidebar", false);
+    };
+  }, [openMobile]);
 
   return (
     <SidebarContext value={contextValue}>
@@ -389,6 +400,7 @@ function SidebarRail({
       }
       document.body.style.removeProperty("cursor");
       document.body.style.removeProperty("user-select");
+      delete document.body.dataset.sidebarWidthDragging;
     },
     [resolvedResizable],
   );
@@ -442,6 +454,7 @@ function SidebarRail({
       event.currentTarget.setPointerCapture(event.pointerId);
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
+      document.body.dataset.sidebarWidthDragging = "1";
     },
     [onPointerDown, open, resolvedResizable, sidebarInstance?.side],
   );

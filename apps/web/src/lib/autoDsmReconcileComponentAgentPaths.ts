@@ -11,6 +11,7 @@ import type { SidebarThreadSummary } from "~/types";
 export interface AutoDsmComponentAgentManifestEntry {
   readonly title: string;
   readonly componentPath: string;
+  readonly group?: string;
 }
 
 export interface ReconcileAutoDsmThreadComponentPathsInput {

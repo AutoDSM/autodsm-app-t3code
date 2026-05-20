@@ -89,6 +89,6 @@ export async function ensureDevPairingBypassAuthenticated(): Promise<DevPairingB
   }
 }
 
-function shouldAttemptSilentLoopbackAuth(auth: ServerAuthDescriptor): boolean {
-  return isDevPairingBypassActive(auth) || shouldSkipPairingRedirect(auth);
+export function shouldAttemptSilentLoopbackAuth(auth: ServerAuthDescriptor): boolean {
+  return isDevPairingBypassActive(auth);
 }

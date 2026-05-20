@@ -1,9 +1,33 @@
 import { spawn, spawnSync } from "node:child_process";
-import { statSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { watch } from "node:fs";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { desktopDir, getElectronLaunchInfo, resolveElectronPath } from "./electron-launcher.mjs";
+import {
+  cleanupStaleDesktopDevProcesses,
+  ensureNoLiveDesktopDevRootProcesses,
+} from "./cleanup-stale-desktop-dev.mjs";
+import {
+  acquireSupervisorLock,
+  classifyElectronExit,
+  decideElectronExitAction,
+  DEV_BUILD_READY_SENTINEL_RELATIVE,
+  DEV_SUPERVISOR_LOCK_RELATIVE,
+  evaluateOutputPollState,
+  fingerprintWatchedOutputFiles,
+  isDevBuildSentinelFresh,
+  isOrphanedToInit,
+  isPidAlive,
+  MAX_SUPERVISOR_LIFETIME_RESTARTS,
+  nextAbnormalExitCount,
+  nextConsecutiveFastFailureCount,
+  parseDevBuildReadySentinel,
+  releaseSupervisorLock,
+  shouldStopAfterAbnormalExits,
+  shouldStopAfterSupervisorLifetimeRestarts,
+} from "./dev-electron-supervisor-utils.mjs";
 import { waitForResources } from "./wait-for-resources.mjs";
 
 const devServerUrl = process.env.VITE_DEV_SERVER_URL?.trim();
@@ -26,21 +50,71 @@ const watchedDirectories = [
   { directory: "dist-electron", files: new Set(["main.cjs", "preload.cjs"]) },
   { directory: "../server/dist", files: new Set(["bin.mjs"]) },
 ];
-const forcedShutdownTimeoutMs = 1_500;
+const forcedShutdownTimeoutMs = 5_000;
+const pidExitPollMs = 50;
 const restartDebounceMs = 120;
 const minRestartCooldownMs = 2_000;
+const earlySessionOutputRestartGuardMsRaw =
+  process.env.T3CODE_DESKTOP_EARLY_SESSION_RESTART_GUARD_MS;
+const earlySessionOutputRestartGuardMs =
+  Number.isFinite(Number(earlySessionOutputRestartGuardMsRaw)) &&
+  Number(earlySessionOutputRestartGuardMsRaw) > 0
+    ? Number(earlySessionOutputRestartGuardMsRaw)
+    : 60_000;
 const childTreeGracePeriodMs = 1_200;
 const outputPollMsRaw = process.env.T3CODE_DESKTOP_OUTPUT_POLL_MS;
 const outputPollMs =
   Number.isFinite(Number(outputPollMsRaw)) && Number(outputPollMsRaw) > 0
     ? Number(outputPollMsRaw)
     : 400;
+const devBuildSentinelPollMsRaw = process.env.T3CODE_DESKTOP_DEV_BUILD_SENTINEL_POLL_MS;
+const devBuildSentinelPollMs =
+  Number.isFinite(Number(devBuildSentinelPollMsRaw)) && Number(devBuildSentinelPollMsRaw) > 0
+    ? Number(devBuildSentinelPollMsRaw)
+    : 100;
+const devBuildSentinelTimeoutMsRaw = process.env.T3CODE_DESKTOP_DEV_BUILD_SENTINEL_TIMEOUT_MS;
+const devBuildSentinelTimeoutMs =
+  Number.isFinite(Number(devBuildSentinelTimeoutMsRaw)) && Number(devBuildSentinelTimeoutMsRaw) > 0
+    ? Number(devBuildSentinelTimeoutMsRaw)
+    : 120_000;
+const autoRestartEnabled = process.env.T3CODE_DESKTOP_DEV_AUTO_RESTART === "1";
+
+const supervisorStartedAtMs = Date.now();
+
+const supervisorLockPath = join(desktopDir, DEV_SUPERVISOR_LOCK_RELATIVE);
+const lockResult = acquireSupervisorLock(supervisorLockPath);
+if (!lockResult.acquired) {
+  console.error(
+    `[dev-electron] another dev supervisor is already running for ${desktopDir} (pid=${lockResult.holder.pid}). ` +
+      `Stop it before starting a new one, or run: kill ${lockResult.holder.pid}`,
+  );
+  process.exit(1);
+}
+
+const supervisorStartingPpid = process.ppid;
+const ppidWatchdogTimer = setInterval(() => {
+  const currentPpid = process.ppid;
+  if (currentPpid !== supervisorStartingPpid && isOrphanedToInit(currentPpid)) {
+    console.info(
+      "[dev-electron] parent shell exited (re-parented to init); shutting down supervisor",
+    );
+    void shutdown(0);
+  }
+}, 2_000);
+ppidWatchdogTimer.unref();
 
 await waitForResources({
   baseDir: desktopDir,
   files: requiredFiles,
   tcpHost: devServer.hostname,
   tcpPort: port,
+});
+
+const freshDevBuildSentinel = await waitForFreshDevBuildSentinel({
+  minWrittenAtMs: supervisorStartedAtMs,
+});
+logDevElectron("fresh dev bundle ready", {
+  writtenAtMs: freshDevBuildSentinel.writtenAtMs,
 });
 
 const childEnv = { ...process.env };
@@ -55,15 +129,84 @@ const chromiumDevSwitches = [
 let shuttingDown = false;
 let restartTimer = null;
 let currentApp = null;
+let startInFlight = false;
 let restartQueue = Promise.resolve();
 const expectedExits = new WeakSet();
 const watchers = [];
 let outputPollTimer = null;
 let lastAppStartAtMs = 0;
 let restartGeneration = 0;
+let singleInstanceLockRetries = 0;
+let consecutiveFastFailures = 0;
+let abnormalExitRestarts = 0;
+let supervisorLifetimeRestarts = 0;
+let outputPollState = {
+  lastFingerprint: "",
+  stableCandidate: null,
+  stableCount: 0,
+};
 
 function logDevElectron(message, data = {}) {
   console.info(`[dev-electron] ${message}`, data);
+}
+
+function logElectronCrashDiagnostic({ generation, kind, code, signal, elapsedMs, message }) {
+  logDevElectron(message, {
+    generation,
+    kind,
+    code,
+    signal,
+    elapsedMs,
+  });
+
+  if (!autoRestartEnabled && (kind === "abnormal-exit" || kind === "spawn-error")) {
+    logDevElectron(
+      "electron crashed — supervisor will not auto-restart (set T3CODE_DESKTOP_DEV_AUTO_RESTART=1 to enable)",
+      { generation, code, signal, elapsedMs },
+    );
+  }
+
+  if (kind === "single-instance-lock-denied") {
+    logDevElectron("another desktop dev instance holds the single-instance lock", {
+      generation,
+      code,
+      elapsedMs,
+      recoveryHint: `pkill -f -- --t3code-dev-root=${desktopDir}`,
+    });
+  }
+}
+
+async function waitForFreshDevBuildSentinel({ minWrittenAtMs }) {
+  const sentinelPath = join(desktopDir, DEV_BUILD_READY_SENTINEL_RELATIVE);
+  const startedAt = Date.now();
+
+  while (true) {
+    try {
+      const raw = await readFile(sentinelPath, "utf8");
+      const parsed = JSON.parse(raw);
+      if (parseDevBuildReadySentinel(parsed) && isDevBuildSentinelFresh(parsed, minWrittenAtMs)) {
+        return parsed;
+      }
+    } catch {
+      // Keep polling until a fresh sentinel appears.
+    }
+
+    if (Date.now() - startedAt >= devBuildSentinelTimeoutMs) {
+      throw new Error(
+        `Timed out waiting for fresh desktop dev bundle sentinel after ${devBuildSentinelTimeoutMs}ms (${DEV_BUILD_READY_SENTINEL_RELATIVE})`,
+      );
+    }
+
+    await delay(devBuildSentinelPollMs);
+  }
+}
+
+function resetOutputWatchBaseline() {
+  outputPollState = {
+    lastFingerprint: fingerprintOutputs(),
+    stableCandidate: null,
+    stableCount: 0,
+  };
 }
 
 function killChildTreeByPid(pid, signal) {
@@ -74,84 +217,223 @@ function killChildTreeByPid(pid, signal) {
   spawnSync("pkill", [`-${signal}`, "-P", String(pid)], { stdio: "ignore" });
 }
 
-function cleanupStaleDevApps() {
-  if (process.platform === "win32") {
-    return;
+async function waitForPidExit(pid, timeoutMs) {
+  if (typeof pid !== "number" || pid <= 0) {
+    return true;
   }
 
-  spawnSync("pkill", ["-f", "--", `--t3code-dev-root=${desktopDir}`], { stdio: "ignore" });
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!isPidAlive(pid)) {
+      return true;
+    }
+    await delay(pidExitPollMs);
+  }
+
+  return !isPidAlive(pid);
+}
+
+function cleanupStaleDevApps() {
+  cleanupStaleDesktopDevProcesses(desktopDir);
+  logDevElectron("cleaned stale desktop dev processes");
 }
 
 function startApp() {
-  if (shuttingDown || currentApp !== null) {
+  if (shuttingDown || currentApp !== null || startInFlight) {
     return;
   }
 
-  resolveElectronPath();
-  const resolvedLaunchInfo = getElectronLaunchInfo();
-  lastAppStartAtMs = Date.now();
-  restartGeneration += 1;
-  const generation = restartGeneration;
+  startInFlight = true;
+  void (async () => {
+    try {
+      await ensureNoLiveDesktopDevRootProcesses(desktopDir, childTreeGracePeriodMs);
+      if (shuttingDown || currentApp !== null) {
+        return;
+      }
 
-  logDevElectron("starting electron", {
-    generation,
-    ...resolvedLaunchInfo,
-  });
+      resolveElectronPath();
+      const resolvedLaunchInfo = getElectronLaunchInfo();
+      lastAppStartAtMs = Date.now();
+      restartGeneration += 1;
+      const generation = restartGeneration;
 
-  const app = spawn(
-    resolveElectronPath(),
-    ["dist-electron/main.cjs", ...chromiumDevSwitches, `--t3code-dev-root=${desktopDir}`],
-    {
-      cwd: desktopDir,
-      env: childEnv,
-      stdio: "inherit",
-    },
-  );
+      logDevElectron("starting electron", {
+        generation,
+        ...resolvedLaunchInfo,
+      });
 
-  currentApp = app;
+      const app = spawn(
+        resolveElectronPath(),
+        ["dist-electron/main.cjs", ...chromiumDevSwitches, `--t3code-dev-root=${desktopDir}`],
+        {
+          cwd: desktopDir,
+          env: childEnv,
+          stdio: "inherit",
+        },
+      );
 
-  app.once("error", (error) => {
-    if (currentApp === app) {
-      currentApp = null;
+      currentApp = app;
+      resetOutputWatchBaseline();
+
+      app.once("error", (error) => {
+        if (currentApp === app) {
+          currentApp = null;
+        }
+
+        const elapsedMs = Date.now() - lastAppStartAtMs;
+        const message = error instanceof Error ? error.message : String(error);
+
+        if (!autoRestartEnabled) {
+          logElectronCrashDiagnostic({
+            generation,
+            kind: "spawn-error",
+            code: null,
+            signal: null,
+            elapsedMs,
+            message: "electron spawn error",
+          });
+          if (!shuttingDown) {
+            void shutdown(1);
+          }
+          return;
+        }
+
+        logDevElectron("electron spawn error (will restart)", {
+          generation,
+          message,
+        });
+
+        if (!shuttingDown) {
+          abnormalExitRestarts = nextAbnormalExitCount({
+            kind: "spawn-error",
+            current: abnormalExitRestarts,
+          });
+          if (shouldStopAfterAbnormalExits(abnormalExitRestarts)) {
+            logDevElectron("stopping dev-electron supervisor to prevent restart loop", {
+              generation,
+              reason: "abnormal-exit-cap",
+              abnormalExitRestarts,
+            });
+            cleanupStaleDevApps();
+            void shutdown(1);
+            return;
+          }
+          scheduleRestart("spawn-error");
+        }
+      });
+
+      app.once("exit", (code, signal) => {
+        if (currentApp === app) {
+          currentApp = null;
+        }
+
+        const expected = expectedExits.has(app);
+        const classification = classifyElectronExit({
+          shuttingDown,
+          expected,
+          code,
+          signal,
+        });
+
+        const elapsedMs = Date.now() - lastAppStartAtMs;
+        consecutiveFastFailures = nextConsecutiveFastFailureCount({
+          elapsedMs,
+          currentCount: consecutiveFastFailures,
+        });
+        abnormalExitRestarts = nextAbnormalExitCount({
+          kind: classification.kind,
+          current: abnormalExitRestarts,
+        });
+
+        logDevElectron("electron exited", {
+          generation,
+          kind: classification.kind,
+          code,
+          signal,
+          elapsedMs,
+          expectedRestart: classification.expectedRestart,
+        });
+
+        const exitDecision = decideElectronExitAction({
+          shuttingDown,
+          expected,
+          code,
+          signal,
+          singleInstanceLockRetriesUsed: singleInstanceLockRetries,
+          consecutiveFastFailures,
+          abnormalExitRestartsUsed: abnormalExitRestarts,
+          autoRestartEnabled,
+          lifetimeRestartsUsed: supervisorLifetimeRestarts,
+        });
+
+        switch (exitDecision.action) {
+          case "cleanup-and-retry":
+            singleInstanceLockRetries += 1;
+            logDevElectron(
+              "electron denied single-instance lock — cleaning stale dev apps and retrying",
+              {
+                generation,
+                elapsedMs,
+                retryAttempt: singleInstanceLockRetries,
+                code,
+                signal,
+                reason: exitDecision.reason,
+              },
+            );
+            cleanupStaleDevApps();
+            restartQueue = restartQueue
+              .catch(() => undefined)
+              .then(async () => {
+                await ensureNoLiveDesktopDevRootProcesses(desktopDir, childTreeGracePeriodMs * 2);
+                if (!shuttingDown && currentApp === null) {
+                  startApp();
+                }
+              });
+            return;
+          case "stop-supervisor":
+            if (
+              !autoRestartEnabled ||
+              classification.kind === "abnormal-exit" ||
+              classification.kind === "spawn-error" ||
+              classification.kind === "single-instance-lock-denied"
+            ) {
+              logElectronCrashDiagnostic({
+                generation,
+                kind: classification.kind,
+                code,
+                signal,
+                elapsedMs,
+                message: "electron exit — stopping supervisor",
+              });
+            } else {
+              logDevElectron("stopping dev-electron supervisor", {
+                generation,
+                elapsedMs,
+                code,
+                signal,
+                reason: exitDecision.reason,
+                singleInstanceLockRetries,
+                consecutiveFastFailures,
+                abnormalExitRestarts,
+              });
+            }
+            if (autoRestartEnabled) {
+              cleanupStaleDevApps();
+            }
+            void shutdown(exitDecision.supervisorExitCode);
+            return;
+          case "restart":
+            scheduleRestart(exitDecision.reason);
+            return;
+          case "noop":
+          default:
+            return;
+        }
+      });
+    } finally {
+      startInFlight = false;
     }
-
-    logDevElectron("electron spawn error (will restart)", {
-      generation,
-      message: error instanceof Error ? error.message : String(error),
-    });
-
-    if (!shuttingDown) {
-      scheduleRestart("spawn-error");
-    }
-  });
-
-  app.once("exit", (code, signal) => {
-    if (currentApp === app) {
-      currentApp = null;
-    }
-
-    const expected = expectedExits.has(app);
-    const exitedAbnormally = signal !== null || code !== 0;
-    const kind = shuttingDown
-      ? "shutdown"
-      : expected
-        ? "expected-restart"
-        : exitedAbnormally
-          ? "abnormal-exit"
-          : "clean-exit";
-
-    logDevElectron("electron exited", {
-      generation,
-      kind,
-      code,
-      signal,
-      expectedRestart: expected,
-    });
-
-    if (!shuttingDown && !expected && exitedAbnormally) {
-      scheduleRestart("abnormal-exit");
-    }
-  });
+  })();
 }
 
 async function stopApp() {
@@ -160,6 +442,7 @@ async function stopApp() {
     return;
   }
 
+  const trackedPid = app.pid;
   currentApp = null;
   expectedExits.add(app);
 
@@ -177,7 +460,7 @@ async function stopApp() {
 
     app.once("exit", finish);
     app.kill("SIGTERM");
-    killChildTreeByPid(app.pid, "TERM");
+    killChildTreeByPid(trackedPid, "TERM");
 
     setTimeout(() => {
       if (settled) {
@@ -185,15 +468,40 @@ async function stopApp() {
       }
 
       app.kill("SIGKILL");
-      killChildTreeByPid(app.pid, "KILL");
-      finish();
+      killChildTreeByPid(trackedPid, "KILL");
     }, forcedShutdownTimeoutMs).unref();
   });
+
+  const exited = await waitForPidExit(trackedPid, forcedShutdownTimeoutMs);
+  if (!exited && typeof trackedPid === "number") {
+    logDevElectron("electron child still alive after forced shutdown", {
+      pid: trackedPid,
+    });
+    killChildTreeByPid(trackedPid, "KILL");
+    await waitForPidExit(trackedPid, forcedShutdownTimeoutMs);
+  }
 }
 
 function scheduleRestart(reason) {
   if (shuttingDown) {
     return;
+  }
+
+  if (shouldStopAfterSupervisorLifetimeRestarts(supervisorLifetimeRestarts)) {
+    logDevElectron("stopping dev-electron supervisor to prevent restart loop", {
+      reason: "supervisor-lifetime-restart-cap",
+      supervisorLifetimeRestarts,
+      maxSupervisorLifetimeRestarts: MAX_SUPERVISOR_LIFETIME_RESTARTS,
+    });
+    cleanupStaleDevApps();
+    void shutdown(1);
+    return;
+  }
+
+  supervisorLifetimeRestarts += 1;
+
+  if (reason === "output-change" || reason === "dev-relaunch" || reason === "expected-restart") {
+    abnormalExitRestarts = nextAbnormalExitCount({ kind: reason, current: abnormalExitRestarts });
   }
 
   if (restartTimer) {
@@ -208,6 +516,7 @@ function scheduleRestart(reason) {
     reason,
     delayMs,
     cooldownRemaining,
+    abnormalExitRestarts,
   });
 
   restartTimer = setTimeout(() => {
@@ -216,7 +525,7 @@ function scheduleRestart(reason) {
       .catch(() => undefined)
       .then(async () => {
         await stopApp();
-        if (!shuttingDown) {
+        if (!shuttingDown && currentApp === null) {
           startApp();
         }
       });
@@ -224,20 +533,50 @@ function scheduleRestart(reason) {
 }
 
 function fingerprintOutputs() {
-  const parts = [];
-  for (const { directory, files } of watchedDirectories) {
-    const dirAbs = join(desktopDir, directory);
-    for (const name of files) {
-      const abs = join(dirAbs, name);
-      try {
-        const s = statSync(abs);
-        parts.push(`${directory}/${name}\0${s.mtimeMs}\0${s.size}`);
-      } catch {
-        parts.push(`${directory}/${name}\0missing`);
-      }
+  return fingerprintWatchedOutputFiles(desktopDir, watchedDirectories);
+}
+
+function handleOutputFingerprint(nextFingerprint) {
+  if (currentApp !== null) {
+    const elapsedSinceStart = Date.now() - lastAppStartAtMs;
+    if (elapsedSinceStart < minRestartCooldownMs) {
+      outputPollState = {
+        lastFingerprint: nextFingerprint,
+        stableCandidate: null,
+        stableCount: 0,
+      };
+      return;
+    }
+    if (autoRestartEnabled && elapsedSinceStart < earlySessionOutputRestartGuardMs) {
+      logDevElectron("deferring output-change restart during early session guard", {
+        elapsedSinceStart,
+        guardMs: earlySessionOutputRestartGuardMs,
+      });
+      outputPollState = {
+        lastFingerprint: nextFingerprint,
+        stableCandidate: null,
+        stableCount: 0,
+      };
+      return;
     }
   }
-  return parts.join("\n");
+
+  outputPollState = evaluateOutputPollState(outputPollState, nextFingerprint);
+  if (outputPollState.shouldRestart) {
+    if (autoRestartEnabled) {
+      scheduleRestart("output-change");
+      return;
+    }
+
+    logDevElectron("main.cjs changed; restart manually", {
+      fingerprint: nextFingerprint,
+    });
+    outputPollState = {
+      lastFingerprint: nextFingerprint,
+      stableCandidate: null,
+      stableCount: 0,
+    };
+  }
 }
 
 function startNativeOutputWatchers() {
@@ -250,7 +589,7 @@ function startNativeOutputWatchers() {
           return;
         }
 
-        scheduleRestart("output-change");
+        handleOutputFingerprint(fingerprintOutputs());
       },
     );
 
@@ -266,17 +605,14 @@ function startNativeOutputWatchers() {
 }
 
 function startPollingOutputWatch() {
-  let lastFingerprint = fingerprintOutputs();
+  resetOutputWatchBaseline();
+
   outputPollTimer = setInterval(() => {
     if (shuttingDown) {
       return;
     }
 
-    const next = fingerprintOutputs();
-    if (next !== lastFingerprint) {
-      lastFingerprint = next;
-      scheduleRestart("output-change");
-    }
+    handleOutputFingerprint(fingerprintOutputs());
   }, outputPollMs);
 }
 
@@ -302,6 +638,8 @@ async function shutdown(exitCode) {
   if (shuttingDown) return;
   shuttingDown = true;
 
+  clearInterval(ppidWatchdogTimer);
+
   if (restartTimer) {
     clearTimeout(restartTimer);
     restartTimer = null;
@@ -323,11 +661,23 @@ async function shutdown(exitCode) {
   });
   killChildTree("KILL");
 
+  releaseSupervisorLock(supervisorLockPath);
+
   process.exit(exitCode);
 }
 
 startOutputWatchers();
 cleanupStaleDevApps();
+if (autoRestartEnabled) {
+  logDevElectron("auto-restart enabled", {
+    earlySessionOutputRestartGuardMs,
+  });
+} else {
+  logDevElectron(
+    "auto-restart disabled; electron launches once (set T3CODE_DESKTOP_DEV_AUTO_RESTART=1 to enable)",
+    { T3CODE_DESKTOP_DEV_AUTO_RESTART: process.env.T3CODE_DESKTOP_DEV_AUTO_RESTART ?? "unset" },
+  );
+}
 startApp();
 
 process.once("SIGINT", () => {
@@ -338,4 +688,9 @@ process.once("SIGTERM", () => {
 });
 process.once("SIGHUP", () => {
   void shutdown(129);
+});
+// Belt-and-suspenders synchronous release in case the process exits via
+// uncaughtException or a path that bypasses shutdown().
+process.on("exit", () => {
+  releaseSupervisorLock(supervisorLockPath);
 });

@@ -1,10 +1,11 @@
 import { useEffect, type ReactNode } from "react";
 import { getRouteApi, useLocation, useNavigate } from "@tanstack/react-router";
 
-import { shouldUseMinimalElectronLauncherChrome } from "./appSidebarLauncherChrome";
+import { shouldSkipThreadSidebar } from "./appSidebarLauncherChrome";
 import ThreadSidebar from "./Sidebar";
 import { Sidebar, SidebarProvider, SidebarRail } from "./ui/sidebar";
 import { isElectron } from "~/env";
+import { useComponentPreviewRouteGuard } from "~/hooks/useComponentPreviewRouteGuard";
 import {
   clearShortcutModifierState,
   syncShortcutModifierStateFromKeyboardEvent,
@@ -24,10 +25,12 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
     (state) => Object.keys(state.byId).length,
   );
 
+  useComponentPreviewRouteGuard();
+
   const hostedStaticNeedsChrome =
     authGateState.status === "hosted-static" && savedEnvironmentCount === 0;
 
-  const minimalElectronWorkspaceLaunch = shouldUseMinimalElectronLauncherChrome({
+  const skipThreadSidebar = shouldSkipThreadSidebar({
     isElectron,
     authGateStatus: authGateState.status,
     hostedStaticNeedsChrome,
@@ -73,7 +76,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
     };
   }, [navigate]);
 
-  if (minimalElectronWorkspaceLaunch) {
+  if (skipThreadSidebar) {
     return (
       <div className="flex h-dvh min-h-0 flex-col bg-[var(--app-chrome-background)] text-foreground">
         {children}

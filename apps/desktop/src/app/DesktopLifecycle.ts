@@ -14,6 +14,7 @@ import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as ElectronTheme from "../electron/ElectronTheme.ts";
 import * as DesktopState from "./DesktopState.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
+import { detachAllPreviewViews } from "../componentPreview/componentPreviewViews.ts";
 
 export interface DesktopShutdownShape {
   readonly request: Effect.Effect<void>;
@@ -104,6 +105,7 @@ function handleBeforeQuit(
   markQuitAllowed: () => void,
 ): void {
   if (allowQuit()) {
+    detachAllPreviewViews();
     void runEffect(
       Effect.gen(function* () {
         const state = yield* DesktopState.DesktopState;
@@ -120,6 +122,7 @@ function handleBeforeQuit(
       const state = yield* DesktopState.DesktopState;
       yield* Ref.set(state.quitting, true);
       yield* logLifecycleInfo("before-quit received");
+      detachAllPreviewViews();
       yield* requestDesktopShutdownAndWait();
     }).pipe(Effect.withSpan("desktop.lifecycle.beforeQuit")),
   ).finally(() => {
@@ -145,6 +148,7 @@ function quitFromSignal(
       const wasQuitting = yield* Ref.getAndSet(state.quitting, true);
       if (wasQuitting) return;
       yield* logLifecycleInfo("process signal received", { signal });
+      detachAllPreviewViews();
       yield* requestDesktopShutdownAndWait();
       yield* electronApp.quit;
     }).pipe(Effect.withSpan("desktop.lifecycle.processSignal")),
@@ -162,6 +166,7 @@ export const layer = Layer.succeed(
       yield* Effect.gen(function* () {
         yield* Effect.yieldNow;
         yield* Ref.set(state.quitting, true);
+        detachAllPreviewViews();
         yield* requestDesktopShutdownAndWait();
         if (environment.isDevelopment) {
           yield* electronApp.exit(75);
@@ -207,6 +212,18 @@ export const layer = Layer.succeed(
       });
       yield* electronApp.on("activate", () => {
         void runEffect(desktopWindow.activate.pipe(Effect.withSpan("desktop.lifecycle.activate")));
+      });
+      yield* electronApp.on("second-instance", () => {
+        void runEffect(
+          desktopWindow.activate.pipe(
+            Effect.catchCause((cause) =>
+              logLifecycleError("second-instance activation failed", {
+                cause: Cause.pretty(cause),
+              }),
+            ),
+            Effect.withSpan("desktop.lifecycle.secondInstance"),
+          ),
+        );
       });
       yield* electronApp.on("window-all-closed", () => {
         void runEffect(

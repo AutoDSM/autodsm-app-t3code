@@ -3218,11 +3218,14 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
     }),
   );
 
-  it.effect("emits ordered progress events for commit hooks", () =>
-    Effect.gen(function* () {
+  it.effect("emits ordered progress events for commit hooks", () => {
+    const original = process.env.T3CODE_TEST_ALLOW_HOOKS;
+    return Effect.gen(function* () {
+      process.env.T3CODE_TEST_ALLOW_HOOKS = "1";
       const repoDir = yield* makeTempDir("t3code-git-manager-");
       yield* initRepo(repoDir);
       fs.writeFileSync(path.join(repoDir, "hooked.txt"), "hooked\n");
+      fs.mkdirSync(path.join(repoDir, ".git", "hooks"), { recursive: true });
       fs.writeFileSync(
         path.join(repoDir, ".git", "hooks", "pre-commit"),
         '#!/bin/sh\necho "hook: start" >&2\nsleep 0.05\necho "hook: end" >&2\n',
@@ -3278,14 +3281,27 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
           }),
         ]),
       );
-    }),
-  );
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (original === undefined) {
+            delete process.env.T3CODE_TEST_ALLOW_HOOKS;
+          } else {
+            process.env.T3CODE_TEST_ALLOW_HOOKS = original;
+          }
+        }),
+      ),
+    );
+  });
 
-  it.effect("emits action_failed when a commit hook rejects", () =>
-    Effect.gen(function* () {
+  it.effect("emits action_failed when a commit hook rejects", () => {
+    const original = process.env.T3CODE_TEST_ALLOW_HOOKS;
+    return Effect.gen(function* () {
+      process.env.T3CODE_TEST_ALLOW_HOOKS = "1";
       const repoDir = yield* makeTempDir("t3code-git-manager-");
       yield* initRepo(repoDir);
       fs.writeFileSync(path.join(repoDir, "hook-failure.txt"), "broken\n");
+      fs.mkdirSync(path.join(repoDir, ".git", "hooks"), { recursive: true });
       fs.writeFileSync(
         path.join(repoDir, ".git", "hooks", "pre-commit"),
         '#!/bin/sh\necho "hook: fail" >&2\nexit 1\n',
@@ -3328,8 +3344,18 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
           }),
         ]),
       );
-    }),
-  );
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (original === undefined) {
+            delete process.env.T3CODE_TEST_ALLOW_HOOKS;
+          } else {
+            process.env.T3CODE_TEST_ALLOW_HOOKS = original;
+          }
+        }),
+      ),
+    );
+  });
 
   it.effect("create_pr emits only the PR phase when the branch is already pushed", () =>
     Effect.gen(function* () {

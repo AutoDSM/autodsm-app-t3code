@@ -11,6 +11,16 @@ import { sharedServerCommandFlags } from "./cli/config.ts";
 import { projectCommand } from "./cli/project.ts";
 import { runServerCommand, serveCommand, startCommand } from "./cli/server.ts";
 
+function installProcessDefectLogging(): void {
+  process.on("uncaughtException", (error) => {
+    const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
+    process.stderr.write(`[server] uncaughtException ${message}\n`);
+  });
+  process.on("unhandledRejection", (reason) => {
+    process.stderr.write(`[server] unhandledRejection ${String(reason)}\n`);
+  });
+}
+
 const CliRuntimeLayer = Layer.mergeAll(NodeServices.layer, NetService.layer);
 
 export const cli = Command.make("t3", { ...sharedServerCommandFlags }).pipe(
@@ -20,6 +30,7 @@ export const cli = Command.make("t3", { ...sharedServerCommandFlags }).pipe(
 );
 
 if (import.meta.main) {
+  installProcessDefectLogging();
   Command.run(cli, { version: packageJson.version }).pipe(
     Effect.scoped,
     Effect.provide(CliRuntimeLayer),

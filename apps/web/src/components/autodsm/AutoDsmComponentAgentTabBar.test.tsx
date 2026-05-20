@@ -40,11 +40,54 @@ describe("AutoDsmComponentAgentTabBar", () => {
     expect(html).not.toContain("Close component preview");
   });
 
+  it("selects tab by activeComponentPath before activeThreadRef", () => {
+    const tabs = [tab("thr-button", "Button"), tab("thr-badge", "Badge")];
+    const html = renderToStaticMarkup(
+      <AutoDsmComponentAgentTabBar
+        tabs={tabs}
+        activeThreadRef={tabs[0]!.threadRef}
+        activeComponentPath="src/components/Badge.tsx"
+        onSelectTab={() => {}}
+      />,
+    );
+
+    expect(html).toContain('data-testid="autodsm-component-agent-tab:env-1:thr-badge"');
+    expect(html).toMatch(
+      /data-testid="autodsm-component-agent-tab:env-1:thr-badge"[^>]*aria-selected="true"/,
+    );
+  });
+
   it("returns null when there are no tabs", () => {
     const html = renderToStaticMarkup(
       <AutoDsmComponentAgentTabBar tabs={[]} activeThreadRef={null} onSelectTab={() => {}} />,
     );
     expect(html).toBe("");
+  });
+
+  it("renders one flat tab per shadcn starter component without folder grouping", () => {
+    const tabs = [
+      tab("thr-button", "Button"),
+      tab("thr-card", "Card"),
+      tab("thr-badge", "Badge"),
+      tab("thr-input", "Input"),
+      tab("thr-theme", "Theme card"),
+      tab("thr-pill", "Pill label"),
+    ];
+    const html = renderToStaticMarkup(
+      <AutoDsmComponentAgentTabBar
+        tabs={tabs}
+        activeThreadRef={tabs[0]!.threadRef}
+        onSelectTab={() => {}}
+      />,
+    );
+
+    expect(html).toContain('role="tablist"');
+    expect((html.match(/role="tab"/g) ?? []).length).toBe(6);
+    expect(html).not.toContain("SidebarGroupLabel");
+    expect(html).not.toContain('data-sidebar="group-label"');
+    for (const componentTab of tabs) {
+      expect(html).toContain(componentTab.title);
+    }
   });
 
   it("renders vertical sidebar layout with component agent tabs", () => {
@@ -65,5 +108,23 @@ describe("AutoDsmComponentAgentTabBar", () => {
     expect(html).toContain("Button");
     expect(html).toContain("Card");
     expect(html).toContain('data-testid="autodsm-component-agent-tab:env-1:thr-button"');
+  });
+
+  it("supports embedded sidebar rows without an outer Components group", () => {
+    const tabs = [tab("thr-button", "Button")];
+    const html = renderToStaticMarkup(
+      <SidebarProvider>
+        <AutoDsmComponentAgentTabBar
+          layout="sidebar-embedded"
+          tabs={tabs}
+          activeThreadRef={tabs[0]!.threadRef}
+          onSelectTab={() => {}}
+        />
+      </SidebarProvider>,
+    );
+
+    expect(html).toContain('data-testid="autodsm-component-agent-tab-bar"');
+    expect(html).not.toContain('data-testid="autodsm-component-agent-sidebar"');
+    expect(html).toContain("Button");
   });
 });

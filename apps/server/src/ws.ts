@@ -35,6 +35,7 @@ import {
   type TerminalEvent,
   WS_METHODS,
   WsRpcGroup,
+  AutoDsmRpcError,
 } from "@t3tools/contracts";
 import { clamp } from "effect/Number";
 import { HttpRouter, HttpServerRequest } from "effect/unstable/http";
@@ -1240,6 +1241,68 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
               "rpc.aggregate": "autodsm",
             },
           ),
+        [WS_METHODS.autodsmExportPublishedExport]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.autodsmExportPublishedExport,
+            autoDsm.exportPublishedExport(input),
+            { "rpc.aggregate": "autodsm" },
+          ),
+        [WS_METHODS.autodsmCreatePullRequest]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmCreatePullRequest, autoDsm.createPullRequest(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmListPullRequests]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmListPullRequests, autoDsm.listPullRequests(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmListActivity]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmListActivity, autoDsm.listActivity(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmListComponentAgents]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.autodsmListComponentAgents,
+            autoDsm.listComponentAgents(input),
+            { "rpc.aggregate": "autodsm" },
+          ),
+        [WS_METHODS.autodsmRegisterComponentAgent]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.autodsmRegisterComponentAgent,
+            autoDsm.registerComponentAgent(input),
+            { "rpc.aggregate": "autodsm" },
+          ),
+        [WS_METHODS.autodsmUpdateComponentAgent]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.autodsmUpdateComponentAgent,
+            autoDsm.updateComponentAgent(input),
+            { "rpc.aggregate": "autodsm" },
+          ),
+        [WS_METHODS.autodsmGetComponentConversation]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.autodsmGetComponentConversation,
+            autoDsm.getComponentConversation(input),
+            { "rpc.aggregate": "autodsm" },
+          ),
+        [WS_METHODS.autodsmAppendComponentConversation]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.autodsmAppendComponentConversation,
+            autoDsm.appendComponentConversation(input),
+            { "rpc.aggregate": "autodsm" },
+          ),
+        [WS_METHODS.autodsmGetSession]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmGetSession, autoDsm.getSession(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmCreateSession]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmCreateSession, autoDsm.createSession(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmListChangeSetsForSession]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.autodsmListChangeSetsForSession,
+            autoDsm.listChangeSetsForSession(input),
+            { "rpc.aggregate": "autodsm" },
+          ),
         [WS_METHODS.autodsmPrepareSessionBranch]: (input) =>
           observeRpcEffect(
             WS_METHODS.autodsmPrepareSessionBranch,
@@ -1257,9 +1320,23 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
             },
           ),
         [WS_METHODS.autodsmCreateWorkspace]: (input) =>
-          observeRpcEffect(WS_METHODS.autodsmCreateWorkspace, autoDsm.createWorkspace(input), {
-            "rpc.aggregate": "autodsm",
-          }),
+          observeRpcEffect(
+            WS_METHODS.autodsmCreateWorkspace,
+            autoDsm.createWorkspace(input).pipe(
+              Effect.catchDefect((defect: unknown) =>
+                Effect.failSync(
+                  () =>
+                    new AutoDsmRpcError({
+                      message: `unhandled defect: ${String(defect)}`,
+                      cause: defect,
+                    }),
+                ),
+              ),
+            ),
+            {
+              "rpc.aggregate": "autodsm",
+            },
+          ),
         [WS_METHODS.autodsmListWorkspaceHistory]: (input) =>
           observeRpcEffect(
             WS_METHODS.autodsmListWorkspaceHistory,
@@ -1268,6 +1345,10 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
               "rpc.aggregate": "autodsm",
             },
           ),
+        [WS_METHODS.autodsmDeleteWorkspace]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmDeleteWorkspace, autoDsm.deleteWorkspace(input), {
+            "rpc.aggregate": "autodsm",
+          }),
         [WS_METHODS.shellOpenInEditor]: (input) =>
           observeRpcEffect(WS_METHODS.shellOpenInEditor, externalLauncher.launchEditor(input), {
             "rpc.aggregate": "workspace",

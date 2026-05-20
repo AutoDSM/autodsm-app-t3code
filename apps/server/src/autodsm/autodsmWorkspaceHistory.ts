@@ -13,6 +13,11 @@ import {
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
+import {
+  isAutodsmStagingDirectoryName,
+  isReadyAutodsmWorkspaceDir,
+} from "./autodsmWorkspaceStaging.ts";
+
 export function resolveAutodsmUserRoot(): string {
   const override = process.env.AUTODSM_HOME?.trim();
   if (override && override.length > 0) {
@@ -119,7 +124,16 @@ export function listAutodsmWorkspaceHistoryFromDisk(
     const parsed: AutoDsmWorkspaceHistoryEntry[] = [];
 
     for (const dirName of dirNames) {
-      const metaPath = path.join(systemsRoot, dirName, "meta.json");
+      if (isAutodsmStagingDirectoryName(dirName)) {
+        continue;
+      }
+
+      const workspaceRoot = path.join(systemsRoot, dirName);
+      if (!isReadyAutodsmWorkspaceDir(workspaceRoot)) {
+        continue;
+      }
+
+      const metaPath = path.join(workspaceRoot, "meta.json");
       if (!fs.existsSync(metaPath)) {
         continue;
       }

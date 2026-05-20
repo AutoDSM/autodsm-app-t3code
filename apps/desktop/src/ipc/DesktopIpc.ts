@@ -37,9 +37,15 @@ export interface DesktopIpcShape {
   readonly handle: <E, R>(
     input: DesktopIpcMethod<E, R>,
   ) => Effect.Effect<void, never, R | Scope.Scope>;
+  /** Registers an invoke handler for the app process lifetime (not tied to Effect scope cleanup). */
+  readonly handleForever: <E, R>(input: DesktopIpcMethod<E, R>) => Effect.Effect<void, never, R>;
   readonly handleSync: <E, R>(
     input: DesktopSyncIpcMethod<E, R>,
   ) => Effect.Effect<void, never, R | Scope.Scope>;
+  /** Registers a sync handler for the app process lifetime (not tied to Effect scope cleanup). */
+  readonly handleSyncForever: <E, R>(
+    input: DesktopSyncIpcMethod<E, R>,
+  ) => Effect.Effect<void, never, R>;
 }
 
 export class DesktopIpc extends Context.Service<DesktopIpc, DesktopIpcShape>()("t3/desktop/Ipc") {}
@@ -92,6 +98,48 @@ export const make = (ipcMain: DesktopIpcMain): DesktopIpcShape =>
         }),
         () => Effect.sync(() => ipcMain.removeAllListeners(channel)),
       );
+    }),
+
+    handleForever: Effect.fn("desktop.ipc.registerInvokeForever")(function* <E, R>({
+      channel,
+      handler,
+    }: DesktopIpcMethod<E, R>) {
+      yield* Effect.annotateCurrentSpan({ channel });
+      const context = yield* Effect.context<R>();
+      const runPromise = Effect.runPromiseWith(context);
+
+      yield* Effect.sync(() => {
+        ipcMain.removeHandler(channel);
+        ipcMain.handle(channel, (_event, raw) =>
+          runPromise(
+            Effect.gen(function* () {
+              yield* Effect.annotateCurrentSpan({ channel });
+              return yield* handler(raw);
+            }).pipe(Effect.annotateLogs({ channel }), Effect.withSpan("desktop.ipc.invoke")),
+          ),
+        );
+      });
+    }),
+
+    handleSyncForever: Effect.fn("desktop.ipc.registerSyncForever")(function* <E, R>({
+      channel,
+      handler,
+    }: DesktopSyncIpcMethod<E, R>) {
+      yield* Effect.annotateCurrentSpan({ channel });
+      const context = yield* Effect.context<R>();
+      const runSync = Effect.runSyncWith(context);
+
+      yield* Effect.sync(() => {
+        ipcMain.removeAllListeners(channel);
+        ipcMain.on(channel, (event) => {
+          event.returnValue = runSync(
+            Effect.gen(function* () {
+              yield* Effect.annotateCurrentSpan({ channel });
+              return yield* handler();
+            }).pipe(Effect.annotateLogs({ channel }), Effect.withSpan("desktop.ipc.invokeSync")),
+          );
+        });
+      });
     }),
   });
 

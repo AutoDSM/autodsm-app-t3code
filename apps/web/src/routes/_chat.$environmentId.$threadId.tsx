@@ -19,6 +19,7 @@ import {
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../rightPanelLayout";
 import { selectEnvironmentState, selectThreadExistsByRef, useStore } from "../store";
+import { useUiStateStore } from "../uiStateStore";
 import { createThreadSelectorByRef } from "../storeSelectors";
 import { resolveThreadRouteRef, buildThreadRouteParams } from "../threadRoutes";
 import { RightPanelSheet } from "../components/RightPanelSheet";
@@ -138,12 +139,15 @@ const DiffPanelInlineSidebar = (props: {
   );
 };
 
+const FRESH_WORKSPACE_THREAD_SYNC_GRACE_MS = 5_000;
+
 function ChatThreadRouteView() {
   const navigate = useNavigate();
   const threadRef = Route.useParams({
     select: (params) => resolveThreadRouteRef(params),
   });
   const search = Route.useSearch();
+  const autoDsmWorkspaceProjectRef = useUiStateStore((state) => state.autoDsmWorkspaceProjectRef);
   const bootstrapComplete = useStore(
     (store) => selectEnvironmentState(store, threadRef?.environmentId ?? null).bootstrapComplete,
   );
@@ -214,15 +218,39 @@ function ChatThreadRouteView() {
     });
   }, [markDiffOpened, navigate, threadRef]);
 
+  const [freshWorkspaceGraceExpired, setFreshWorkspaceGraceExpired] = useState(false);
+  const waitingForFreshWorkspaceThread =
+    autoDsmWorkspaceProjectRef !== null && !routeThreadExists && !freshWorkspaceGraceExpired;
+
+  useEffect(() => {
+    if (!autoDsmWorkspaceProjectRef || routeThreadExists) {
+      setFreshWorkspaceGraceExpired(false);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setFreshWorkspaceGraceExpired(true);
+    }, FRESH_WORKSPACE_THREAD_SYNC_GRACE_MS);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [autoDsmWorkspaceProjectRef, routeThreadExists, threadRef?.threadId]);
+
   useEffect(() => {
     if (!threadRef || !bootstrapComplete) {
       return;
     }
 
-    if (!routeThreadExists && environmentHasAnyThreads) {
+    if (!routeThreadExists && environmentHasAnyThreads && !waitingForFreshWorkspaceThread) {
       void navigate({ to: "/", replace: true });
     }
-  }, [bootstrapComplete, environmentHasAnyThreads, navigate, routeThreadExists, threadRef]);
+  }, [
+    bootstrapComplete,
+    environmentHasAnyThreads,
+    navigate,
+    routeThreadExists,
+    threadRef,
+    waitingForFreshWorkspaceThread,
+  ]);
 
   useEffect(() => {
     if (!threadRef || !serverThreadStarted || !draftThread?.promotedTo) {

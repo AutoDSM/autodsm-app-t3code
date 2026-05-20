@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { JSX } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { COMPONENT_PREVIEW_RUNTIME_PATH } from "~/components/appSidebarLauncherChrome";
 import { Button } from "~/components/ui/button";
 import { Label } from "~/components/ui/label";
 import { ComponentPreviewLoadingSkeleton } from "~/components/ComponentPreviewLoadingSkeleton";
@@ -22,9 +23,43 @@ import {
 } from "~/lib/componentPreviewMessages";
 import { randomUUID } from "~/lib/utils";
 import { autodsmWorkspaceQueryKeys } from "~/lib/autodsmWorkspaceReactQuery";
+import {
+  resolveComponentPreviewNativeBounds,
+  waitForComponentPreviewHostLayout,
+} from "~/lib/componentPreviewNativeBounds";
+import {
+  isComponentPreviewOverlaySuppressed,
+  subscribeComponentPreviewOverlaySuppression,
+  useComponentPreviewOverlaySuppressed,
+} from "~/lib/componentPreviewOverlaySuppression";
+import { observeComponentPreviewLayoutSync } from "~/lib/observeComponentPreviewLayoutSync";
+import {
+  hideAndDetachComponentPreviewView,
+  registerComponentPreviewView,
+  unregisterComponentPreviewView,
+} from "~/lib/componentPreviewViewRegistry";
 import { normalizeSidebarComponentCatalogPath } from "~/lib/srcComponentsWorkspacePaths";
 
 const MAX_RELATIVE_PREVIEW_PATH_CHARS = 512;
+
+function findScrollableAncestor(element: HTMLElement | null): HTMLElement | null {
+  let current = element?.parentElement ?? null;
+  while (current) {
+    const style = window.getComputedStyle(current);
+    const overflowY = style.overflowY;
+    const overflowX = style.overflowX;
+    if (
+      overflowY === "auto" ||
+      overflowY === "scroll" ||
+      overflowX === "auto" ||
+      overflowX === "scroll"
+    ) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return null;
+}
 
 export interface WebContentsViewProps {
   readonly relativePath: string | null;
@@ -111,7 +146,7 @@ function buildDefaultProps(specs: readonly ComponentPreviewPropSpec[]): Record<s
 }
 
 function previewRuntimeHref(): string {
-  return new URL("/component-preview-runtime", window.location.origin).href;
+  return new URL(COMPONENT_PREVIEW_RUNTIME_PATH, window.location.origin).href;
 }
 
 function bundleDepsReady(manifest: ComponentPreviewManifest, exportNameValue: string): boolean {
@@ -150,6 +185,7 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
   const trimmed = relativePath?.trim();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const previewHostRef = useRef<HTMLDivElement>(null);
   const [interactionLog, setInteractionLog] = useState<string[]>([]);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [propsRecord, setPropsRecord] = useState<Record<string, unknown>>({});
@@ -160,8 +196,23 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
   const [nativePriming, setNativePriming] = useState(false);
   const [nativeAttached, setNativeAttached] = useState(false);
   const nativeAttachedRef = useRef(false);
+  const [nativeAttachError, setNativeAttachError] = useState<string | null>(null);
+  const nativeAttachGenerationRef = useRef(0);
+  const renderedPathRef = useRef<string | null>(null);
+  const [nativeRenderedPath, setNativeRenderedPath] = useState<string | null>(null);
+
+  const overlaySuppressed = useComponentPreviewOverlaySuppressed();
+  const overlaySuppressedRef = useRef(overlaySuppressed);
+  overlaySuppressedRef.current = overlaySuppressed;
+  const isIntersectingRef = useRef(true);
 
   const [previewScreenshot, setPreviewScreenshot] = useState<string | null>(null);
+
+  const [previewCrash, setPreviewCrash] = useState<{
+    readonly reason?: string;
+    readonly exitCode?: number;
+  } | null>(null);
+  const [previewUnresponsive, setPreviewUnresponsive] = useState(false);
 
   const bridgeNative =
     typeof window !== "undefined" &&
@@ -171,23 +222,46 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
     typeof window !== "undefined" &&
     typeof window.desktopBridge?.captureComponentPreview === "function";
 
+  useEffect(() => {
+    if (!bridgeNative) {
+      return;
+    }
+
+    const unsubscribe = window.desktopBridge?.onComponentPreviewStatus?.((payload) => {
+      if (payload.viewId === nativeViewId) {
+        if (payload.status === "crashed") {
+          const crashPayload: { reason?: string; exitCode?: number } = {};
+          if (payload.reason !== undefined) {
+            crashPayload.reason = payload.reason;
+          }
+          if (payload.exitCode !== undefined) {
+            crashPayload.exitCode = payload.exitCode;
+          }
+          setPreviewCrash(crashPayload);
+          void window.desktopBridge?.detachComponentPreview?.(nativeViewId);
+        } else if (payload.status === "unresponsive") {
+          setPreviewUnresponsive(true);
+        }
+      }
+    });
+
+    return () => {
+      unsubscribe?.();
+    };
+  }, [bridgeNative, nativeViewId]);
+
   const analyzeEnabled =
     Boolean(trimmed && trimmed.length <= MAX_RELATIVE_PREVIEW_PATH_CHARS) &&
     workspaceCwd !== null &&
     workspaceCwd.length > 0 &&
     environmentId !== null;
 
-  const productStaleWhileRevalidate = isProductVariant
-    ? {
-        staleTime: 0,
-        placeholderData: <T,>(previous: T | undefined) => previous,
-      }
-    : {};
+  const productQueryOptions = isProductVariant ? { staleTime: 0 } : {};
 
   const manifestQuery = useQuery({
     queryKey: ["component-preview-manifest", environmentId, workspaceCwd, trimmed],
     enabled: analyzeEnabled && trimmed !== undefined && trimmed !== null,
-    ...productStaleWhileRevalidate,
+    ...productQueryOptions,
     queryFn: async () => {
       const api = ensureEnvironmentApi(environmentId!);
       return api.projects.analyzeReactComponent({
@@ -239,15 +313,17 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
   const stablePropsJson = useMemo(() => JSON.stringify(propsRecord), [propsRecord]);
 
   useEffect(() => {
-    if (!manifest) return;
+    if (!manifest || !manifestMatchesPath(manifest, trimmed)) {
+      return;
+    }
     const nextExport = pickInitialExport(manifest);
     setExportName(nextExport);
     setPropsRecord(buildDefaultProps(propsForExport(manifest, nextExport)));
-  }, [manifest]);
+  }, [manifest, trimmed]);
 
   const legacyBundleQuery = useQuery({
     queryKey: ["component-preview-bundle", environmentId, workspaceCwd, trimmed, exportName],
-    ...productStaleWhileRevalidate,
+    ...productQueryOptions,
     enabled:
       analyzeEnabled &&
       matchedRegistryEntry === undefined &&
@@ -274,7 +350,7 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
       exportName,
       stablePropsJson,
     ],
-    ...productStaleWhileRevalidate,
+    ...productQueryOptions,
     enabled:
       analyzeEnabled &&
       matchedRegistryEntry !== undefined &&
@@ -292,12 +368,7 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
     },
   });
 
-  const previewJavascript =
-    executePreviewQuery.data?.bundledJavascript ??
-    (legacyBundleQuery.data?.ok === true ? legacyBundleQuery.data.javascript : undefined);
-
   const renderManifest: AutoDsmRenderManifest | undefined = executePreviewQuery.data?.manifest;
-
   const legacyBundle = legacyBundleQuery.data;
 
   const compileErrors = useMemo(() => {
@@ -322,6 +393,15 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
     renderManifest,
   ]);
 
+  const manifestReady = manifestMatchesPath(manifest, trimmed);
+
+  const resolvedPreviewJavascript =
+    executePreviewQuery.data?.bundledJavascript ??
+    (legacyBundleQuery.data?.ok === true ? legacyBundleQuery.data.javascript : undefined);
+
+  const previewJavascript =
+    manifestReady && compileErrors.length === 0 ? resolvedPreviewJavascript : undefined;
+
   const compileWarnings = useMemo(() => {
     if (matchedRegistryEntry !== undefined) {
       return renderManifest?.warnings ?? [];
@@ -332,11 +412,10 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
   const bundlePending =
     matchedRegistryEntry !== undefined
       ? executePreviewQuery.isPending ||
-        (isProductVariant && executePreviewQuery.isFetching && !previewJavascript)
+        (isProductVariant && executePreviewQuery.isFetching && !resolvedPreviewJavascript)
       : legacyBundleQuery.isPending ||
-        (isProductVariant && legacyBundleQuery.isFetching && !previewJavascript);
+        (isProductVariant && legacyBundleQuery.isFetching && !resolvedPreviewJavascript);
 
-  const manifestReady = manifestMatchesPath(manifest, trimmed);
   const analyzePending =
     analyzeEnabled &&
     !manifestReady &&
@@ -364,6 +443,9 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
     setNativePriming(false);
     setNativeAttached(false);
     nativeAttachedRef.current = false;
+    setNativeAttachError(null);
+    setNativeRenderedPath(null);
+    renderedPathRef.current = null;
     setRuntimeError(null);
     setPreviewScreenshot(null);
   }, [trimmed, exportName, stablePropsJson]);
@@ -410,6 +492,9 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
       }
       if (data.type === COMPONENT_PREVIEW_RENDERED) {
         setIframeRendered(true);
+        if (trimmed) {
+          renderedPathRef.current = trimmed;
+        }
       }
       if (data.type === COMPONENT_PREVIEW_RUNTIME_ERROR) {
         setRuntimeError(data.payload?.message ?? "Preview runtime error.");
@@ -427,25 +512,43 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
   }, [pushPreviewToChild]);
 
   useEffect(() => {
-    if (!bridgeNative || !analyzeEnabled) {
+    if (!bridgeNative) {
       return;
     }
-    const el = containerRef.current;
+    registerComponentPreviewView(nativeViewId);
+    return () => {
+      unregisterComponentPreviewView(nativeViewId);
+    };
+  }, [bridgeNative, nativeViewId]);
+
+  useEffect(() => {
+    if (
+      !bridgeNative ||
+      !analyzeEnabled ||
+      !manifestReady ||
+      manifestQuery.isError ||
+      previewCrash
+    ) {
+      return;
+    }
+    const el = previewHostRef.current;
     if (!el) {
       return;
     }
 
-    const rectFromEl = () => {
-      const rect = el.getBoundingClientRect();
-      return {
-        x: Math.round(rect.x),
-        y: Math.round(rect.y),
-        width: Math.max(0, Math.round(rect.width)),
-        height: Math.max(0, Math.round(rect.height)),
-      };
-    };
-
     let cancelled = false;
+    let rafId: number | null = null;
+    nativeAttachGenerationRef.current += 1;
+    const attachGeneration = nativeAttachGenerationRef.current;
+    const previewCell = el.closest<HTMLElement>('[data-slot="component-preview-cell"]');
+
+    const measureBounds = () =>
+      resolveComponentPreviewNativeBounds({
+        element: el,
+        isIntersecting: isIntersectingRef.current,
+        suppressForOverlay: overlaySuppressedRef.current || isComponentPreviewOverlaySuppressed(),
+        cellElement: previewCell,
+      });
 
     const syncBounds = () => {
       if (!nativeAttachedRef.current) {
@@ -453,38 +556,114 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
       }
       void window.desktopBridge?.setComponentPreviewBounds?.({
         viewId: nativeViewId,
-        bounds: rectFromEl(),
+        bounds: measureBounds(),
       });
     };
 
-    const observer = new ResizeObserver(() => syncBounds());
-    observer.observe(el);
+    const scheduleSyncBounds = () => {
+      if (rafId !== null) {
+        return;
+      }
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        syncBounds();
+      });
+    };
+
+    const unsubscribeOverlaySuppression = subscribeComponentPreviewOverlaySuppression(() => {
+      scheduleSyncBounds();
+    });
+
+    const unobserveLayout = observeComponentPreviewLayoutSync({
+      element: el,
+      onSync: scheduleSyncBounds,
+    });
+
+    const scrollParent = findScrollableAncestor(el);
+    const onScroll = () => {
+      scheduleSyncBounds();
+    };
+    scrollParent?.addEventListener("scroll", onScroll, { passive: true });
+
+    const intersectionObserver = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        isIntersectingRef.current = entry?.isIntersecting ?? true;
+        scheduleSyncBounds();
+      },
+      { threshold: [0, 0.01, 1] },
+    );
+    intersectionObserver.observe(el);
 
     void (async () => {
+      await waitForComponentPreviewHostLayout({
+        element: el,
+        cellElement: previewCell,
+      });
+      if (cancelled || attachGeneration !== nativeAttachGenerationRef.current) {
+        hideAndDetachComponentPreviewView(nativeViewId);
+        return;
+      }
       const attached = await window.desktopBridge?.attachComponentPreview?.({
         viewId: nativeViewId,
         url: previewRuntimeHref(),
-        bounds: rectFromEl(),
+        bounds: measureBounds(),
       });
-      if (cancelled || !attached) {
+      if (cancelled || attachGeneration !== nativeAttachGenerationRef.current) {
+        hideAndDetachComponentPreviewView(nativeViewId);
+        return;
+      }
+      if (!attached) {
+        setNativeAttachError("Could not attach native component preview.");
         return;
       }
       nativeAttachedRef.current = true;
       setNativeAttached(true);
-      void window.desktopBridge?.setComponentPreviewBounds?.({
-        viewId: nativeViewId,
-        bounds: rectFromEl(),
-      });
+      setNativeAttachError(null);
+      syncBounds();
     })();
 
     return () => {
       cancelled = true;
-      observer.disconnect();
+      nativeAttachGenerationRef.current += 1;
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+      unobserveLayout();
+      scrollParent?.removeEventListener("scroll", onScroll);
+      intersectionObserver.disconnect();
+      unsubscribeOverlaySuppression();
       setNativeAttached(false);
       nativeAttachedRef.current = false;
-      void window.desktopBridge?.detachComponentPreview?.(nativeViewId);
+      hideAndDetachComponentPreviewView(nativeViewId);
     };
-  }, [analyzeEnabled, bridgeNative, nativeViewId]);
+  }, [
+    analyzeEnabled,
+    bridgeNative,
+    manifestQuery.isError,
+    manifestReady,
+    nativeViewId,
+    previewCrash,
+  ]);
+
+  useEffect(() => {
+    if (!bridgeNative || !nativeAttached) {
+      return;
+    }
+    const el = previewHostRef.current;
+    if (!el) {
+      return;
+    }
+    void window.desktopBridge?.setComponentPreviewBounds?.({
+      viewId: nativeViewId,
+      bounds: resolveComponentPreviewNativeBounds({
+        element: el,
+        isIntersecting: isIntersectingRef.current,
+        suppressForOverlay: overlaySuppressed,
+        cellElement: el.closest<HTMLElement>('[data-slot="component-preview-cell"]'),
+      }),
+    });
+  }, [bridgeNative, nativeAttached, nativeViewId, overlaySuppressed]);
 
   useEffect(() => {
     if (!bridgeNative || !analyzeEnabled || !nativeAttached) {
@@ -496,17 +675,28 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
     }
 
     let cancelled = false;
+    const primeGeneration = nativeAttachGenerationRef.current;
     setNativePriming(true);
 
     void (async () => {
       try {
-        await window.desktopBridge?.primeComponentPreview?.({
+        const primed = await window.desktopBridge?.primeComponentPreview?.({
           viewId: nativeViewId,
           javascript: js,
           propsJson: stablePropsJson,
+          ...(workspaceStyleCss.trim().length > 0 ? { workspaceStyleCss } : {}),
         });
+        if (
+          !cancelled &&
+          primeGeneration === nativeAttachGenerationRef.current &&
+          primed !== false &&
+          trimmed
+        ) {
+          renderedPathRef.current = trimmed;
+          setNativeRenderedPath(trimmed);
+        }
       } finally {
-        if (!cancelled) {
+        if (!cancelled && primeGeneration === nativeAttachGenerationRef.current) {
           setNativePriming(false);
         }
       }
@@ -523,6 +713,7 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
     previewJavascript,
     stablePropsJson,
     trimmed,
+    workspaceStyleCss,
   ]);
 
   const propSpecs = useMemo(
@@ -609,18 +800,22 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
     (analyzePending ||
       bundleLoading ||
       nativePriming ||
+      (bridgeNative &&
+        Boolean(previewJavascript && previewJavascript.length > 0) &&
+        nativeRenderedPath !== trimmed) ||
       (!bridgeNative &&
         Boolean(previewJavascript && previewJavascript.length > 0) &&
+        renderedPathRef.current !== trimmed &&
         !iframeRendered));
 
   return (
     <div
       ref={containerRef}
       className={cn(
-        "flex min-w-0 shrink-0 flex-col bg-background",
+        "flex min-w-0 flex-col bg-background",
         isProductVariant
-          ? "min-h-[40%] md:h-full md:min-h-0 md:min-w-0 md:flex-1"
-          : "min-h-[40%] md:h-full md:min-h-0 md:w-[min(50%,42rem)] md:flex-1",
+          ? "h-full min-h-[240px] min-w-0 w-full flex-1 overflow-hidden bg-transparent"
+          : "min-h-[min(40vh,320px)] max-h-[50vh] shrink-0 md:h-full md:min-h-0 md:max-h-none md:w-[min(50%,42rem)] md:flex-1 md:overflow-hidden",
       )}
       data-testid="web-contents-view"
       data-slot="web-contents-view"
@@ -778,14 +973,14 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
             <pre className="max-h-32 overflow-auto whitespace-pre-wrap border-b border-border/60 bg-muted/10 px-2 py-2 text-[10px] text-muted-foreground">
               {compileWarnings.join("\n")}
             </pre>
-          ) : runtimeError ? (
+          ) : runtimeError || nativeAttachError ? (
             <div
               className={cn(
                 "border-b border-destructive/40 bg-destructive/10 px-2 py-1 text-destructive",
                 isProductVariant ? "text-xs" : "text-[11px]",
               )}
             >
-              {runtimeError}
+              {runtimeError ?? nativeAttachError}
             </div>
           ) : null}
 
@@ -800,7 +995,13 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
             </div>
           ) : null}
 
-          <div className="relative min-h-0 min-w-0 flex-1">
+          <div
+            ref={previewHostRef}
+            className={cn(
+              "relative min-h-0 min-w-0 flex-1",
+              isProductVariant ? "h-full min-h-0 w-full" : undefined,
+            )}
+          >
             {!bridgeNative ? (
               <iframe
                 ref={iframeRef}
@@ -812,15 +1013,76 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
             ) : isProductVariant ? (
               <div
                 aria-hidden
-                className="h-full min-h-[240px] w-full bg-transparent"
+                className="block h-full min-h-0 w-full bg-transparent"
                 data-testid="component-preview-native-host"
               />
             ) : (
-              <div className="flex h-full min-h-[240px] w-full items-center justify-center text-muted-foreground text-xs">
-                Native preview host active — iframe disabled.
-              </div>
+              <div
+                aria-hidden
+                className="h-full min-h-[240px] w-full bg-transparent"
+                data-testid="component-preview-native-host"
+              />
             )}
             {showProductLoading ? <ComponentPreviewLoadingSkeleton overlay /> : null}
+
+            {previewCrash ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-card border rounded-lg m-4 shadow-sm z-50">
+                <svg
+                  className="w-12 h-12 text-destructive mb-3"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
+                </svg>
+                <h3 className="text-sm font-semibold text-foreground mb-1">
+                  Preview process crashed
+                </h3>
+                <p className="text-xs text-muted-foreground mb-4 max-w-xs font-mono">
+                  The preview helper process terminated unexpectedly (
+                  {previewCrash.reason ?? "exit code"}: {previewCrash.exitCode ?? -1}).
+                </p>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setPreviewCrash(null);
+                    setPreviewUnresponsive(false);
+                    // Force re-attaching
+                    nativeAttachGenerationRef.current += 1;
+                    setNativeAttached(false);
+                  }}
+                >
+                  Reload Preview
+                </Button>
+              </div>
+            ) : null}
+
+            {previewUnresponsive ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-card/90 backdrop-blur-[1px] border rounded-lg m-4 shadow-sm z-50">
+                <h3 className="text-sm font-semibold text-foreground mb-1">Preview unresponsive</h3>
+                <p className="text-xs text-muted-foreground mb-4 max-w-xs">
+                  The preview window is not responding to events.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setPreviewCrash(null);
+                    setPreviewUnresponsive(false);
+                    // Force re-attaching
+                    nativeAttachGenerationRef.current += 1;
+                    setNativeAttached(false);
+                  }}
+                >
+                  Attempt Reload
+                </Button>
+              </div>
+            ) : null}
           </div>
         </>
       )}

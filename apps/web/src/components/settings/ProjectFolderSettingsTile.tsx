@@ -19,7 +19,13 @@ import {
   useSavedEnvironmentRuntimeStore,
 } from "~/environments/runtime";
 import { useAutoDsmLaunchActions } from "~/hooks/useAutoDsmLaunchActions";
+import { usePrimaryAutoDsmDesignSystemHistory } from "~/hooks/useAutoDsmDesignSystemHistory";
 import { useSettings, useUpdateSettings } from "~/hooks/useSettings";
+import {
+  findAutoDsmDesignSystemEntryForPath,
+  formatAutoDsmStarterLabel,
+  hasAutoDsmDesignSystem,
+} from "~/lib/autoDsmDesignSystemPresence";
 import {
   formatCommaList,
   formatPackageManagerLabel,
@@ -27,6 +33,11 @@ import {
   pickDisplayPackageVersions,
 } from "~/lib/projectFolderSettingsFormat";
 import { disconnectProjectFromWorkspace } from "~/lib/projectIntake/disconnectProject";
+import {
+  AUTO_DSM_PROJECT_PICKER_PATH,
+  closeActiveWorkspaceProject,
+} from "~/lib/projectIntake/closeActiveWorkspaceProject";
+import { isElectron } from "~/env";
 import { readLocalApi } from "~/localApi";
 import {
   selectProjectsAcrossEnvironments,
@@ -182,15 +193,62 @@ export function ProjectFolderSettingsTile(): JSX.Element {
   });
 
   const { openLocalProject, pickDisabled, isPickingFolder } = useAutoDsmLaunchActions();
+  const designSystemHistory = usePrimaryAutoDsmDesignSystemHistory();
+  const hasDesignSystemOnDisk = hasAutoDsmDesignSystem(designSystemHistory.rows);
+  const designSystemEntry = findAutoDsmDesignSystemEntryForPath(
+    designSystemHistory.rows,
+    activeWorkspaceProject?.cwd,
+  );
   const settings = useSettings();
   const { updateSettings } = useUpdateSettings();
   const [disconnectPending, setDisconnectPending] = useState(false);
+  const [closePending, setClosePending] = useState(false);
+  const [deletePending, setDeletePending] = useState(false);
+  const hideFolderIntake = isElectron && hasDesignSystemOnDisk;
 
   const invalidateProjectQueries = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ["autodsm"] });
     void queryClient.invalidateQueries({ queryKey: ["autodsm-home-index-summary"] });
     void queryClient.invalidateQueries({ queryKey: ["project-folder-profile"] });
+    void queryClient.invalidateQueries({ queryKey: ["autodsm-workspace-history"] });
   }, [queryClient]);
+
+  const handleCloseProject = useCallback(async () => {
+    if (!activeWorkspaceProject) {
+      return;
+    }
+
+    const confirmMessage = [
+      `Close "${activeWorkspaceProject.name}"?`,
+      `Path: ${activeWorkspaceProject.cwd}`,
+      "Return to Home. Your design system stays on disk and reopens automatically.",
+    ].join("\n");
+
+    const localApi = readLocalApi();
+    const confirmed = localApi
+      ? await localApi.dialogs.confirm(confirmMessage)
+      : window.confirm(confirmMessage);
+
+    if (!confirmed) {
+      return;
+    }
+
+    setClosePending(true);
+    try {
+      closeActiveWorkspaceProject();
+      invalidateProjectQueries();
+      toastManager.add(
+        stackedThreadToast({
+          type: "success",
+          title: "Project closed",
+          description: `"${activeWorkspaceProject.name}" will reopen automatically from Home.`,
+        }),
+      );
+      void navigate({ to: AUTO_DSM_PROJECT_PICKER_PATH, replace: true });
+    } finally {
+      setClosePending(false);
+    }
+  }, [activeWorkspaceProject, invalidateProjectQueries, navigate]);
 
   const handleDisconnect = useCallback(async () => {
     if (!activeWorkspaceProject || !autoDsmWorkspaceProjectRef) {
@@ -201,8 +259,8 @@ export function ProjectFolderSettingsTile(): JSX.Element {
       `Disconnect folder "${activeWorkspaceProject.name}"?`,
       `Path: ${activeWorkspaceProject.cwd}`,
       ...(environmentLabel ? [`Environment: ${environmentLabel}`] : []),
-      "This removes the project entry from T3 Code. Local files are not deleted.",
-      "You can open another folder from the launch screen afterward.",
+      "This removes the project entry from T3 Code. Local design system files are not deleted.",
+      "Your design system will reopen automatically from Home.",
     ].join("\n");
 
     const confirmMessageForce = [
@@ -243,10 +301,10 @@ export function ProjectFolderSettingsTile(): JSX.Element {
         stackedThreadToast({
           type: "success",
           title: "Workspace disconnected",
-          description: `"${activeWorkspaceProject.name}" was removed. Open a folder from the launch screen to continue.`,
+          description: `"${activeWorkspaceProject.name}" was removed from the sidebar. Your design system files are unchanged.`,
         }),
       );
-      void navigate({ to: "/", replace: true });
+      void navigate({ to: AUTO_DSM_PROJECT_PICKER_PATH, replace: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not disconnect folder.";
       toastManager.add(
@@ -265,21 +323,124 @@ export function ProjectFolderSettingsTile(): JSX.Element {
     setAutoDsmWorkspaceProjectRef,
   ]);
 
+  const handleDeleteDesignSystem = useCallback(async () => {
+    if (!designSystemEntry || !activeWorkspaceProject || !autoDsmWorkspaceProjectRef) {
+      return;
+    }
+
+    const confirmMessage = [
+      `Delete design system "${designSystemEntry.displayName}" permanently?`,
+      `Path: ${designSystemEntry.systemPath}`,
+      "This removes the workspace from disk and clears the sidebar project entry.",
+      "You can create a new design system afterward from onboarding.",
+      "This action cannot be undone.",
+    ].join("\n");
+
+    const localApi = readLocalApi();
+    const confirmed = localApi
+      ? await localApi.dialogs.confirm(confirmMessage)
+      : window.confirm(confirmMessage);
+
+    if (!confirmed) {
+      return;
+    }
+
+    const api = readEnvironmentApi(activeWorkspaceProject.environmentId);
+    if (!api) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Environment unavailable",
+          description: "Reconnect and try again.",
+        }),
+      );
+      return;
+    }
+
+    setDeletePending(true);
+    try {
+      await api.autodsm.deleteWorkspace({ workspaceId: designSystemEntry.workspaceId });
+      if (activeThreads.length > 0) {
+        await disconnectProjectFromWorkspace({
+          environmentId: activeWorkspaceProject.environmentId,
+          projectId: activeWorkspaceProject.id,
+          force: true,
+        });
+      } else {
+        await disconnectProjectFromWorkspace({
+          environmentId: activeWorkspaceProject.environmentId,
+          projectId: activeWorkspaceProject.id,
+        });
+      }
+      setAutoDsmWorkspaceProjectRef(null);
+      invalidateProjectQueries();
+      toastManager.add(
+        stackedThreadToast({
+          type: "success",
+          title: "Design system deleted",
+          description: "Create a new design system from the launch screen when you are ready.",
+        }),
+      );
+      void navigate({ to: AUTO_DSM_PROJECT_PICKER_PATH, replace: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not delete design system.";
+      toastManager.add(
+        stackedThreadToast({ type: "error", title: "Delete failed", description: message }),
+      );
+    } finally {
+      setDeletePending(false);
+    }
+  }, [
+    activeThreads.length,
+    activeWorkspaceProject,
+    autoDsmWorkspaceProjectRef,
+    designSystemEntry,
+    invalidateProjectQueries,
+    navigate,
+    setAutoDsmWorkspaceProjectRef,
+  ]);
+
   return (
     <SettingsSection title="Project folder" data-testid="project-folder-settings-tile">
+      {designSystemEntry ? (
+        <SettingsRow
+          title="Design system"
+          description={
+            <span className="block space-y-1">
+              <span className="block text-sm text-foreground">{designSystemEntry.displayName}</span>
+              <span className="block text-[11px] text-muted-foreground">
+                Built from: {formatAutoDsmStarterLabel(designSystemEntry.starterId)}
+              </span>
+              <span className="block text-[11px] text-muted-foreground">
+                Created: {new Date(designSystemEntry.createdAt).toLocaleString()}
+              </span>
+              <span className="block break-all font-mono text-[11px] text-muted-foreground">
+                {designSystemEntry.systemPath}
+              </span>
+            </span>
+          }
+        />
+      ) : null}
+
       {activeWorkspaceProject === null ? (
         <SettingsRow
           title="No workspace folder selected"
-          description="Open or clone a folder from the AutoDSM launch screen (or add a project via ⌘K) to set the workspace AutoDSM uses for components, previews, and stack detection. Disconnect returns you to the launch screen."
+          description={
+            hasDesignSystemOnDisk
+              ? "Your design system is on disk and will reopen automatically from Home."
+              : "Create a design system from the AutoDSM onboarding flow to set the workspace used for components, previews, and stack detection."
+          }
           control={
-            <Button
-              size="xs"
-              variant="default"
-              disabled={pickDisabled || isPickingFolder}
-              onClick={() => void openLocalProject()}
-            >
-              Connect folder
-            </Button>
+            hideFolderIntake ? null : (
+              <Button
+                size="xs"
+                variant="default"
+                disabled={pickDisabled || isPickingFolder}
+                onClick={() => void openLocalProject()}
+              >
+                Connect folder
+              </Button>
+            )
           }
         />
       ) : (
@@ -306,19 +467,29 @@ export function ProjectFolderSettingsTile(): JSX.Element {
             <span className="text-[11px] text-muted-foreground">
               {activeThreads.length} active thread{activeThreads.length === 1 ? "" : "s"}
               {activeThreads.length > 0
-                ? " · disconnect will clear chat history for those threads"
-                : null}
+                ? " · disconnect removes the sidebar project and clears chat history"
+                : " · close unbinds the workspace; your design system reopens from Home"}
             </span>
           }
           control={
             <div className="flex flex-wrap items-center justify-end gap-2">
+              {!hideFolderIntake ? (
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={pickDisabled || isPickingFolder}
+                  onClick={() => void openLocalProject()}
+                >
+                  Reconnect folder
+                </Button>
+              ) : null}
               <Button
                 size="xs"
                 variant="outline"
-                disabled={pickDisabled || isPickingFolder}
-                onClick={() => void openLocalProject()}
+                disabled={closePending}
+                onClick={() => void handleCloseProject()}
               >
-                Reconnect folder
+                Close project
               </Button>
               <Button
                 size="xs"
@@ -328,6 +499,16 @@ export function ProjectFolderSettingsTile(): JSX.Element {
               >
                 Disconnect folder
               </Button>
+              {designSystemEntry ? (
+                <Button
+                  size="xs"
+                  variant="destructive"
+                  disabled={deletePending || !environmentApiAvailable}
+                  onClick={() => void handleDeleteDesignSystem()}
+                >
+                  Delete design system
+                </Button>
+              ) : null}
             </div>
           }
         />
@@ -350,32 +531,35 @@ export function ProjectFolderSettingsTile(): JSX.Element {
         </SettingsRow>
       ) : null}
 
-      <SettingsRow
-        title="Add project starts in"
-        description='Leave empty to use "~/" when the Add Project browser opens.'
-        resetAction={
-          settings.addProjectBaseDirectory !== DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory ? (
-            <SettingResetButton
-              label="add project base directory"
-              onClick={() =>
-                updateSettings({
-                  addProjectBaseDirectory: DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory,
-                })
-              }
+      {!hideFolderIntake ? (
+        <SettingsRow
+          title="Add project starts in"
+          description='Leave empty to use "~/" when the Add Project browser opens.'
+          resetAction={
+            settings.addProjectBaseDirectory !==
+            DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory ? (
+              <SettingResetButton
+                label="add project base directory"
+                onClick={() =>
+                  updateSettings({
+                    addProjectBaseDirectory: DEFAULT_UNIFIED_SETTINGS.addProjectBaseDirectory,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <DraftInput
+              className="w-full sm:w-72"
+              value={settings.addProjectBaseDirectory}
+              onCommit={(next) => updateSettings({ addProjectBaseDirectory: next })}
+              placeholder="~/"
+              spellCheck={false}
+              aria-label="Add project base directory"
             />
-          ) : null
-        }
-        control={
-          <DraftInput
-            className="w-full sm:w-72"
-            value={settings.addProjectBaseDirectory}
-            onCommit={(next) => updateSettings({ addProjectBaseDirectory: next })}
-            placeholder="~/"
-            spellCheck={false}
-            aria-label="Add project base directory"
-          />
-        }
-      />
+          }
+        />
+      ) : null}
     </SettingsSection>
   );
 }

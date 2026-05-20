@@ -13,6 +13,7 @@ import { installDesktopIpcHandlers } from "../ipc/DesktopIpcHandlers.ts";
 import * as DesktopAppIdentity from "./DesktopAppIdentity.ts";
 import * as DesktopApplicationMenu from "../window/DesktopApplicationMenu.ts";
 import * as DesktopBackendManager from "../backend/DesktopBackendManager.ts";
+import { detachAllPreviewViews } from "../componentPreview/componentPreviewViews.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 import * as DesktopLifecycle from "./DesktopLifecycle.ts";
 import * as DesktopObservability from "./DesktopObservability.ts";
@@ -242,7 +243,9 @@ const scopedProgram = Effect.scoped(
     const backendManager = yield* DesktopBackendManager.DesktopBackendManager;
 
     yield* Effect.addFinalizer(() =>
-      backendManager.stop().pipe(Effect.ensuring(shutdown.markComplete)),
+      Effect.sync(() => {
+        detachAllPreviewViews();
+      }).pipe(Effect.andThen(backendManager.stop()), Effect.ensuring(shutdown.markComplete)),
     );
 
     yield* startup;

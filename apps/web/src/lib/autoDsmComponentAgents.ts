@@ -10,6 +10,7 @@ export interface AutoDsmComponentAgentTab {
   readonly threadKey: string;
   readonly title: string;
   readonly componentPath: string;
+  readonly group?: string;
 }
 
 export interface BuildAutoDsmComponentAgentTabsInput {
@@ -44,6 +45,21 @@ function compareAgentTabs(a: AutoDsmComponentAgentTab, b: AutoDsmComponentAgentT
   return a.componentPath.localeCompare(b.componentPath);
 }
 
+function dedupeAutoDsmComponentAgentTabsByPath(
+  tabs: readonly AutoDsmComponentAgentTab[],
+): AutoDsmComponentAgentTab[] {
+  const seen = new Set<string>();
+  const deduped: AutoDsmComponentAgentTab[] = [];
+  for (const tab of tabs) {
+    if (seen.has(tab.componentPath)) {
+      continue;
+    }
+    seen.add(tab.componentPath);
+    deduped.push(tab);
+  }
+  return deduped;
+}
+
 export function buildAutoDsmComponentAgentTabs(
   input: BuildAutoDsmComponentAgentTabsInput,
 ): AutoDsmComponentAgentTab[] {
@@ -64,7 +80,7 @@ export function buildAutoDsmComponentAgentTabs(
     tabs.push({ threadRef, threadKey, title, componentPath });
   }
 
-  return tabs.toSorted(compareAgentTabs);
+  return dedupeAutoDsmComponentAgentTabsByPath(tabs).toSorted(compareAgentTabs);
 }
 
 export function resolveAutoDsmAgentTabForThread(

@@ -73,6 +73,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const showInstanceBadge = Boolean(activeEntry?.accentColor) || duplicateDriverCount > 1;
 
   const setIsMenuOpen = (open: boolean) => {
+    setModelPickerOpen(open);
     props.onOpenChange?.(open);
     if (props.open === undefined) {
       setUncontrolledIsMenuOpen(open);

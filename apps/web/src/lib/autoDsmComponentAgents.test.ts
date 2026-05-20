@@ -76,6 +76,41 @@ describe("buildAutoDsmComponentAgentTabs", () => {
     expect(tabs[0]?.title).toBe("Primary Button");
     expect(tabs[0]?.componentPath).toBe("src/components/PrimaryButton.tsx");
   });
+
+  it("includes server manifest paths merged into effective path map", () => {
+    const starterRef = scopeThreadRef(ENV, "thr-server" as ThreadId);
+    const tabs = buildAutoDsmComponentAgentTabs({
+      environmentId: ENV,
+      projectId: PROJECT,
+      projectThreads: [stubThread("thr-server", "Server Tab")],
+      autoDsmThreadComponentPathById: {
+        [scopedThreadKey(starterRef)]: "/src/components/ServerTab.tsx",
+      },
+    });
+
+    expect(tabs).toHaveLength(1);
+    expect(tabs[0]?.componentPath).toBe("src/components/ServerTab.tsx");
+  });
+
+  it("dedupes tabs that map to the same component path", () => {
+    const primaryRef = scopeThreadRef(ENV, "thr-primary" as ThreadId);
+    const duplicateRef = scopeThreadRef(ENV, "thr-duplicate" as ThreadId);
+    const tabs = buildAutoDsmComponentAgentTabs({
+      environmentId: ENV,
+      projectId: PROJECT,
+      projectThreads: [
+        stubThread("thr-primary", "Button"),
+        stubThread("thr-duplicate", "Button copy"),
+      ],
+      autoDsmThreadComponentPathById: {
+        [scopedThreadKey(primaryRef)]: "/src/components/ShadcnButton.tsx",
+        [scopedThreadKey(duplicateRef)]: "src/components/ShadcnButton.tsx",
+      },
+    });
+
+    expect(tabs).toHaveLength(1);
+    expect(tabs[0]?.title).toBe("Button");
+  });
 });
 
 describe("resolveAutoDsmAgentTabForThread", () => {

@@ -146,6 +146,8 @@ import { isAutodsmMaterializedSystemCwd } from "../lib/autodsmMaterializedWorksp
 import { shouldUseAutodsmComponentAgentSidebar } from "../lib/autodsmSidebarMode";
 import { AutoDsmComponentAgentSidebarSection } from "./autodsm/AutoDsmComponentAgentSidebarSection";
 import { useAutoDsmWorkspace } from "../hooks/useAutoDsmWorkspace";
+import { useAutoDsmSingleDesignSystemMode } from "../hooks/useAutoDsmWorkspaceBootstrap";
+import { useAutoDsmMaterializedProductWorkspace } from "../hooks/useAutoDsmMaterializedProductWorkspace";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { CommandDialogTrigger } from "./ui/command";
 import { readEnvironmentApi } from "../environmentApi";
@@ -2389,6 +2391,8 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
   const navigate = useNavigate();
   const pathname = useLocation({ select: (loc) => loc.pathname });
   const { isMobile, setOpenMobile } = useSidebar();
+  const { hasDesignSystemOnDisk } = useAutoDsmSingleDesignSystemMode();
+  const hideAddProjectTrigger = isElectron && hasDesignSystemOnDisk;
 
   const closeMobileSidebar = useCallback(() => {
     if (isMobile) {
@@ -2495,22 +2499,24 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
                 <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
                   Projects
                 </span>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <button
-                        type="button"
-                        aria-label="Add project"
-                        data-testid="sidebar-add-project-trigger"
-                        className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
-                        onClick={openAddProject}
-                      />
-                    }
-                  >
-                    <FolderPlusIcon className="size-3.5" />
-                  </TooltipTrigger>
-                  <TooltipPopup side="right">Add project</TooltipPopup>
-                </Tooltip>
+                {!hideAddProjectTrigger ? (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <button
+                          type="button"
+                          aria-label="Add project"
+                          data-testid="sidebar-add-project-trigger"
+                          className="inline-flex size-5 cursor-pointer items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+                          onClick={openAddProject}
+                        />
+                      }
+                    >
+                      <FolderPlusIcon className="size-3.5" />
+                    </TooltipTrigger>
+                    <TooltipPopup side="right">Add project</TooltipPopup>
+                  </Tooltip>
+                ) : null}
               </div>
 
               {isManualProjectSorting ? (
@@ -2761,8 +2767,12 @@ export default function Sidebar() {
     return next;
   }, [sidebarThreads, physicalToLogicalKey, projectPhysicalKeyByScopedRef]);
   const { cwd: autodsmWorkspaceCwd } = useAutoDsmWorkspace();
+  const { isElectronProductMode, workspace: productWorkspace } =
+    useAutoDsmMaterializedProductWorkspace();
   const useAutodsmComponentAgentSidebar = shouldUseAutodsmComponentAgentSidebar({
     workspaceCwd: autodsmWorkspaceCwd,
+    isElectronProductMode,
+    productMaterializedCwd: productWorkspace?.cwd ?? null,
   });
 
   const getCurrentSidebarShortcutContext = useCallback(
@@ -2912,10 +2922,18 @@ export default function Sidebar() {
     sidebarProjects,
     visibleThreads,
   ]);
+  const sidebarVisibleProjects = useMemo(() => {
+    if (!useAutodsmComponentAgentSidebar) {
+      return sortedProjects;
+    }
+    return sortedProjects.filter(
+      (project) => !sidebarProjectUsesAutodsmMaterializedLayout(project),
+    );
+  }, [sortedProjects, useAutodsmComponentAgentSidebar]);
   const isManualProjectSorting = sidebarProjectSortOrder === "manual";
   const visibleSidebarThreadKeys = useMemo(
     () =>
-      sortedProjects.flatMap((project) => {
+      sidebarVisibleProjects.flatMap((project) => {
         const projectThreads = sortThreads(
           (threadsByProjectKey.get(project.projectKey) ?? []).filter(
             (thread) => thread.archivedAt === null,
@@ -2953,7 +2971,7 @@ export default function Sidebar() {
       expandedThreadListsByProject,
       projectExpandedById,
       routeThreadKey,
-      sortedProjects,
+      sidebarVisibleProjects,
       threadsByProjectKey,
     ],
   );
@@ -3156,7 +3174,7 @@ export default function Sidebar() {
             handleNewThread={handleNewThread}
             archiveThread={archiveThread}
             deleteThread={deleteThread}
-            sortedProjects={sortedProjects}
+            sortedProjects={sidebarVisibleProjects}
             expandedThreadListsByProject={expandedThreadListsByProject}
             activeRouteProjectKey={activeRouteProjectKey}
             routeThreadKey={routeThreadKey}

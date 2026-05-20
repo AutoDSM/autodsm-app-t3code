@@ -8,6 +8,7 @@ import {
   sanitizeAutodsmOnboarding,
   type AutoDsmOnboardingState,
 } from "./lib/autoDsmOnboarding";
+import { canonicalAutoDsmComponentPreviewPaths } from "./lib/autoDsmComponentPreviewPath";
 
 export const PERSISTED_STATE_KEY = "t3code:ui-state:v1";
 const LEGACY_PERSISTED_STATE_KEYS = [
@@ -41,6 +42,8 @@ export interface PersistedUiState {
    * `autodsm.createWorkspace` for COMPONENTS-as-threads navigation.
    */
   autoDsmThreadComponentPathById?: Record<string, string>;
+  /** Collapsed component-agent sidebar folders keyed by workspace cwd. */
+  autoDsmComponentAgentGroupCollapsedByWorkspaceKey?: Record<string, Record<string, true>>;
 }
 
 export interface UiProjectState {
@@ -70,6 +73,8 @@ export interface UiState
   autodsmOnboarding: AutoDsmOnboardingState;
   /** Maps scoped thread key → `src/components/...` path for AutoDSM preview search params. */
   autoDsmThreadComponentPathById: Record<string, string>;
+  /** Workspace cwd → group id → expanded (default true when missing). */
+  autoDsmComponentAgentGroupExpandedByWorkspaceKey: Record<string, Record<string, boolean>>;
 }
 
 export interface SyncProjectInput {
@@ -96,6 +101,7 @@ const initialState: UiState = {
   autoDsmWorkspaceProjectRef: null,
   autodsmOnboarding: defaultAutodsmOnboardingState,
   autoDsmThreadComponentPathById: {},
+  autoDsmComponentAgentGroupExpandedByWorkspaceKey: {},
 };
 
 const persistedCollapsedProjectCwds = new Set<string>();
@@ -146,6 +152,9 @@ function readPersistedState(): UiState {
     const persistedPreviewPaths = sanitizeAutoDsmThreadComponentPathById(
       parsed.autoDsmThreadComponentPathById,
     );
+    const persistedGroupExpanded = sanitizeAutoDsmComponentAgentGroupExpandedByWorkspaceKey(
+      parsed.autoDsmComponentAgentGroupCollapsedByWorkspaceKey,
+    );
     return {
       ...initialState,
       defaultAdvertisedEndpointKey:
@@ -159,6 +168,7 @@ function readPersistedState(): UiState {
       autoDsmWorkspaceProjectRef: persistedAutoDsm,
       autodsmOnboarding: persistedOnboarding,
       autoDsmThreadComponentPathById: persistedPreviewPaths,
+      autoDsmComponentAgentGroupExpandedByWorkspaceKey: persistedGroupExpanded,
     };
   } catch {
     return initialState;
@@ -180,6 +190,48 @@ function sanitizeAutoDsmThreadComponentPathById(
       path.length > 0
     ) {
       next[threadId] = path;
+    }
+  }
+  return next;
+}
+
+function sanitizeAutoDsmComponentAgentGroupExpandedByWorkspaceKey(
+  value: PersistedUiState["autoDsmComponentAgentGroupCollapsedByWorkspaceKey"],
+): Record<string, Record<string, boolean>> {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+  const next: Record<string, Record<string, boolean>> = {};
+  for (const [workspaceKey, groups] of Object.entries(value)) {
+    if (!workspaceKey || !groups || typeof groups !== "object") {
+      continue;
+    }
+    const groupState: Record<string, boolean> = {};
+    for (const groupId of Object.keys(groups)) {
+      if (groupId) {
+        groupState[groupId] = false;
+      }
+    }
+    if (Object.keys(groupState).length > 0) {
+      next[workspaceKey] = groupState;
+    }
+  }
+  return next;
+}
+
+function serializeAutoDsmComponentAgentGroupCollapsedByWorkspaceKey(
+  value: Record<string, Record<string, boolean>>,
+): Record<string, Record<string, true>> {
+  const next: Record<string, Record<string, true>> = {};
+  for (const [workspaceKey, groups] of Object.entries(value)) {
+    const collapsed: Record<string, true> = {};
+    for (const [groupId, expanded] of Object.entries(groups)) {
+      if (groupId && expanded === false) {
+        collapsed[groupId] = true;
+      }
+    }
+    if (Object.keys(collapsed).length > 0) {
+      next[workspaceKey] = collapsed;
     }
   }
   return next;
@@ -272,6 +324,10 @@ export function persistState(state: UiState): void {
         autoDsmWorkspaceProjectRef: state.autoDsmWorkspaceProjectRef,
         autodsmOnboarding: state.autodsmOnboarding,
         autoDsmThreadComponentPathById: state.autoDsmThreadComponentPathById,
+        autoDsmComponentAgentGroupCollapsedByWorkspaceKey:
+          serializeAutoDsmComponentAgentGroupCollapsedByWorkspaceKey(
+            state.autoDsmComponentAgentGroupExpandedByWorkspaceKey,
+          ),
       } satisfies PersistedUiState),
     );
     if (!legacyKeysCleanedUp) {
@@ -762,6 +818,11 @@ interface UiStateStore extends UiState {
   patchAutodsmOnboarding: (patch: Partial<AutoDsmOnboardingState>) => void;
   completeAutodsmOnboarding: () => void;
   mergeAutoDsmThreadComponentPaths: (paths: Record<string, string>) => void;
+  setAutoDsmComponentAgentGroupExpanded: (
+    workspaceKey: string,
+    groupId: string,
+    expanded: boolean,
+  ) => void;
   toggleProject: (projectId: string) => void;
   setProjectExpanded: (projectId: string, expanded: boolean) => void;
   reorderProjects: (
@@ -798,10 +859,38 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
       }),
     })),
   mergeAutoDsmThreadComponentPaths: (paths) =>
-    set((state) => ({
-      ...state,
-      autoDsmThreadComponentPathById: { ...state.autoDsmThreadComponentPathById, ...paths },
-    })),
+    set((state) => {
+      const canonicalPaths = canonicalAutoDsmComponentPreviewPaths(paths);
+      if (Object.keys(canonicalPaths).length === 0) {
+        return state;
+      }
+      const next = { ...state.autoDsmThreadComponentPathById, ...canonicalPaths };
+      if (recordsEqual(next, state.autoDsmThreadComponentPathById)) {
+        return state;
+      }
+      return { ...state, autoDsmThreadComponentPathById: next };
+    }),
+  setAutoDsmComponentAgentGroupExpanded: (workspaceKey, groupId, expanded) =>
+    set((state) => {
+      if (!workspaceKey || !groupId) {
+        return state;
+      }
+      const currentWorkspace =
+        state.autoDsmComponentAgentGroupExpandedByWorkspaceKey[workspaceKey] ?? {};
+      if (currentWorkspace[groupId] === expanded) {
+        return state;
+      }
+      return {
+        ...state,
+        autoDsmComponentAgentGroupExpandedByWorkspaceKey: {
+          ...state.autoDsmComponentAgentGroupExpandedByWorkspaceKey,
+          [workspaceKey]: {
+            ...currentWorkspace,
+            [groupId]: expanded,
+          },
+        },
+      };
+    }),
   toggleProject: (projectId) => set((state) => toggleProject(state, projectId)),
   setProjectExpanded: (projectId, expanded) =>
     set((state) => setProjectExpanded(state, projectId, expanded)),

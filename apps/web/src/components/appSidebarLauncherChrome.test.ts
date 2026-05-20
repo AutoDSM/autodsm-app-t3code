@@ -1,6 +1,34 @@
 import { describe, expect, it } from "vitest";
 
-import { shouldUseMinimalElectronLauncherChrome } from "./appSidebarLauncherChrome";
+import {
+  COMPONENT_PREVIEW_RUNTIME_PATH,
+  shouldSkipThreadSidebar,
+  shouldUseMinimalElectronLauncherChrome,
+} from "./appSidebarLauncherChrome";
+
+describe("shouldSkipThreadSidebar", () => {
+  it("skips the thread sidebar on the component preview runtime route", () => {
+    expect(
+      shouldSkipThreadSidebar({
+        isElectron: false,
+        authGateStatus: "authenticated",
+        hostedStaticNeedsChrome: false,
+        pathname: COMPONENT_PREVIEW_RUNTIME_PATH,
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps the thread sidebar on normal chat routes", () => {
+    expect(
+      shouldSkipThreadSidebar({
+        isElectron: true,
+        authGateStatus: "authenticated",
+        hostedStaticNeedsChrome: false,
+        pathname: "/home",
+      }),
+    ).toBe(false);
+  });
+});
 
 describe("shouldUseMinimalElectronLauncherChrome", () => {
   it("is true for authenticated Electron on the chat-index launcher route when hosted-static chrome is not forced", () => {

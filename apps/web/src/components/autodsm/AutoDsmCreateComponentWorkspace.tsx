@@ -115,7 +115,7 @@ export function AutoDsmCreateComponentWorkspace(): JSX.Element {
       <div className="space-y-2 text-center">
         <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-[1.65rem]">
           Build a component for{" "}
-          <span className="text-violet-400">{projectName ?? "your workspace"}</span>
+          <span className="text-primary">{projectName ?? "your workspace"}</span>
         </h1>
         <p className="text-sm text-muted-foreground">
           Describe what you want. AutoDSM starts a scoped agent run and opens the preview when the

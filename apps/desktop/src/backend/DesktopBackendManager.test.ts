@@ -21,8 +21,11 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import * as DesktopBackendManager from "./DesktopBackendManager.ts";
 import * as DesktopBackendConfiguration from "./DesktopBackendConfiguration.ts";
+import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
 import * as DesktopObservability from "../app/DesktopObservability.ts";
 import * as DesktopState from "../app/DesktopState.ts";
+import * as ElectronWindow from "../electron/ElectronWindow.ts";
+import * as IpcChannels from "../ipc/channels.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 
 const decodeDesktopBackendBootstrap = Schema.decodeEffect(
@@ -107,8 +110,12 @@ function makeManagerLayer(input: {
   readonly backendOutputLog?: Partial<DesktopObservability.DesktopBackendOutputLogShape>;
   readonly desktopState?: DesktopState.DesktopStateShape;
   readonly desktopWindow?: Partial<DesktopWindow.DesktopWindowShape>;
+  readonly electronWindow?: Partial<ElectronWindow.ElectronWindowShape>;
+  readonly backendStatusEvents?: Array<{ readonly channel: string; readonly payload: unknown }>;
   readonly config?: DesktopBackendManager.DesktopBackendStartConfig;
 }) {
+  const backendStatusEvents = input.backendStatusEvents ?? [];
+
   return DesktopBackendManager.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
@@ -118,6 +125,9 @@ function makeManagerLayer(input: {
         Layer.succeed(DesktopBackendConfiguration.DesktopBackendConfiguration, {
           resolve: Effect.succeed(input.config ?? baseConfig),
         }),
+        Layer.succeed(DesktopEnvironment.DesktopEnvironment, {
+          logDir: "/tmp/t3/dev/logs",
+        } as DesktopEnvironment.DesktopEnvironmentShape),
         input.spawnerLayer,
         input.httpClientLayer ?? healthyHttpClientLayer,
         input.desktopState
@@ -128,6 +138,22 @@ function makeManagerLayer(input: {
           writeOutputChunk: () => Effect.void,
           ...input.backendOutputLog,
         } satisfies DesktopObservability.DesktopBackendOutputLogShape),
+        Layer.succeed(ElectronWindow.ElectronWindow, {
+          create: () => Effect.die("unexpected BrowserWindow creation"),
+          main: Effect.succeed(Option.none()),
+          currentMainOrFirst: Effect.succeed(Option.none()),
+          focusedMainOrFirst: Effect.succeed(Option.none()),
+          setMain: () => Effect.void,
+          clearMain: () => Effect.void,
+          reveal: () => Effect.void,
+          sendAll: (channel, payload) => {
+            backendStatusEvents.push({ channel, payload });
+            return Effect.void;
+          },
+          destroyAll: Effect.void,
+          syncAllAppearance: () => Effect.void,
+          ...input.electronWindow,
+        } satisfies ElectronWindow.ElectronWindowShape),
         Layer.succeed(DesktopWindow.DesktopWindow, {
           createMain: Effect.die("unexpected createMain"),
           ensureMain: Effect.die("unexpected ensureMain"),
@@ -490,5 +516,284 @@ describe("DesktopBackendManager", () => {
         assert.equal((yield* manager.snapshot).desiredRunning, false);
       }).pipe(Effect.provide(Layer.merge(TestClock.layer(), managerLayer)));
     }),
+  );
+
+  it.effect(
+    "enters fatal state and stops restarting after the restart budget is exhausted",
+    () =>
+      Effect.gen(function* () {
+        const starts = yield* Queue.unbounded<number>();
+        let startCount = 0;
+        const backendStatusEvents: Array<{ readonly channel: string; readonly payload: unknown }> =
+          [];
+
+        const spawnerLayer = Layer.succeed(
+          ChildProcessSpawner.ChildProcessSpawner,
+          ChildProcessSpawner.make(() =>
+            Effect.sync(() => {
+              startCount += 1;
+              return makeProcess({
+                exitCode: Queue.offer(starts, startCount).pipe(
+                  Effect.as(ChildProcessSpawner.ExitCode(1)),
+                ),
+              });
+            }),
+          ),
+        );
+
+        const managerLayer = makeManagerLayer({
+          spawnerLayer,
+          httpClientLayer: httpClientLayer(() => Effect.never),
+          backendStatusEvents,
+        });
+
+        yield* Effect.gen(function* () {
+          const manager = yield* DesktopBackendManager.DesktopBackendManager;
+          yield* manager.start;
+
+          assert.equal(yield* Queue.take(starts), 1);
+          yield* TestClock.adjust(Duration.millis(500));
+          assert.equal(yield* Queue.take(starts), 2);
+          yield* TestClock.adjust(Duration.millis(1_000));
+          assert.equal(yield* Queue.take(starts), 3);
+
+          yield* TestClock.adjust(Duration.millis(10_000));
+          assert.equal(yield* Queue.size(starts), 0);
+
+          const snapshot = yield* manager.snapshot;
+          assert.equal(snapshot.desiredRunning, false);
+          assert.isTrue(Option.isSome(snapshot.fatal));
+          assert.equal(Option.getOrThrow(snapshot.fatal).attempts, 3);
+          assert.include(Option.getOrThrow(snapshot.fatal).reason, "consecutive fast failures");
+
+          const fatalEvent = backendStatusEvents.find(
+            (event) =>
+              event.channel === IpcChannels.BACKEND_STATUS_CHANNEL &&
+              typeof event.payload === "object" &&
+              event.payload !== null &&
+              "kind" in event.payload &&
+              event.payload.kind === "fatal",
+          );
+          assert.isDefined(fatalEvent);
+
+          yield* manager.start;
+          assert.equal(yield* Queue.size(starts), 0);
+        }).pipe(Effect.provide(Layer.merge(TestClock.layer(), managerLayer)));
+      }),
+    { timeout: 15_000 },
+  );
+
+  it.effect("emits ready and restarting backend status events", () =>
+    Effect.gen(function* () {
+      const backendStatusEvents: Array<{ readonly channel: string; readonly payload: unknown }> =
+        [];
+      const ready = yield* Deferred.make<void>();
+      const exited = yield* Queue.unbounded<void>();
+
+      const spawnerLayer = Layer.succeed(
+        ChildProcessSpawner.ChildProcessSpawner,
+        ChildProcessSpawner.make(() =>
+          Effect.succeed(
+            makeProcess({
+              exitCode: Queue.take(exited).pipe(Effect.as(ChildProcessSpawner.ExitCode(1))),
+            }),
+          ),
+        ),
+      );
+
+      const managerLayer = makeManagerLayer({
+        spawnerLayer,
+        backendStatusEvents,
+        desktopWindow: {
+          handleBackendReady: Deferred.succeed(ready, void 0).pipe(Effect.asVoid),
+        },
+      });
+
+      yield* Effect.gen(function* () {
+        const manager = yield* DesktopBackendManager.DesktopBackendManager;
+        yield* manager.start;
+        yield* Deferred.await(ready);
+
+        const readyEvent = backendStatusEvents.find(
+          (event) =>
+            event.channel === IpcChannels.BACKEND_STATUS_CHANNEL &&
+            typeof event.payload === "object" &&
+            event.payload !== null &&
+            "kind" in event.payload &&
+            event.payload.kind === "ready",
+        );
+        assert.isDefined(readyEvent);
+
+        yield* Queue.offer(exited, void 0);
+        yield* TestClock.adjust(Duration.millis(500));
+
+        const restartingEvent = backendStatusEvents.find(
+          (event) =>
+            event.channel === IpcChannels.BACKEND_STATUS_CHANNEL &&
+            typeof event.payload === "object" &&
+            event.payload !== null &&
+            "kind" in event.payload &&
+            event.payload.kind === "restarting",
+        );
+        assert.isDefined(restartingEvent);
+        if (
+          restartingEvent &&
+          typeof restartingEvent.payload === "object" &&
+          restartingEvent.payload !== null &&
+          "attempt" in restartingEvent.payload
+        ) {
+          assert.equal(restartingEvent.payload.attempt, 1);
+        }
+      }).pipe(Effect.provide(Layer.merge(TestClock.layer(), managerLayer)));
+    }),
+  );
+
+  it.effect(
+    "allows restarts again after the backend stays ready past the fast-failure window",
+    () =>
+      Effect.gen(function* () {
+        const starts = yield* Queue.unbounded<number>();
+        let startCount = 0;
+        const ready = yield* Deferred.make<void>();
+        const exitSignal = yield* Deferred.make<void>();
+        const backendStatusEvents: Array<{ readonly channel: string; readonly payload: unknown }> =
+          [];
+
+        const spawnerLayer = Layer.succeed(
+          ChildProcessSpawner.ChildProcessSpawner,
+          ChildProcessSpawner.make(() =>
+            Effect.sync(() => {
+              startCount += 1;
+              const currentStart = startCount;
+              return makeProcess({
+                exitCode: Effect.gen(function* () {
+                  yield* Queue.offer(starts, currentStart);
+                  yield* Deferred.await(exitSignal);
+                  return ChildProcessSpawner.ExitCode(1);
+                }),
+              });
+            }),
+          ),
+        );
+
+        const managerLayer = makeManagerLayer({
+          spawnerLayer,
+          backendStatusEvents,
+          desktopWindow: {
+            handleBackendReady: Deferred.succeed(ready, void 0).pipe(Effect.asVoid),
+          },
+        });
+
+        yield* Effect.gen(function* () {
+          const manager = yield* DesktopBackendManager.DesktopBackendManager;
+          yield* manager.start;
+          assert.equal(yield* Queue.take(starts), 1);
+          yield* Deferred.await(ready);
+
+          yield* TestClock.adjust(Duration.seconds(15));
+          const stableSnapshot = yield* manager.snapshot;
+          assert.equal(stableSnapshot.restartAttempt, 0);
+
+          yield* Deferred.succeed(exitSignal, void 0);
+          yield* TestClock.adjust(Duration.millis(500));
+          assert.equal(yield* Queue.take(starts), 2);
+
+          const restartingEvent = backendStatusEvents.find(
+            (event) =>
+              event.channel === IpcChannels.BACKEND_STATUS_CHANNEL &&
+              typeof event.payload === "object" &&
+              event.payload !== null &&
+              "kind" in event.payload &&
+              event.payload.kind === "restarting",
+          );
+          assert.isDefined(restartingEvent);
+          if (
+            restartingEvent &&
+            typeof restartingEvent.payload === "object" &&
+            restartingEvent.payload !== null &&
+            "attempt" in restartingEvent.payload
+          ) {
+            assert.equal(restartingEvent.payload.attempt, 1);
+          }
+        }).pipe(Effect.provide(Layer.merge(TestClock.layer(), managerLayer)));
+      }),
+  );
+
+  it.effect(
+    "enters fatal state after the rolling restart cap even when each attempt reaches readiness",
+    () =>
+      Effect.gen(function* () {
+        const starts = yield* Queue.unbounded<number>();
+        const crashGate = yield* Queue.unbounded<void>();
+        let startCount = 0;
+        const ready = yield* Deferred.make<void>();
+        const backendStatusEvents: Array<{ readonly channel: string; readonly payload: unknown }> =
+          [];
+
+        const spawnerLayer = Layer.succeed(
+          ChildProcessSpawner.ChildProcessSpawner,
+          ChildProcessSpawner.make(() =>
+            Effect.sync(() => {
+              startCount += 1;
+              const currentStart = startCount;
+              return makeProcess({
+                exitCode: Effect.gen(function* () {
+                  yield* Queue.offer(starts, currentStart);
+                  yield* Queue.take(crashGate);
+                  return ChildProcessSpawner.ExitCode(1);
+                }),
+              });
+            }),
+          ),
+        );
+
+        const managerLayer = makeManagerLayer({
+          spawnerLayer,
+          backendStatusEvents,
+          desktopWindow: {
+            handleBackendReady: Deferred.succeed(ready, void 0).pipe(Effect.asVoid),
+          },
+        });
+
+        yield* Effect.gen(function* () {
+          const manager = yield* DesktopBackendManager.DesktopBackendManager;
+          yield* manager.start;
+          assert.equal(yield* Queue.take(starts), 1);
+          yield* Deferred.await(ready);
+
+          for (let crash = 0; crash < 4; crash += 1) {
+            yield* Queue.offer(crashGate, void 0);
+            if (crash < 3) {
+              const restartDelay =
+                crash === 0
+                  ? Duration.millis(500)
+                  : crash === 1
+                    ? Duration.millis(1_000)
+                    : Duration.millis(2_000);
+              yield* TestClock.adjust(restartDelay);
+              assert.equal(yield* Queue.take(starts), crash + 2);
+            }
+          }
+
+          yield* TestClock.adjust(Duration.millis(10_000));
+
+          const snapshot = yield* manager.snapshot;
+          assert.equal(snapshot.desiredRunning, false);
+          assert.isTrue(Option.isSome(snapshot.fatal));
+          assert.equal(Option.getOrThrow(snapshot.fatal).attempts, 4);
+          assert.include(Option.getOrThrow(snapshot.fatal).reason, "rolling restart cap");
+
+          const fatalEvent = backendStatusEvents.find(
+            (event) =>
+              event.channel === IpcChannels.BACKEND_STATUS_CHANNEL &&
+              typeof event.payload === "object" &&
+              event.payload !== null &&
+              "kind" in event.payload &&
+              event.payload.kind === "fatal",
+          );
+          assert.isDefined(fatalEvent);
+        }).pipe(Effect.provide(Layer.merge(TestClock.layer(), managerLayer)));
+      }),
+    { timeout: 15_000 },
   );
 });

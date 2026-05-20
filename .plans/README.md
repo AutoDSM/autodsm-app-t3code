@@ -5,6 +5,8 @@ This folder contains execution plans for the T3 Code substrate and the AutoDSM p
 ## Canonical AutoDSM Plan
 
 - `21-autodsm-execution-roadmap.md` is the current AutoDSM v1 execution roadmap.
+- `22-autodsm-brand-cutover.md` is the focused plan for removing T3 Code as the
+  product-facing brand and making the build present as AutoDSM.
 - `AUTODSM.md` is the canonical product/build brief.
 - `docs/autodsm-target-state/` contains the organized target-state docs (including `features/loading.md` for the workspace fork pipeline).
 - `skills/` contains focused implementation guidance for agents.

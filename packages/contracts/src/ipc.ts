@@ -47,6 +47,8 @@ import type {
   AutoDsmCreateWorkspaceResult,
   AutoDsmListWorkspaceHistoryInput,
   AutoDsmListWorkspaceHistoryResult,
+  AutoDsmDeleteWorkspaceInput,
+  AutoDsmDeleteWorkspaceResult,
   AutoDsmExecuteRenderPlanResult,
   AutoDsmGenerationPlanAssembleInput,
   AutoDsmGenerationPlanResult,
@@ -56,8 +58,32 @@ import type {
   AutoDsmIssuesForPromptInput,
   AutoDsmIssuesForPromptResult,
   AutoDsmProjectProfile,
+  AutoDsmPublishedExportInput,
+  AutoDsmPublishedExportResult,
   AutoDsmPublishedSnapshotExportInput,
   AutoDsmPublishedSnapshotExportResult,
+  AutoDsmPullRequestCreateInput,
+  AutoDsmPullRequestCreateResult,
+  AutoDsmPullRequestListInput,
+  AutoDsmPullRequestListResult,
+  AutoDsmActivityListInput,
+  AutoDsmActivityListResult,
+  AutoDsmComponentAgentListInput,
+  AutoDsmComponentAgentListResult,
+  AutoDsmComponentAgentRegisterInput,
+  AutoDsmComponentAgentRegisterResult,
+  AutoDsmComponentAgentUpdateInput,
+  AutoDsmComponentAgentUpdateResult,
+  AutoDsmComponentConversationAppendInput,
+  AutoDsmComponentConversationAppendResult,
+  AutoDsmComponentConversationGetInput,
+  AutoDsmComponentConversationGetResult,
+  AutoDsmSessionChangeSetListInput,
+  AutoDsmSessionChangeSetListResult,
+  AutoDsmSessionCreateInput,
+  AutoDsmSessionCreateResult,
+  AutoDsmSessionGetInput,
+  AutoDsmSessionGetResult,
   AutoDsmRegistryEntryInput,
   AutoDsmRegistryEntryResult,
   AutoDsmRenderEnvironmentProfile,
@@ -267,6 +293,39 @@ export const DesktopUpdateCheckResultSchema = Schema.Struct({
   state: DesktopUpdateStateSchema,
 });
 
+export type DesktopBackendStatus =
+  | {
+      readonly kind: "ready";
+    }
+  | {
+      readonly kind: "restarting";
+      readonly reason: string;
+      readonly attempt: number;
+    }
+  | {
+      readonly kind: "fatal";
+      readonly reason: string;
+      readonly attempts: number;
+      readonly logDir: string;
+    };
+
+export const DesktopBackendStatusSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("ready"),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("restarting"),
+    reason: Schema.String,
+    attempt: Schema.Number,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("fatal"),
+    reason: Schema.String,
+    attempts: Schema.Number,
+    logDir: Schema.String,
+  }),
+]);
+
 export interface DesktopEnvironmentBootstrap {
   label: string;
   httpBaseUrl: string | null;
@@ -472,6 +531,16 @@ export interface DesktopBridge {
   downloadUpdate: () => Promise<DesktopUpdateActionResult>;
   installUpdate: () => Promise<DesktopUpdateActionResult>;
   onUpdateState: (listener: (state: DesktopUpdateState) => void) => () => void;
+  onBackendStatus: (listener: (status: DesktopBackendStatus) => void) => () => void;
+  restartDesktopBackend?: () => Promise<boolean>;
+  onComponentPreviewStatus: (
+    listener: (payload: {
+      readonly viewId: string;
+      readonly status: "crashed" | "unresponsive";
+      readonly reason?: string;
+      readonly exitCode?: number;
+    }) => void,
+  ) => () => void;
 
   /**
    * Optional Electron-only: embed a native `WebContentsView` for component previews.
@@ -488,6 +557,7 @@ export interface DesktopBridge {
     };
   }) => Promise<boolean>;
   detachComponentPreview?: (viewId: string) => Promise<void>;
+  detachAllComponentPreview?: () => Promise<void>;
   setComponentPreviewBounds?: (input: {
     readonly viewId: string;
     readonly bounds: {
@@ -501,6 +571,7 @@ export interface DesktopBridge {
     readonly viewId: string;
     readonly javascript: string;
     readonly propsJson: string;
+    readonly workspaceStyleCss?: string;
   }) => Promise<boolean>;
   captureComponentPreview?: (input: { readonly viewId: string }) => Promise<string | null>;
 }
@@ -641,6 +712,34 @@ export interface EnvironmentApi {
     exportPublishedSnapshot: (
       input: AutoDsmPublishedSnapshotExportInput,
     ) => Promise<AutoDsmPublishedSnapshotExportResult>;
+    exportPublishedExport: (
+      input: AutoDsmPublishedExportInput,
+    ) => Promise<AutoDsmPublishedExportResult>;
+    createPullRequest: (
+      input: AutoDsmPullRequestCreateInput,
+    ) => Promise<AutoDsmPullRequestCreateResult>;
+    listPullRequests: (input: AutoDsmPullRequestListInput) => Promise<AutoDsmPullRequestListResult>;
+    listActivity: (input: AutoDsmActivityListInput) => Promise<AutoDsmActivityListResult>;
+    listComponentAgents: (
+      input: AutoDsmComponentAgentListInput,
+    ) => Promise<AutoDsmComponentAgentListResult>;
+    registerComponentAgent: (
+      input: AutoDsmComponentAgentRegisterInput,
+    ) => Promise<AutoDsmComponentAgentRegisterResult>;
+    updateComponentAgent: (
+      input: AutoDsmComponentAgentUpdateInput,
+    ) => Promise<AutoDsmComponentAgentUpdateResult>;
+    getComponentConversation: (
+      input: AutoDsmComponentConversationGetInput,
+    ) => Promise<AutoDsmComponentConversationGetResult>;
+    appendComponentConversation: (
+      input: AutoDsmComponentConversationAppendInput,
+    ) => Promise<AutoDsmComponentConversationAppendResult>;
+    getSession: (input: AutoDsmSessionGetInput) => Promise<AutoDsmSessionGetResult>;
+    createSession: (input: AutoDsmSessionCreateInput) => Promise<AutoDsmSessionCreateResult>;
+    listChangeSetsForSession: (
+      input: AutoDsmSessionChangeSetListInput,
+    ) => Promise<AutoDsmSessionChangeSetListResult>;
     prepareSessionBranch: (
       input: AutoDsmGitSessionBranchInput,
     ) => Promise<AutoDsmGitSessionBranchResult>;
@@ -651,6 +750,7 @@ export interface EnvironmentApi {
     listWorkspaceHistory: (
       input?: AutoDsmListWorkspaceHistoryInput,
     ) => Promise<AutoDsmListWorkspaceHistoryResult>;
+    deleteWorkspace: (input: AutoDsmDeleteWorkspaceInput) => Promise<AutoDsmDeleteWorkspaceResult>;
   };
   filesystem: {
     browse: (input: FilesystemBrowseInput) => Promise<FilesystemBrowseResult>;

@@ -33,21 +33,16 @@ export function AutoDsmOnboardingNameProject(): JSX.Element {
 
   return (
     <AutoDsmOnboardingShell>
-      <div className="flex flex-col gap-6">
-        <div className="flex items-center gap-3">
-          <AutoDsmLogoMark className="size-10 shrink-0 sm:size-11" />
-          <p className="text-[1.65rem] font-extrabold tracking-tight text-foreground sm:text-[1.75rem]">
-            autoDSM
-          </p>
-        </div>
+      <div className="flex w-full flex-col gap-6">
+        <AutoDsmLogoMark className="h-10 w-auto sm:h-11" />
         <h2 className="text-xl font-semibold text-foreground">Name your design system</h2>
         <p className="text-sm text-muted-foreground">
           This is how your workspace will appear in the sidebar and at launch.
         </p>
-        <div className="flex flex-col gap-2">
+        <div className="flex w-full flex-col gap-2">
           <Input
             autoFocus
-            className="h-12 rounded-xl border-border/60 bg-card/65 text-base"
+            className="flex h-12 w-full items-center rounded-xl border-border/60 bg-card/65 px-3 text-base [&_[data-slot=input]]:h-full [&_[data-slot=input]]:leading-none"
             placeholder="e.g. Acme Design System"
             value={name}
             onChange={(event) => {

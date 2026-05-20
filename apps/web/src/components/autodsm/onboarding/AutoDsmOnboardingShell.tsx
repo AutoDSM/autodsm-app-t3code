@@ -15,7 +15,7 @@ export function AutoDsmOnboardingShell(props: {
   return (
     <div
       className={cn(
-        "flex min-h-0 flex-1 flex-col bg-[var(--app-chrome-background)] text-foreground",
+        "flex min-h-dvh w-full flex-col bg-[var(--app-chrome-background)] text-foreground",
         className,
       )}
     >
@@ -25,8 +25,8 @@ export function AutoDsmOnboardingShell(props: {
           className="drag-region flex h-[52px] shrink-0 items-center justify-center wco:h-[env(titlebar-area-height)]"
         />
       ) : null}
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-4 py-10 sm:px-6">
-        <div className="flex w-full max-w-[480px] flex-col gap-6">{children}</div>
+      <div className="flex flex-1 flex-col justify-center px-4 py-10 sm:px-6">
+        <div className="mx-auto flex w-full max-w-[480px] flex-col gap-6">{children}</div>
       </div>
     </div>
   );

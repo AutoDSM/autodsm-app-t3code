@@ -2,6 +2,8 @@ import { isAutodsmMaterializedSystemCwd } from "~/lib/autodsmMaterializedWorkspa
 
 export interface ShouldUseAutodsmComponentAgentSidebarInput {
   readonly workspaceCwd: string | null;
+  readonly isElectronProductMode?: boolean;
+  readonly productMaterializedCwd?: string | null;
 }
 
 /**
@@ -10,6 +12,10 @@ export interface ShouldUseAutodsmComponentAgentSidebarInput {
 export function shouldUseAutodsmComponentAgentSidebar(
   input: ShouldUseAutodsmComponentAgentSidebarInput,
 ): boolean {
+  if (input.isElectronProductMode && input.productMaterializedCwd?.trim()) {
+    return true;
+  }
+
   const cwd = input.workspaceCwd?.trim();
   if (!cwd) {
     return false;

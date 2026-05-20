@@ -35,6 +35,8 @@ import {
   type AutoDsmCreateWorkspaceResult,
   type AutoDsmListWorkspaceHistoryInput,
   type AutoDsmListWorkspaceHistoryResult,
+  type AutoDsmDeleteWorkspaceInput,
+  type AutoDsmDeleteWorkspaceResult,
   type AutoDsmEditOutcome,
   type AutoDsmExecuteRenderPlanResult,
   type AutoDsmGenerationPlan,
@@ -48,6 +50,12 @@ import {
   type AutoDsmPublishedSnapshot,
   type AutoDsmPublishedSnapshotExportInput,
   type AutoDsmPublishedSnapshotExportResult,
+  type AutoDsmPublishedExportInput,
+  type AutoDsmPublishedExportResult,
+  type AutoDsmPullRequestCreateInput,
+  type AutoDsmPullRequestCreateResult,
+  type AutoDsmPullRequestListInput,
+  type AutoDsmPullRequestListResult,
   type AutoDsmRegistryEntryInput,
   type AutoDsmRegistryEntryResult,
   type AutoDsmRenderDiagnosticsEntry,
@@ -66,6 +74,24 @@ import {
   type AutoDsmSidecarStatusResult,
   type AutoDsmWorkspaceBuildInput,
   type AutoDsmWorkspaceBuildResult,
+  type AutoDsmActivityListInput,
+  type AutoDsmActivityListResult,
+  type AutoDsmComponentAgentListInput,
+  type AutoDsmComponentAgentListResult,
+  type AutoDsmComponentAgentRegisterInput,
+  type AutoDsmComponentAgentRegisterResult,
+  type AutoDsmComponentAgentUpdateInput,
+  type AutoDsmComponentAgentUpdateResult,
+  type AutoDsmComponentConversationAppendInput,
+  type AutoDsmComponentConversationAppendResult,
+  type AutoDsmComponentConversationGetInput,
+  type AutoDsmComponentConversationGetResult,
+  type AutoDsmSessionChangeSetListInput,
+  type AutoDsmSessionChangeSetListResult,
+  type AutoDsmSessionCreateInput,
+  type AutoDsmSessionCreateResult,
+  type AutoDsmSessionGetInput,
+  type AutoDsmSessionGetResult,
   type ProjectBuildComponentPreviewResult,
   type ThreadId,
 } from "@t3tools/contracts";
@@ -125,7 +151,27 @@ import {
   startAutodsmPreviewSidecar,
 } from "./renderRuntime/autodsmVitePreviewSidecar.ts";
 import { autodsmMaterializeWorkspace } from "./autodsmCreateWorkspace.ts";
+import { autodsmDeleteWorkspaceFromDisk } from "./autodsmDeleteWorkspace.ts";
 import { listAutodsmWorkspaceHistoryFromDisk } from "./autodsmWorkspaceHistory.ts";
+import { appendWorkspaceActivity, listWorkspaceActivity } from "./activityLog.ts";
+import {
+  appendChangeSetToSessionManifest,
+  findComponentAgentByComponentPath,
+  loadComponentAgentsManifest,
+  reconcileComponentIdsFromRegistry,
+  registerComponentAgent as registerComponentAgentRecord,
+  updateComponentAgent as updateComponentAgentRecord,
+} from "./componentAgentStore.ts";
+import { appendComponentConversation, loadComponentConversation } from "./conversationStore.ts";
+import {
+  hydrateChangeSetFromDisk,
+  listPersistedChangeSetsForSession,
+  persistChangeSet,
+  resolveSessionIdForChangeSet,
+} from "./changeSetStore.ts";
+import { createSession, loadSession } from "./sessionStore.ts";
+import { createPullRequest, listPullRequests } from "./pullRequestStore.ts";
+import { exportPublishedExport } from "./publishedExportStore.ts";
 
 function scanStaticRules(relativePath: string, source: string): AutoDsmScanArtifact["violations"] {
   const posixPath = relativePath.replace(/\\/g, "/");
@@ -194,6 +240,9 @@ export interface AutoDsmWorkspaceShape {
   readonly listWorkspaceHistory: (
     input: AutoDsmListWorkspaceHistoryInput,
   ) => Effect.Effect<AutoDsmListWorkspaceHistoryResult, AutoDsmRpcError>;
+  readonly deleteWorkspace: (
+    input: AutoDsmDeleteWorkspaceInput,
+  ) => Effect.Effect<AutoDsmDeleteWorkspaceResult, AutoDsmRpcError>;
   readonly getProjectProfile: (
     input: AutoDsmCwdInput,
   ) => Effect.Effect<AutoDsmProjectProfile, AutoDsmRpcError>;
@@ -273,12 +322,48 @@ export interface AutoDsmWorkspaceShape {
   readonly exportPublishedSnapshot: (
     input: AutoDsmPublishedSnapshotExportInput,
   ) => Effect.Effect<AutoDsmPublishedSnapshotExportResult, AutoDsmRpcError>;
+  readonly exportPublishedExport: (
+    input: AutoDsmPublishedExportInput,
+  ) => Effect.Effect<AutoDsmPublishedExportResult, AutoDsmRpcError>;
+  readonly createPullRequest: (
+    input: AutoDsmPullRequestCreateInput,
+  ) => Effect.Effect<AutoDsmPullRequestCreateResult, AutoDsmRpcError>;
+  readonly listPullRequests: (
+    input: AutoDsmPullRequestListInput,
+  ) => Effect.Effect<AutoDsmPullRequestListResult, AutoDsmRpcError>;
   readonly prepareSessionBranch: (
     input: AutoDsmGitSessionBranchInput,
   ) => Effect.Effect<AutoDsmGitSessionBranchResult, AutoDsmRpcError>;
   readonly getIssuesForPrompt: (
     input: AutoDsmIssuesForPromptInput,
   ) => Effect.Effect<AutoDsmIssuesForPromptResult, AutoDsmRpcError>;
+  readonly listActivity: (
+    input: AutoDsmActivityListInput,
+  ) => Effect.Effect<AutoDsmActivityListResult, AutoDsmRpcError>;
+  readonly listComponentAgents: (
+    input: AutoDsmComponentAgentListInput,
+  ) => Effect.Effect<AutoDsmComponentAgentListResult, AutoDsmRpcError>;
+  readonly registerComponentAgent: (
+    input: AutoDsmComponentAgentRegisterInput,
+  ) => Effect.Effect<AutoDsmComponentAgentRegisterResult, AutoDsmRpcError>;
+  readonly updateComponentAgent: (
+    input: AutoDsmComponentAgentUpdateInput,
+  ) => Effect.Effect<AutoDsmComponentAgentUpdateResult, AutoDsmRpcError>;
+  readonly getComponentConversation: (
+    input: AutoDsmComponentConversationGetInput,
+  ) => Effect.Effect<AutoDsmComponentConversationGetResult, AutoDsmRpcError>;
+  readonly appendComponentConversation: (
+    input: AutoDsmComponentConversationAppendInput,
+  ) => Effect.Effect<AutoDsmComponentConversationAppendResult, AutoDsmRpcError>;
+  readonly getSession: (
+    input: AutoDsmSessionGetInput,
+  ) => Effect.Effect<AutoDsmSessionGetResult, AutoDsmRpcError>;
+  readonly createSession: (
+    input: AutoDsmSessionCreateInput,
+  ) => Effect.Effect<AutoDsmSessionCreateResult, AutoDsmRpcError>;
+  readonly listChangeSetsForSession: (
+    input: AutoDsmSessionChangeSetListInput,
+  ) => Effect.Effect<AutoDsmSessionChangeSetListResult, AutoDsmRpcError>;
 }
 
 export class AutoDsmWorkspaceService extends Context.Service<
@@ -579,6 +664,16 @@ export const AutoDsmWorkspaceLive = Layer.effect(
           ...(gate !== null ? { gate } : {}),
         };
 
+        yield* Effect.sync(() => {
+          reconcileComponentIdsFromRegistry(
+            input.cwd,
+            entries.map((entry) => ({
+              componentId: entry.componentId,
+              relativePath: entry.relativePath,
+            })),
+          );
+        });
+
         return registry;
       });
 
@@ -867,6 +962,33 @@ export const AutoDsmWorkspaceLive = Layer.effect(
 
         yield* Ref.update(manifests, (m) => new Map(m).set(manifest.id, manifest));
 
+        if (bundled.ok) {
+          const renderedAt = assembledAtIso;
+          yield* Effect.sync(() => {
+            const agent = findComponentAgentByComponentPath(input.cwd, plan.componentRelativePath);
+            if (agent) {
+              updateComponentAgentRecord({
+                cwd: input.cwd,
+                threadId: agent.threadId,
+                componentId: plan.componentId,
+                lastRenderedAt: renderedAt,
+                status: "active",
+              });
+            }
+            appendWorkspaceActivity({
+              cwd: input.cwd,
+              kind: "component.rendered",
+              summary: `Rendered ${plan.componentRelativePath}`,
+              payload: {
+                componentId: plan.componentId,
+                renderManifestId: manifestId,
+                componentPath: plan.componentRelativePath,
+              },
+              createdAt: renderedAt,
+            });
+          });
+        }
+
         const out: AutoDsmExecuteRenderPlanResult = {
           plan,
           manifest,
@@ -936,6 +1058,20 @@ export const AutoDsmWorkspaceLive = Layer.effect(
         };
 
         yield* Ref.update(changeSets, (m) => new Map(m).set(id, changeSet));
+        yield* Effect.sync(() => {
+          const sessionId = resolveSessionIdForChangeSet(input.cwd, input.threadId);
+          if (sessionId) {
+            persistChangeSet({ cwd: input.cwd, sessionId, changeSet });
+            appendChangeSetToSessionManifest(input.cwd, sessionId, id);
+          }
+          appendWorkspaceActivity({
+            cwd: input.cwd,
+            kind: "changeset.created",
+            summary: `ChangeSet ${id} created`,
+            payload: { changeSetId: id, threadId: input.threadId ?? null },
+            createdAt,
+          });
+        });
         yield* emitChangeSetActivity({
           threadId: input.threadId,
           changeSetId: id,
@@ -945,20 +1081,35 @@ export const AutoDsmWorkspaceLive = Layer.effect(
         return { changeSet };
       });
 
-    const loadChangeSet = (id: AutoDsmChangeSetId) =>
+    const loadChangeSet = (input: {
+      readonly cwd: string;
+      readonly changeSetId: AutoDsmChangeSetId;
+      readonly threadId?: ThreadId;
+    }) =>
       Effect.gen(function* () {
         const map = yield* Ref.get(changeSets);
-        const cs = map.get(id);
-        if (!cs) {
-          return yield* new AutoDsmRpcError({ message: `Unknown ChangeSet ${id}` });
+        const cached = map.get(input.changeSetId);
+        if (cached) {
+          return cached;
         }
-        return cs;
+        const hydrated = yield* Effect.sync(() =>
+          hydrateChangeSetFromDisk(input.cwd, input.changeSetId, input.threadId),
+        );
+        if (hydrated) {
+          yield* Ref.update(changeSets, (m) => new Map(m).set(input.changeSetId, hydrated));
+          return hydrated;
+        }
+        return yield* new AutoDsmRpcError({ message: `Unknown ChangeSet ${input.changeSetId}` });
       });
 
     const changeSetPreview = (input: AutoDsmChangeSetIdInput) =>
       Effect.gen(function* () {
         const workspaceFileSystem = yield* WorkspaceFileSystem;
-        const changeSet = yield* loadChangeSet(input.changeSetId);
+        const changeSet = yield* loadChangeSet({
+          cwd: input.cwd,
+          changeSetId: input.changeSetId,
+          ...(input.threadId !== undefined ? { threadId: input.threadId } : {}),
+        });
         const files: Array<{
           path: string;
           before?: string;
@@ -1047,7 +1198,11 @@ export const AutoDsmWorkspaceLive = Layer.effect(
 
     const changeSetApply = (input: AutoDsmChangeSetIdInput) =>
       Effect.gen(function* () {
-        const changeSet = yield* loadChangeSet(input.changeSetId);
+        const changeSet = yield* loadChangeSet({
+          cwd: input.cwd,
+          changeSetId: input.changeSetId,
+          ...(input.threadId !== undefined ? { threadId: input.threadId } : {}),
+        });
         for (const op of changeSet.ops) {
           yield* applyOp(input.cwd, op);
         }
@@ -1066,12 +1221,48 @@ export const AutoDsmWorkspaceLive = Layer.effect(
           phase: "applied",
         });
 
+        yield* Effect.sync(() => {
+          appendWorkspaceActivity({
+            cwd: input.cwd,
+            kind: "changeset.applied",
+            summary: `ChangeSet ${input.changeSetId} applied`,
+            payload: { changeSetId: input.changeSetId, threadId: input.threadId ?? null },
+            createdAt: recordedAt,
+          });
+          if (input.threadId) {
+            updateComponentAgentRecord({
+              cwd: input.cwd,
+              threadId: input.threadId,
+              status: "active",
+            });
+          }
+          for (const op of changeSet.ops) {
+            const normalized = op.path.replace(/\\/g, "/");
+            const componentPath = normalized.startsWith("/") ? normalized : `/${normalized}`;
+            if (!componentPath.includes("/src/components/")) {
+              continue;
+            }
+            const agent = findComponentAgentByComponentPath(input.cwd, componentPath);
+            if (agent && input.threadId && agent.threadId === input.threadId) {
+              updateComponentAgentRecord({
+                cwd: input.cwd,
+                threadId: input.threadId,
+                status: "active",
+              });
+            }
+          }
+        });
+
         return { changeSet, outcome };
       });
 
     const changeSetRollback = (input: AutoDsmChangeSetIdInput) =>
       Effect.gen(function* () {
-        const changeSet = yield* loadChangeSet(input.changeSetId);
+        const changeSet = yield* loadChangeSet({
+          cwd: input.cwd,
+          changeSetId: input.changeSetId,
+          ...(input.threadId !== undefined ? { threadId: input.threadId } : {}),
+        });
         const recordedAt = yield* Effect.map(DateTime.now, DateTime.formatIso);
         const outcome: AutoDsmEditOutcome = {
           changeSetId: input.changeSetId,
@@ -1209,12 +1400,110 @@ export const AutoDsmWorkspaceLive = Layer.effect(
         return { text, scanId: scan?.id };
       });
 
+    const listActivity = (input: AutoDsmActivityListInput) =>
+      Effect.sync(() =>
+        listWorkspaceActivity({
+          cwd: input.cwd,
+          ...(input.limit !== undefined ? { limit: input.limit } : {}),
+        }),
+      );
+
+    const listComponentAgents = (input: AutoDsmComponentAgentListInput) =>
+      Effect.sync(() => ({ manifest: loadComponentAgentsManifest(input.cwd) }));
+
+    const registerComponentAgent = (input: AutoDsmComponentAgentRegisterInput) =>
+      Effect.gen(function* () {
+        const createdAt = yield* Effect.map(DateTime.now, DateTime.formatIso);
+        const result = yield* Effect.sync(() => registerComponentAgentRecord(input));
+        yield* Effect.sync(() => {
+          appendWorkspaceActivity({
+            cwd: input.cwd,
+            kind: "component.created",
+            summary: `Component agent registered for ${input.componentPath}`,
+            payload: {
+              threadId: input.threadId,
+              componentPath: input.componentPath,
+              sessionId: result.session.sessionId,
+            },
+            createdAt,
+          });
+          appendWorkspaceActivity({
+            cwd: input.cwd,
+            kind: "session.started",
+            summary: `Session ${result.session.sessionId} started`,
+            payload: {
+              sessionId: result.session.sessionId,
+              threadId: input.threadId,
+              componentPath: input.componentPath,
+            },
+            createdAt,
+          });
+        });
+        return result;
+      });
+
+    const updateComponentAgent = (input: AutoDsmComponentAgentUpdateInput) =>
+      Effect.try({
+        try: () => ({ agent: updateComponentAgentRecord(input) }),
+        catch: (cause) =>
+          new AutoDsmRpcError({
+            message: cause instanceof Error ? cause.message : "Failed to update component agent",
+            cause,
+          }),
+      });
+
+    const getComponentConversation = (input: AutoDsmComponentConversationGetInput) =>
+      Effect.sync(() => ({
+        conversation: loadComponentConversation(input.cwd, input.componentPath),
+      }));
+
+    const appendComponentConversationHandler = (input: AutoDsmComponentConversationAppendInput) =>
+      Effect.sync(() => ({ conversation: appendComponentConversation(input) }));
+
+    const getSession = (input: AutoDsmSessionGetInput) =>
+      Effect.sync(() => ({ session: loadSession(input.cwd, input.sessionId) }));
+
+    const createSessionHandler = (input: AutoDsmSessionCreateInput) =>
+      Effect.sync(() => ({ session: createSession(input) }));
+
+    const listChangeSetsForSession = (input: AutoDsmSessionChangeSetListInput) =>
+      Effect.sync(() => ({
+        changeSets: listPersistedChangeSetsForSession(input.cwd, input.sessionId),
+      }));
+
+    const exportPublishedExportHandler = (input: AutoDsmPublishedExportInput) =>
+      Effect.sync(() => ({ publishedExport: exportPublishedExport(input) }));
+
+    const createPullRequestHandler = (input: AutoDsmPullRequestCreateInput) =>
+      Effect.gen(function* () {
+        const createdAt = yield* Effect.map(DateTime.now, DateTime.formatIso);
+        const pullRequest = yield* Effect.sync(() => createPullRequest(input));
+        yield* Effect.sync(() => {
+          appendWorkspaceActivity({
+            cwd: input.cwd,
+            kind: "pullrequest.created",
+            summary: `Pull request ${pullRequest.title}`,
+            payload: {
+              pullRequestId: pullRequest.id,
+              changeSetIds: pullRequest.changeSetIds,
+            },
+            createdAt,
+          });
+        });
+        return { pullRequest };
+      });
+
+    const listPullRequestsHandler = (input: AutoDsmPullRequestListInput) =>
+      Effect.sync(() => listPullRequests(input.cwd));
+
     const createWorkspace = autodsmMaterializeWorkspace;
     const listWorkspaceHistory = listAutodsmWorkspaceHistoryFromDisk;
+    const deleteWorkspace = autodsmDeleteWorkspaceFromDisk;
 
     return {
       createWorkspace,
       listWorkspaceHistory,
+      deleteWorkspace,
       getProjectProfile,
       getBrandProfile,
       addBrandToken: addBrandTokenEffect,
@@ -1241,8 +1530,20 @@ export const AutoDsmWorkspaceLive = Layer.effect(
       changeSetRollback,
       assembleGenerationPlan,
       exportPublishedSnapshot,
+      exportPublishedExport: exportPublishedExportHandler,
+      createPullRequest: createPullRequestHandler,
+      listPullRequests: listPullRequestsHandler,
       prepareSessionBranch,
       getIssuesForPrompt,
+      listActivity,
+      listComponentAgents,
+      registerComponentAgent,
+      updateComponentAgent,
+      getComponentConversation,
+      appendComponentConversation: appendComponentConversationHandler,
+      getSession,
+      createSession: createSessionHandler,
+      listChangeSetsForSession,
     } as unknown as AutoDsmWorkspaceShape;
   }),
 );

@@ -13,7 +13,7 @@ export function ShadcnCard(props: ShadcnCardProps): JSX.Element {
     <div className="preview-card">
       <p className="preview-card-title">{title}</p>
       <p className="preview-card-body">{children ?? "Card content goes here."}</p>
-      <button type="button" className="preview-btn preview-btn-ghost preview-card-action">
+      <button type="button" className="preview-btn preview-card-action">
         {actionLabel}
       </button>
     </div>

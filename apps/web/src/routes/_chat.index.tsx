@@ -5,6 +5,7 @@ import { ChatLaunchEmptyState } from "~/components/autodsm/ChatLaunchEmptyState"
 import { ElectronAuthenticatedChatLanding } from "~/components/autodsm/ElectronAuthenticatedChatLanding";
 import { ElectronWorkspaceBootstrapLoading } from "~/components/autodsm/ElectronWorkspaceBootstrapLoading";
 import { resolveChatIndexOnboarding } from "~/lib/autoDsmOnboarding";
+import { fetchHasAutoDsmDesignSystemOnDisk } from "~/lib/autoDsmDesignSystemPresence";
 import { isDevPairingBypassActive } from "~/lib/devPairingBypass";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
@@ -49,7 +50,13 @@ export const Route = createFileRoute("/_chat/")({
       return;
     }
     const onboarding = useUiStateStore.getState().autodsmOnboarding;
-    const resolution = resolveChatIndexOnboarding(onboarding, true, true);
+    const hasActiveWorkspaceProject =
+      useUiStateStore.getState().autoDsmWorkspaceProjectRef !== null;
+    const hasDesignSystemOnDisk = await fetchHasAutoDsmDesignSystemOnDisk();
+    const resolution = resolveChatIndexOnboarding(onboarding, true, true, {
+      hasActiveWorkspaceProject,
+      hasDesignSystemOnDisk,
+    });
     if (resolution?.kind === "onboarding") {
       throw redirect({ to: resolution.to, replace: true });
     }

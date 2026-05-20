@@ -159,6 +159,37 @@ describe("WebContentsView product variant", () => {
     expect(html).toContain("Export");
   });
 
+  it("shows loading skeleton while refetching when cached manifest path does not match", () => {
+    manifestQueryState = {
+      isPending: false,
+      isFetching: true,
+      isError: false,
+      data: {
+        manifest: {
+          ...manifest,
+          relativePath: "src/components/Badge.tsx",
+        },
+      },
+    };
+    bundleQueryState = {
+      isPending: false,
+      isFetching: false,
+      isError: false,
+      data: { ok: true, bundledJavascript: "export default function Badge(){return null}" },
+    };
+
+    const html = renderToStaticMarkup(
+      <WebContentsView
+        relativePath="src/components/Button.tsx"
+        environmentId={"env-1" as never}
+        workspaceCwd="/tmp/workspace"
+        variant="product"
+      />,
+    );
+
+    expect(html).toContain('data-testid="component-preview-loading-skeleton"');
+  });
+
   it("keeps analyzing copy in dev mode while manifest is pending", () => {
     manifestQueryState = {
       isPending: true,

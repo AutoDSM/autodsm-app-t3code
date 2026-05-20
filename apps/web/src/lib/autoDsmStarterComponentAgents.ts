@@ -9,6 +9,7 @@ import tailwindCssManifest from "./starter-manifests/tailwind-css.json";
 export interface AutoDsmStarterComponentAgent {
   readonly title: string;
   readonly componentPath: string;
+  readonly group?: string;
 }
 
 interface StarterComponentAgentsManifest {

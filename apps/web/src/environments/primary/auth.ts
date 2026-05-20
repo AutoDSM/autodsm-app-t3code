@@ -16,6 +16,7 @@ import {
 } from "../../pairingUrl";
 import {
   ensureDevPairingBypassAuthenticated,
+  shouldAttemptSilentLoopbackAuth,
   shouldSkipPairingRedirect,
 } from "../../lib/devPairingBypass";
 
@@ -282,7 +283,7 @@ async function bootstrapServerAuth(): Promise<ServerAuthGateState> {
     return { status: "authenticated" };
   }
 
-  if (shouldSkipPairingRedirect(currentSession.auth)) {
+  if (shouldAttemptSilentLoopbackAuth(currentSession.auth)) {
     const bypassResult = await ensureDevPairingBypassAuthenticated();
     if (bypassResult.status === "authenticated") {
       return bypassResult;

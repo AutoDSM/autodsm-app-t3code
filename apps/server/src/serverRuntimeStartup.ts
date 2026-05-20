@@ -34,6 +34,10 @@ import { AnalyticsService } from "./telemetry/Services/AnalyticsService.ts";
 import { ServerAuth } from "./auth/Services/ServerAuth.ts";
 import { ProviderSessionReaper } from "./provider/Services/ProviderSessionReaper.ts";
 import {
+  sweepAutodsmStagingDirectories,
+  sweepBrokenAutodsmWorkspaces,
+} from "./autodsm/autodsmWorkspaceStaging.ts";
+import {
   formatHeadlessServeOutput,
   formatHostForUrl,
   isWildcardHost,
@@ -294,6 +298,18 @@ export const makeServerRuntimeStartup = Effect.gen(function* () {
   yield* Effect.addFinalizer(() => Scope.close(reactorScope, Exit.void));
 
   const startup = Effect.gen(function* () {
+    yield* Effect.logDebug("startup phase: sweeping stale AutoDSM staging workspaces");
+    yield* sweepAutodsmStagingDirectories().pipe(
+      Effect.catch((cause: unknown) =>
+        Effect.logWarning("failed to sweep AutoDSM staging workspaces", { cause }),
+      ),
+    );
+    yield* sweepBrokenAutodsmWorkspaces().pipe(
+      Effect.catch((cause: unknown) =>
+        Effect.logWarning("failed to sweep broken AutoDSM workspaces", { cause }),
+      ),
+    );
+
     yield* Effect.logDebug("startup phase: starting keybindings runtime");
     yield* runStartupPhase(
       "keybindings.start",

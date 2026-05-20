@@ -39,7 +39,7 @@ export function vitestGitSpawnEnv(): Record<string, string> {
 
 /** Args to prefix every `git` CLI invocation (`git [prefix...] [...rest]`). */
 export function vitestGitArgsPrefix(): readonly string[] {
-  if (!isVitestProcess()) {
+  if (!isVitestProcess() || globalThis.process.env.T3CODE_TEST_ALLOW_HOOKS === "1") {
     return [];
   }
   if (emptyVitestGitHooksDirectory === undefined) {

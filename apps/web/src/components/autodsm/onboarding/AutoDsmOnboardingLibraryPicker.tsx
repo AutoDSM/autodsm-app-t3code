@@ -27,12 +27,7 @@ export function AutoDsmOnboardingLibraryPicker(): JSX.Element {
   return (
     <AutoDsmOnboardingShell>
       <div className="flex flex-col gap-6">
-        <div className="flex items-center gap-3">
-          <AutoDsmLogoMark className="size-10 shrink-0 sm:size-11" />
-          <p className="text-[1.65rem] font-extrabold tracking-tight text-foreground sm:text-[1.75rem]">
-            autoDSM
-          </p>
-        </div>
+        <AutoDsmLogoMark className="h-10 w-auto sm:h-11" />
         <h2 className="text-xl font-semibold text-foreground">Choose a base component library</h2>
         <div className="flex flex-col gap-2 rounded-2xl border border-border/60 bg-card/35 p-2">
           {AUTO_DSM_LIBRARY_STARTERS.map((entry) => (

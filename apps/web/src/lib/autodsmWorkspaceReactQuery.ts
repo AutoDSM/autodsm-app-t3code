@@ -1,3 +1,4 @@
+import { EnvironmentId, AutoDsmSessionId, AutoDsmChangeSetId } from "@t3tools/contracts";
 import type {
   AutoDsmBrandProfile,
   AutoDsmBrandTokenDraft,
@@ -6,7 +7,10 @@ import type {
   AutoDsmProjectProfile,
   AutoDsmRenderEnvironmentProfile,
   AutoDsmSidecarStatusResult,
-  EnvironmentId,
+  AutoDsmChangeSet,
+  AutoDsmPullRequest,
+  AutoDsmPullRequestListResult,
+  AutoDsmPublishedExport,
 } from "@t3tools/contracts";
 import { queryOptions } from "@tanstack/react-query";
 
@@ -23,6 +27,24 @@ export const autodsmWorkspaceQueryKeys = {
     ["autodsm", "sidecar-status", environmentId ?? null, cwd ?? null] as const,
   renderEnvironmentProfile: (environmentId: EnvironmentId | null, cwd: string | null) =>
     ["autodsm", "render-environment-profile", environmentId ?? null, cwd ?? null] as const,
+  componentAgents: (environmentId: EnvironmentId | null, cwd: string | null) =>
+    ["autodsm", "component-agents", environmentId ?? null, cwd ?? null] as const,
+  activity: (environmentId: EnvironmentId | null, cwd: string | null) =>
+    ["autodsm", "activity", environmentId ?? null, cwd ?? null] as const,
+  pullRequests: (environmentId: EnvironmentId | null, cwd: string | null) =>
+    ["autodsm", "pull-requests", environmentId ?? null, cwd ?? null] as const,
+  sessionChangeSets: (
+    environmentId: EnvironmentId | null,
+    cwd: string | null,
+    sessionId: string | null,
+  ) =>
+    [
+      "autodsm",
+      "session-changesets",
+      environmentId ?? null,
+      cwd ?? null,
+      sessionId ?? null,
+    ] as const,
 };
 
 function requireApi(environmentId: EnvironmentId) {
@@ -179,4 +201,127 @@ export function autodsmRenderEnvironmentProfileQueryOptions(input: {
     enabled: (input.enabled ?? true) && input.environmentId !== null && input.cwd !== null,
     staleTime: 60_000,
   });
+}
+
+export function autodsmComponentAgentsQueryOptions(input: {
+  readonly environmentId: EnvironmentId | null;
+  readonly cwd: string | null;
+  readonly enabled?: boolean;
+}) {
+  return queryOptions({
+    queryKey: autodsmWorkspaceQueryKeys.componentAgents(input.environmentId, input.cwd),
+    queryFn: async () => {
+      if (!input.cwd || !input.environmentId) {
+        throw new Error("Component agents are unavailable.");
+      }
+      return requireApi(input.environmentId).autodsm.listComponentAgents({ cwd: input.cwd });
+    },
+    enabled: (input.enabled ?? true) && input.environmentId !== null && input.cwd !== null,
+    staleTime: 30_000,
+  });
+}
+
+export function autodsmActivityQueryOptions(input: {
+  readonly environmentId: EnvironmentId | null;
+  readonly cwd: string | null;
+  readonly enabled?: boolean;
+  readonly limit?: number;
+}) {
+  return queryOptions({
+    queryKey: [
+      ...autodsmWorkspaceQueryKeys.activity(input.environmentId, input.cwd),
+      input.limit ?? 50,
+    ],
+    queryFn: async () => {
+      if (!input.cwd || !input.environmentId) {
+        throw new Error("Activity log is unavailable.");
+      }
+      return requireApi(input.environmentId).autodsm.listActivity({
+        cwd: input.cwd,
+        ...(input.limit !== undefined ? { limit: input.limit } : {}),
+      });
+    },
+    enabled: (input.enabled ?? true) && input.environmentId !== null && input.cwd !== null,
+    staleTime: 30_000,
+  });
+}
+
+export function autodsmPullRequestsQueryOptions(input: {
+  readonly environmentId: EnvironmentId | null;
+  readonly cwd: string | null;
+  readonly enabled?: boolean;
+}) {
+  return queryOptions({
+    queryKey: autodsmWorkspaceQueryKeys.pullRequests(input.environmentId, input.cwd),
+    queryFn: async (): Promise<AutoDsmPullRequestListResult> => {
+      if (!input.cwd || !input.environmentId) {
+        throw new Error("Pull requests are unavailable.");
+      }
+      return requireApi(input.environmentId).autodsm.listPullRequests({ cwd: input.cwd });
+    },
+    enabled: (input.enabled ?? true) && input.environmentId !== null && input.cwd !== null,
+    staleTime: 10_000,
+  });
+}
+
+export function autodsmSessionChangeSetsQueryOptions(input: {
+  readonly environmentId: EnvironmentId | null;
+  readonly cwd: string | null;
+  readonly sessionId: string | null;
+  readonly enabled?: boolean;
+}) {
+  return queryOptions({
+    queryKey: autodsmWorkspaceQueryKeys.sessionChangeSets(
+      input.environmentId,
+      input.cwd,
+      input.sessionId,
+    ),
+    queryFn: async (): Promise<{ readonly changeSets: readonly AutoDsmChangeSet[] }> => {
+      if (!input.cwd || !input.environmentId || !input.sessionId) {
+        throw new Error("ChangeSets are unavailable.");
+      }
+      return requireApi(input.environmentId).autodsm.listChangeSetsForSession({
+        cwd: input.cwd,
+        sessionId: AutoDsmSessionId.make(input.sessionId),
+      });
+    },
+    enabled:
+      (input.enabled ?? true) &&
+      input.environmentId !== null &&
+      input.cwd !== null &&
+      input.sessionId !== null,
+    staleTime: 5_000,
+  });
+}
+
+export async function autodsmCreatePullRequest(input: {
+  readonly environmentId: EnvironmentId;
+  readonly cwd: string;
+  readonly title: string;
+  readonly summary?: string;
+  readonly changeSetIds: string[];
+}): Promise<AutoDsmPullRequest> {
+  const result = await requireApi(input.environmentId).autodsm.createPullRequest({
+    cwd: input.cwd,
+    title: input.title,
+    summary: input.summary,
+    changeSetIds: input.changeSetIds.map((id) => AutoDsmChangeSetId.make(id)),
+  });
+  return result.pullRequest;
+}
+
+export async function autodsmExportPublishedExport(input: {
+  readonly environmentId: EnvironmentId;
+  readonly cwd: string;
+  readonly version?: string;
+  readonly registryUrl?: string;
+  readonly authToken?: string;
+}): Promise<AutoDsmPublishedExport> {
+  const result = await requireApi(input.environmentId).autodsm.exportPublishedExport({
+    cwd: input.cwd,
+    version: input.version,
+    registryUrl: input.registryUrl,
+    authToken: input.authToken,
+  });
+  return result.publishedExport;
 }

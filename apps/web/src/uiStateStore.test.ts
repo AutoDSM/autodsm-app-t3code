@@ -19,6 +19,7 @@ import {
   syncThreads,
   type SyncProjectInput,
   type UiState,
+  useUiStateStore,
 } from "./uiStateStore";
 
 const testEnv = EnvironmentId.make("env-test");
@@ -48,6 +49,7 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     autoDsmWorkspaceProjectRef: null,
     autodsmOnboarding: defaultAutodsmOnboardingState,
     autoDsmThreadComponentPathById: {},
+    autoDsmComponentAgentGroupExpandedByWorkspaceKey: {},
     ...overrides,
   };
 }
@@ -680,5 +682,64 @@ describe("uiStateStore persistence round-trip", () => {
     ]);
 
     expect(rehydrated.projectExpandedById[nextLogicalKey]).toBe(false);
+  });
+});
+
+describe("useUiStateStore mergeAutoDsmThreadComponentPaths", () => {
+  afterEach(() => {
+    useUiStateStore.setState({
+      autoDsmThreadComponentPathById: {},
+    });
+  });
+
+  it("no-ops when merged paths are unchanged", () => {
+    useUiStateStore.setState({
+      autoDsmThreadComponentPathById: {
+        "env:thread-1": "src/components/button.tsx",
+      },
+    });
+
+    const before = useUiStateStore.getState();
+    before.mergeAutoDsmThreadComponentPaths({
+      "env:thread-1": "src/components/button.tsx",
+    });
+    const after = useUiStateStore.getState();
+
+    expect(after.autoDsmThreadComponentPathById).toBe(before.autoDsmThreadComponentPathById);
+  });
+
+  it("no-ops when only the leading slash differs", () => {
+    useUiStateStore.setState({
+      autoDsmThreadComponentPathById: {
+        "env:thread-1": "src/components/button.tsx",
+      },
+    });
+
+    const before = useUiStateStore.getState();
+    before.mergeAutoDsmThreadComponentPaths({
+      "env:thread-1": "/src/components/button.tsx",
+    });
+    const after = useUiStateStore.getState();
+
+    expect(after.autoDsmThreadComponentPathById).toBe(before.autoDsmThreadComponentPathById);
+    expect(after.autoDsmThreadComponentPathById["env:thread-1"]).toBe("src/components/button.tsx");
+  });
+
+  it("merges only new or changed path entries", () => {
+    useUiStateStore.setState({
+      autoDsmThreadComponentPathById: {
+        "env:thread-1": "src/components/button.tsx",
+      },
+    });
+
+    useUiStateStore.getState().mergeAutoDsmThreadComponentPaths({
+      "env:thread-1": "src/components/button.tsx",
+      "env:thread-2": "src/components/card.tsx",
+    });
+
+    expect(useUiStateStore.getState().autoDsmThreadComponentPathById).toEqual({
+      "env:thread-1": "src/components/button.tsx",
+      "env:thread-2": "src/components/card.tsx",
+    });
   });
 });

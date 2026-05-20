@@ -1,10 +1,11 @@
 "use client";
 
 import { scopedThreadKey } from "@t3tools/client-runtime";
-import { useParams } from "@tanstack/react-router";
-import { memo, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useParams, useSearch } from "@tanstack/react-router";
+import { memo, useCallback, useMemo } from "react";
 
-import { AutoDsmComponentAgentTabBar } from "~/components/autodsm/AutoDsmComponentAgentTabBar";
+import { AutoDsmComponentAgentSidebarTree } from "~/components/autodsm/AutoDsmComponentAgentSidebarTree";
 import {
   SidebarGroup,
   SidebarMenuButton,
@@ -12,9 +13,19 @@ import {
   useSidebar,
 } from "~/components/ui/sidebar";
 import { useAutoDsmComponentAgentTabs } from "~/hooks/useAutoDsmComponentAgentTabs";
+import { useAutoDsmMaterializedProductWorkspace } from "~/hooks/useAutoDsmMaterializedProductWorkspace";
 import { useAutoDsmWorkspace } from "~/hooks/useAutoDsmWorkspace";
+import {
+  buildAutoDsmComponentAgentGroups,
+  buildComponentAgentGroupLookup,
+} from "~/lib/autoDsmComponentAgentGroups";
+import { getStarterComponentAgents } from "~/lib/autoDsmStarterComponentAgents";
+import { isAutoDsmStarterId } from "~/lib/autoDsmStarterCatalog";
+import { autodsmComponentAgentsQueryOptions } from "~/lib/autodsmWorkspaceReactQuery";
 import { isAutodsmMaterializedSystemCwd } from "~/lib/autodsmMaterializedWorkspace";
 import { resolveThreadRouteRef } from "~/threadRoutes";
+import { parseDiffRouteSearch } from "~/diffRouteSearch";
+import { useUiStateStore } from "~/uiStateStore";
 
 export interface AutoDsmComponentAgentSidebarSectionProps {
   readonly onNavigateHome?: () => void;
@@ -23,23 +34,73 @@ export interface AutoDsmComponentAgentSidebarSectionProps {
 export const AutoDsmComponentAgentSidebarSection = memo(
   function AutoDsmComponentAgentSidebarSection(props: AutoDsmComponentAgentSidebarSectionProps) {
     const { onNavigateHome } = props;
-    const { environmentId, projectId, cwd } = useAutoDsmWorkspace();
+    const routeWorkspace = useAutoDsmWorkspace();
+    const { isElectronProductMode, workspace: productWorkspace } =
+      useAutoDsmMaterializedProductWorkspace();
+    const starterId = useUiStateStore((state) => state.autodsmOnboarding.starterId);
     const { isMobile, setOpenMobile } = useSidebar();
+
+    const workspace = useMemo(() => {
+      if (isElectronProductMode && productWorkspace) {
+        return {
+          environmentId: productWorkspace.environmentId,
+          projectId: productWorkspace.projectId,
+          cwd: productWorkspace.cwd,
+        };
+      }
+      return routeWorkspace;
+    }, [isElectronProductMode, productWorkspace, routeWorkspace]);
+
+    const { environmentId, projectId, cwd } = workspace;
 
     const routeThreadRef = useParams({
       strict: false,
       select: (params) => resolveThreadRouteRef(params),
     });
     const routeThreadKey = routeThreadRef ? scopedThreadKey(routeThreadRef) : null;
+    const componentPreviewPath = useSearch({
+      strict: false,
+      select: (search) => parseDiffRouteSearch(search).componentPath ?? null,
+    });
 
     const isMaterialized = cwd !== null && isAutodsmMaterializedSystemCwd(cwd);
 
     const { tabs, selectAgentTab } = useAutoDsmComponentAgentTabs({
       environmentId: isMaterialized ? environmentId : null,
       projectId: isMaterialized ? projectId : null,
+      cwd: isMaterialized ? cwd : null,
       isMaterialized,
       activeThreadKey: routeThreadKey,
     });
+
+    const componentAgentsQuery = useQuery(
+      autodsmComponentAgentsQueryOptions({
+        environmentId,
+        cwd,
+        enabled: isMaterialized,
+      }),
+    );
+
+    const groupLookup = useMemo(() => {
+      const starterAgents =
+        starterId && isAutoDsmStarterId(starterId) ? getStarterComponentAgents(starterId) : [];
+      const serverAgents = componentAgentsQuery.data?.manifest.agents ?? [];
+      return buildComponentAgentGroupLookup([
+        ...starterAgents.map((agent) => ({
+          componentPath: agent.componentPath,
+          ...(agent.group ? { group: agent.group } : {}),
+        })),
+        ...serverAgents.map((agent) => ({
+          componentPath: agent.componentPath,
+          ...(agent.group ? { group: agent.group } : {}),
+        })),
+      ]);
+    }, [componentAgentsQuery.data?.manifest.agents, starterId]);
+
+    const groups = useMemo(
+      () => buildAutoDsmComponentAgentGroups(tabs, groupLookup),
+      [groupLookup, tabs],
+    );
 
     const closeMobileSidebar = useCallback(() => {
       if (isMobile) {
@@ -55,7 +116,7 @@ export const AutoDsmComponentAgentSidebarSection = memo(
       [closeMobileSidebar, selectAgentTab],
     );
 
-    if (!isMaterialized) {
+    if (!isMaterialized || !cwd) {
       return null;
     }
 
@@ -83,10 +144,11 @@ export const AutoDsmComponentAgentSidebarSection = memo(
     }
 
     return (
-      <AutoDsmComponentAgentTabBar
-        layout="sidebar"
-        tabs={tabs}
+      <AutoDsmComponentAgentSidebarTree
+        workspaceKey={cwd}
+        groups={groups}
         activeThreadRef={routeThreadRef}
+        activeComponentPath={componentPreviewPath}
         onSelectTab={handleSelectTab}
       />
     );

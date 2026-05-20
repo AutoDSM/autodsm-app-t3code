@@ -2,6 +2,8 @@ import * as crypto from "node:crypto";
 
 import * as Electron from "electron";
 
+import { COMPONENT_PREVIEW_STATUS_CHANNEL } from "../ipc/channels.ts";
+
 /** Must stay aligned with `apps/web/src/lib/componentPreviewMessages.ts`. */
 export const COMPONENT_PREVIEW_INIT_MESSAGE_TYPE = "t3-component-preview:init";
 
@@ -10,6 +12,32 @@ export interface PreviewBounds {
   readonly y: number;
   readonly width: number;
   readonly height: number;
+}
+
+export function clampPreviewBounds(
+  bounds: PreviewBounds,
+  contentSize: { readonly width: number; readonly height: number },
+): PreviewBounds {
+  const width = Math.max(0, bounds.width);
+  const height = Math.max(0, bounds.height);
+  const x = Math.max(0, bounds.x);
+  const y = Math.max(0, bounds.y);
+  const maxWidth = Math.max(0, contentSize.width - x);
+  const maxHeight = Math.max(0, contentSize.height - y);
+  return {
+    x,
+    y,
+    width: Math.min(width, maxWidth),
+    height: Math.min(height, maxHeight),
+  };
+}
+
+function contentSizeForWindow(browserWindow: Electron.BrowserWindow): {
+  readonly width: number;
+  readonly height: number;
+} {
+  const bounds = browserWindow.getContentBounds();
+  return { width: bounds.width, height: bounds.height };
 }
 
 type WebContentsViewInstance = {
@@ -49,8 +77,52 @@ function isLoopbackHttpUrl(rawUrl: string): boolean {
   }
 }
 
+function isBrowserWindowAlive(browserWindow: Electron.BrowserWindow): boolean {
+  return !browserWindow.isDestroyed();
+}
+
+function destroyPreviewEntry(viewId: string, entry: PreviewRegistryEntry): void {
+  try {
+    entry.view.webContents.removeAllListeners("will-navigate");
+    entry.view.webContents.removeAllListeners("render-process-gone");
+    entry.view.webContents.removeAllListeners("unresponsive");
+    if (isBrowserWindowAlive(entry.owner)) {
+      entry.owner.contentView.removeChildView(entry.view as unknown as Electron.View);
+    }
+    if (!entry.view.webContents.isDestroyed()) {
+      entry.view.webContents.close();
+    }
+  } catch {
+    // View may already be detached during rapid preview remounts or window teardown.
+  } finally {
+    registry.delete(viewId);
+  }
+}
+
 export function isWebContentsViewPreviewSupported(): boolean {
   return resolveWebContentsViewCtor() !== undefined;
+}
+
+export function detachPreviewView(viewId: string): void {
+  const entry = registry.get(viewId);
+  if (!entry) {
+    return;
+  }
+  destroyPreviewEntry(viewId, entry);
+}
+
+export function sweepPreviewViewsForWindow(browserWindow: Electron.BrowserWindow): void {
+  for (const [viewId, entry] of registry.entries()) {
+    if (entry.owner === browserWindow) {
+      destroyPreviewEntry(viewId, entry);
+    }
+  }
+}
+
+export function detachAllPreviewViews(): void {
+  for (const [viewId, entry] of registry.entries()) {
+    destroyPreviewEntry(viewId, entry);
+  }
 }
 
 export async function attachPreviewView(input: {
@@ -62,6 +134,18 @@ export async function attachPreviewView(input: {
   const Ctor = resolveWebContentsViewCtor();
   if (!Ctor) {
     return false;
+  }
+
+  if (!isBrowserWindowAlive(input.browserWindow)) {
+    return false;
+  }
+
+  const existing = registry.get(input.viewId);
+  if (
+    existing &&
+    (!isBrowserWindowAlive(existing.owner) || existing.owner !== input.browserWindow)
+  ) {
+    destroyPreviewEntry(input.viewId, existing);
   }
 
   const partition = previewPartitionFor(input.viewId);
@@ -90,9 +174,29 @@ export async function attachPreviewView(input: {
         event.preventDefault();
       }
     });
+
+    view.webContents.on("render-process-gone", (_event, details) => {
+      if (isBrowserWindowAlive(input.browserWindow)) {
+        input.browserWindow.webContents.send(COMPONENT_PREVIEW_STATUS_CHANNEL, {
+          viewId: input.viewId,
+          status: "crashed",
+          reason: details.reason,
+          exitCode: details.exitCode,
+        });
+      }
+    });
+
+    view.webContents.on("unresponsive", () => {
+      if (isBrowserWindowAlive(input.browserWindow)) {
+        input.browserWindow.webContents.send(COMPONENT_PREVIEW_STATUS_CHANNEL, {
+          viewId: input.viewId,
+          status: "unresponsive",
+        });
+      }
+    });
   }
 
-  entry.view.setBounds(input.bounds);
+  entry.view.setBounds(clampPreviewBounds(input.bounds, contentSizeForWindow(input.browserWindow)));
 
   const webContents = entry.view.webContents;
   try {
@@ -125,23 +229,12 @@ export async function attachPreviewView(input: {
   }
 }
 
-export function detachPreviewView(browserWindow: Electron.BrowserWindow, viewId: string): void {
-  const entry = registry.get(viewId);
-  if (!entry) {
-    return;
-  }
-  registry.delete(viewId);
-  entry.view.webContents.removeAllListeners("will-navigate");
-  browserWindow.contentView.removeChildView(entry.view as unknown as Electron.View);
-  entry.view.webContents.close();
-}
-
 export function setPreviewBounds(viewId: string, bounds: PreviewBounds): boolean {
   const entry = registry.get(viewId);
-  if (!entry) {
+  if (!entry || !isBrowserWindowAlive(entry.owner)) {
     return false;
   }
-  entry.view.setBounds(bounds);
+  entry.view.setBounds(clampPreviewBounds(bounds, contentSizeForWindow(entry.owner)));
   return true;
 }
 
@@ -149,15 +242,22 @@ export async function primePreviewView(
   viewId: string,
   javascript: string,
   propsJson: string,
+  workspaceStyleCss?: string,
 ): Promise<boolean> {
   const entry = registry.get(viewId);
   if (!entry) {
     return false;
   }
 
+  const payload = {
+    javascript,
+    propsJson,
+    ...(workspaceStyleCss && workspaceStyleCss.trim().length > 0 ? { workspaceStyleCss } : {}),
+  };
+
   const message = {
     type: COMPONENT_PREVIEW_INIT_MESSAGE_TYPE,
-    payload: { javascript, propsJson },
+    payload,
   };
 
   await entry.view.webContents.executeJavaScript(
@@ -179,4 +279,9 @@ export async function capturePreviewView(viewId: string): Promise<string | null>
   } catch {
     return null;
   }
+}
+
+/** Test-only: reset module registry between unit tests. */
+export function resetPreviewRegistryForTests(): void {
+  detachAllPreviewViews();
 }

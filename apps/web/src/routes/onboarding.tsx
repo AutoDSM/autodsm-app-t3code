@@ -1,6 +1,11 @@
 import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
 
-import { getOnboardingGuardRedirect, parseOnboardingPath } from "~/lib/autoDsmOnboarding";
+import {
+  canReenterProjectCreationOnboarding,
+  getOnboardingGuardRedirect,
+  parseOnboardingPath,
+} from "~/lib/autoDsmOnboarding";
+import { fetchHasAutoDsmDesignSystemOnDisk } from "~/lib/autoDsmDesignSystemPresence";
 import { shouldSkipPairingRedirect } from "~/lib/devPairingBypass";
 import { useUiStateStore } from "~/uiStateStore";
 
@@ -22,16 +27,26 @@ export const Route = createFileRoute("/onboarding")({
     }
 
     const onboarding = useUiStateStore.getState().autodsmOnboarding;
-    if (onboarding.completed) {
+    const hasDesignSystemOnDisk = await fetchHasAutoDsmDesignSystemOnDisk();
+    const parsed = parseOnboardingPath(path);
+
+    const allowCompletedReentry = canReenterProjectCreationOnboarding({
+      onboardingCompleted: onboarding.completed,
+      hasDesignSystemOnDisk,
+      segment: parsed,
+    });
+
+    if (onboarding.completed && !allowCompletedReentry) {
       throw redirect({ to: "/home", replace: true });
     }
 
-    const parsed = parseOnboardingPath(path);
     if (parsed === "index") {
       throw redirect({ to: "/onboarding/welcome", replace: true });
     }
 
-    const guardTarget = getOnboardingGuardRedirect(parsed, onboarding);
+    const guardTarget = getOnboardingGuardRedirect(parsed, onboarding, {
+      allowCompletedReentry,
+    });
     if (guardTarget && guardTarget !== path) {
       throw redirect({ to: guardTarget, replace: true });
     }

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 
 import { isElectron } from "~/env";
+import { useDesktopBackendStatus } from "~/hooks/useDesktopBackendStatus";
 import {
   ensureDevPairingBypassAuthenticated,
   isDevPairingBypassActive,
@@ -21,28 +22,44 @@ const DESKTOP_AUTH_RECOVERY_MAX_WAIT_MS = 60_000;
  * bootstrap pick up the session.
  */
 export function ElectronDesktopAuthRecovery(): null {
-  const recoveryStartedRef = useRef(false);
+  const status = useDesktopBackendStatus();
 
   useEffect(() => {
-    if (!isElectron || recoveryStartedRef.current) {
+    if (!isElectron) {
       return;
     }
-    recoveryStartedRef.current = true;
+    // We only attempt recovery if backend is ready
+    if (status?.kind !== "ready") {
+      return;
+    }
 
     let cancelled = false;
     const startedAt = Date.now();
 
     const attemptRecovery = async () => {
-      while (!cancelled && Date.now() - startedAt < DESKTOP_AUTH_RECOVERY_MAX_WAIT_MS) {
-        const session = await fetchSessionState();
-        const result = isDevPairingBypassActive(session.auth)
-          ? await ensureDevPairingBypassAuthenticated()
-          : await retryDesktopProductAuthUntilAuthenticated({
-              maxWaitMs: DESKTOP_AUTH_RECOVERY_INTERVAL_MS + 500,
-            });
-        if (result.status === "authenticated") {
-          window.location.reload();
-          return;
+      while (Date.now() - startedAt < DESKTOP_AUTH_RECOVERY_MAX_WAIT_MS) {
+        if (cancelled) {
+          break;
+        }
+        try {
+          const session = await fetchSessionState();
+          if (cancelled) {
+            break;
+          }
+          const result = isDevPairingBypassActive(session.auth)
+            ? await ensureDevPairingBypassAuthenticated()
+            : await retryDesktopProductAuthUntilAuthenticated({
+                maxWaitMs: DESKTOP_AUTH_RECOVERY_INTERVAL_MS + 500,
+              });
+          if (cancelled) {
+            break;
+          }
+          if (result.status === "authenticated") {
+            window.location.reload();
+            return;
+          }
+        } catch (error) {
+          console.error("Auth recovery cycle failed:", error);
         }
         await new Promise((resolve) => {
           setTimeout(resolve, DESKTOP_AUTH_RECOVERY_INTERVAL_MS);
@@ -55,7 +72,7 @@ export function ElectronDesktopAuthRecovery(): null {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [status?.kind]);
 
   return null;
 }

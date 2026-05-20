@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canReenterProjectCreationOnboarding,
   defaultAutodsmOnboardingState,
   getOnboardingGuardRedirect,
   hasDesignSystemName,
+  isAutoDsmProjectCreationOnboardingSegment,
   loadingLabelForStarter,
   mergeAutodsmOnboarding,
   normalizeDesignSystemName,
@@ -159,10 +161,74 @@ describe("resolveChatIndexOnboarding", () => {
     });
   });
 
-  it("sends completed users to home", () => {
+  it("sends completed users to home when a workspace ref or DS exists", () => {
     expect(
       resolveChatIndexOnboarding({ ...defaultAutodsmOnboardingState, completed: true }, true, true),
     ).toEqual({ kind: "home", to: "/home" });
+    expect(
+      resolveChatIndexOnboarding(
+        { ...defaultAutodsmOnboardingState, completed: true },
+        true,
+        true,
+        { hasActiveWorkspaceProject: false, hasDesignSystemOnDisk: true },
+      ),
+    ).toEqual({ kind: "home", to: "/home" });
+  });
+
+  it("keeps completed users on the create picker when no design system exists", () => {
+    expect(
+      resolveChatIndexOnboarding(
+        { ...defaultAutodsmOnboardingState, completed: true },
+        true,
+        true,
+        { hasActiveWorkspaceProject: false, hasDesignSystemOnDisk: false },
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("isAutoDsmProjectCreationOnboardingSegment", () => {
+  it("matches create-flow routes", () => {
+    expect(isAutoDsmProjectCreationOnboardingSegment("create")).toBe(true);
+    expect(isAutoDsmProjectCreationOnboardingSegment("name")).toBe(true);
+    expect(isAutoDsmProjectCreationOnboardingSegment("loading")).toBe(true);
+    expect(isAutoDsmProjectCreationOnboardingSegment("welcome")).toBe(false);
+    expect(isAutoDsmProjectCreationOnboardingSegment("index")).toBe(false);
+  });
+});
+
+describe("canReenterProjectCreationOnboarding", () => {
+  it("allows completed users without a design system on create routes", () => {
+    expect(
+      canReenterProjectCreationOnboarding({
+        onboardingCompleted: true,
+        hasDesignSystemOnDisk: false,
+        segment: "name",
+      }),
+    ).toBe(true);
+  });
+
+  it("blocks re-entry when a design system exists on disk", () => {
+    expect(
+      canReenterProjectCreationOnboarding({
+        onboardingCompleted: true,
+        hasDesignSystemOnDisk: true,
+        segment: "name",
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("getOnboardingGuardRedirect completed re-entry", () => {
+  it("does not force welcome when completed re-entry is allowed", () => {
+    const completed = {
+      ...defaultAutodsmOnboardingState,
+      completed: true,
+      fakeAuthProvider: "github" as const,
+    };
+    expect(
+      getOnboardingGuardRedirect("name", completed, { allowCompletedReentry: true }),
+    ).toBeNull();
   });
 });
 

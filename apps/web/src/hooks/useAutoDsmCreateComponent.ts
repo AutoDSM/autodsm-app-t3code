@@ -159,6 +159,15 @@ export function useAutoDsmCreateComponent(): UseAutoDsmCreateComponentResult {
           createdAt,
         });
 
+        await api.autodsm.registerComponentAgent({
+          cwd,
+          threadId: nextThreadId,
+          title: nextThreadTitle,
+          componentPath: metadata.componentPath,
+          source: "user",
+          status: "creating",
+        });
+
         mergePaths({
           [threadKey]: metadata.componentPath,
         });

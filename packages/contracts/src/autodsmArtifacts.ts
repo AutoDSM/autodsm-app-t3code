@@ -11,13 +11,17 @@ import * as Schema from "effect/Schema";
 
 import {
   AutoDsmChangeSetId,
+  AutoDsmActivityEntryId,
   AutoDsmComponentId,
   AutoDsmGenerationPlanId,
+  AutoDsmPullRequestId,
+  AutoDsmPublishedExportId,
   AutoDsmPublishedSnapshotId,
   AutoDsmRegistryEntryId,
   AutoDsmRenderManifestId,
   AutoDsmRenderPlanId,
   AutoDsmScanArtifactId,
+  AutoDsmSessionId,
   EnvironmentId,
   IsoDateTime,
   NonNegativeInt,
@@ -26,6 +30,7 @@ import {
   ThreadId,
   TrimmedNonEmptyString,
   TrimmedString,
+  TurnId,
 } from "./baseSchemas.ts";
 import {
   ComponentPreviewExportSpec,
@@ -43,6 +48,8 @@ export const AutoDsmArtifactOwnerSchema = Schema.Literals([
   "changeset-service",
   "agent-supervisor",
   "publish-service",
+  "pr-service",
+  "activity-log",
 ]);
 export type AutoDsmArtifactOwner = typeof AutoDsmArtifactOwnerSchema.Type;
 
@@ -454,6 +461,52 @@ export const AutoDsmEditOutcome = Schema.Struct({
 });
 export type AutoDsmEditOutcome = typeof AutoDsmEditOutcome.Type;
 
+export const AutoDsmChangeHunkDecisionSchema = Schema.Literals([
+  "pending",
+  "approved",
+  "rejected",
+  "discarded",
+]);
+export type AutoDsmChangeHunkDecision = typeof AutoDsmChangeHunkDecisionSchema.Type;
+
+export const AutoDsmChangeHunk = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  filePath: AutoDsmWorkspaceRelativePath,
+  oldStart: NonNegativeInt,
+  oldLines: NonNegativeInt,
+  newStart: NonNegativeInt,
+  newLines: NonNegativeInt,
+  patch: Schema.String,
+  decision: AutoDsmChangeHunkDecisionSchema,
+});
+export type AutoDsmChangeHunk = typeof AutoDsmChangeHunk.Type;
+
+export const AutoDsmActivityEntry = Schema.Struct({
+  id: AutoDsmActivityEntryId,
+  workspaceId: TrimmedNonEmptyString,
+  kind: TrimmedNonEmptyString,
+  summary: TrimmedString,
+  payloadJson: TrimmedString,
+  createdAt: IsoDateTime,
+});
+export type AutoDsmActivityEntry = typeof AutoDsmActivityEntry.Type;
+
+export const AutoDsmPullRequestStatusSchema = Schema.Literals(["draft", "open", "closed"]);
+export type AutoDsmPullRequestStatus = typeof AutoDsmPullRequestStatusSchema.Type;
+
+export const AutoDsmPullRequest = Schema.Struct({
+  id: AutoDsmPullRequestId,
+  workspaceId: TrimmedNonEmptyString,
+  cwd: TrimmedNonEmptyString,
+  title: TrimmedNonEmptyString,
+  summary: TrimmedString,
+  status: AutoDsmPullRequestStatusSchema,
+  changeSetIds: Schema.Array(AutoDsmChangeSetId),
+  files: Schema.Array(AutoDsmWorkspaceRelativePath),
+  createdAt: IsoDateTime,
+});
+export type AutoDsmPullRequest = typeof AutoDsmPullRequest.Type;
+
 export const AutoDsmPublishedSnapshot = Schema.Struct({
   id: AutoDsmPublishedSnapshotId,
   meta: AutoDsmArtifactMeta,
@@ -464,6 +517,19 @@ export const AutoDsmPublishedSnapshot = Schema.Struct({
   exportedAt: IsoDateTime,
 });
 export type AutoDsmPublishedSnapshot = typeof AutoDsmPublishedSnapshot.Type;
+
+export const AutoDsmPublishedExport = Schema.Struct({
+  id: AutoDsmPublishedExportId,
+  workspaceId: TrimmedNonEmptyString,
+  cwd: TrimmedNonEmptyString,
+  packageName: TrimmedNonEmptyString,
+  version: TrimmedNonEmptyString,
+  exportPath: TrimmedNonEmptyString,
+  componentCount: NonNegativeInt,
+  tokenCount: NonNegativeInt,
+  createdAt: IsoDateTime,
+});
+export type AutoDsmPublishedExport = typeof AutoDsmPublishedExport.Type;
 
 /** --- RPC payloads --- */
 
@@ -476,6 +542,27 @@ export const AutoDsmWorkspaceStarterId = Schema.Literals([
   "tailwind-css",
 ]);
 export type AutoDsmWorkspaceStarterId = typeof AutoDsmWorkspaceStarterId.Type;
+
+export const AutoDsmWorkspaceMetadataStatusSchema = Schema.Literals([
+  "creating",
+  "ready",
+  "failed",
+]);
+export type AutoDsmWorkspaceMetadataStatus = typeof AutoDsmWorkspaceMetadataStatusSchema.Type;
+
+export const AutoDsmWorkspaceMetadata = Schema.Struct({
+  workspaceId: TrimmedNonEmptyString,
+  starterId: AutoDsmWorkspaceStarterId,
+  createdAt: IsoDateTime,
+  systemPath: TrimmedNonEmptyString,
+  displayName: TrimmedNonEmptyString,
+  status: AutoDsmWorkspaceMetadataStatusSchema,
+  projectId: Schema.optional(ProjectId),
+  ownerSubject: Schema.optional(Schema.NullOr(TrimmedString)),
+  authProvider: Schema.optional(Schema.NullOr(TrimmedString)),
+  storybookPort: Schema.optional(PositiveInt),
+});
+export type AutoDsmWorkspaceMetadata = typeof AutoDsmWorkspaceMetadata.Type;
 
 export const AutoDsmCreateWorkspaceInput = Schema.Struct({
   starterId: AutoDsmWorkspaceStarterId,
@@ -492,6 +579,7 @@ export const AutoDsmCreateWorkspaceThreadSeed = Schema.Struct({
   title: TrimmedNonEmptyString,
   /** Registry-style path: `/src/components/…` for preview binding */
   componentPath: TrimmedNonEmptyString,
+  group: Schema.optional(TrimmedNonEmptyString),
 });
 export type AutoDsmCreateWorkspaceThreadSeed = typeof AutoDsmCreateWorkspaceThreadSeed.Type;
 
@@ -526,6 +614,20 @@ export const AutoDsmListWorkspaceHistoryResult = Schema.Struct({
   entries: Schema.Array(AutoDsmWorkspaceHistoryEntry),
 });
 export type AutoDsmListWorkspaceHistoryResult = typeof AutoDsmListWorkspaceHistoryResult.Type;
+
+/** Stable client/server message when local one-DS policy blocks create. */
+export const AUTODSM_DESIGN_SYSTEM_ALREADY_EXISTS_MESSAGE =
+  "A design system already exists on this machine." as const;
+
+export const AutoDsmDeleteWorkspaceInput = Schema.Struct({
+  workspaceId: TrimmedNonEmptyString,
+});
+export type AutoDsmDeleteWorkspaceInput = typeof AutoDsmDeleteWorkspaceInput.Type;
+
+export const AutoDsmDeleteWorkspaceResult = Schema.Struct({
+  workspaceId: TrimmedNonEmptyString,
+});
+export type AutoDsmDeleteWorkspaceResult = typeof AutoDsmDeleteWorkspaceResult.Type;
 
 export const AutoDsmCwdInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
@@ -697,6 +799,223 @@ export const AutoDsmPublishedSnapshotExportResult = Schema.Struct({
   exportPath: AutoDsmWorkspaceRelativePath,
 });
 export type AutoDsmPublishedSnapshotExportResult = typeof AutoDsmPublishedSnapshotExportResult.Type;
+
+export const AutoDsmPublishedExportInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  version: Schema.optional(TrimmedNonEmptyString),
+  registryUrl: Schema.optional(TrimmedNonEmptyString),
+  authToken: Schema.optional(TrimmedNonEmptyString),
+});
+export type AutoDsmPublishedExportInput = typeof AutoDsmPublishedExportInput.Type;
+
+export const AutoDsmPublishedExportResult = Schema.Struct({
+  publishedExport: AutoDsmPublishedExport,
+});
+export type AutoDsmPublishedExportResult = typeof AutoDsmPublishedExportResult.Type;
+
+export const AutoDsmPullRequestCreateInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  title: TrimmedNonEmptyString,
+  summary: Schema.optional(TrimmedString),
+  changeSetIds: Schema.Array(AutoDsmChangeSetId),
+});
+export type AutoDsmPullRequestCreateInput = typeof AutoDsmPullRequestCreateInput.Type;
+
+export const AutoDsmPullRequestCreateResult = Schema.Struct({
+  pullRequest: AutoDsmPullRequest,
+});
+export type AutoDsmPullRequestCreateResult = typeof AutoDsmPullRequestCreateResult.Type;
+
+export const AutoDsmPullRequestListInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+});
+export type AutoDsmPullRequestListInput = typeof AutoDsmPullRequestListInput.Type;
+
+export const AutoDsmPullRequestListResult = Schema.Struct({
+  pullRequests: Schema.Array(AutoDsmPullRequest),
+});
+export type AutoDsmPullRequestListResult = typeof AutoDsmPullRequestListResult.Type;
+
+export const AutoDsmActivityListInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  limit: Schema.optional(PositiveInt),
+});
+export type AutoDsmActivityListInput = typeof AutoDsmActivityListInput.Type;
+
+export const AutoDsmActivityListResult = Schema.Struct({
+  entries: Schema.Array(AutoDsmActivityEntry),
+});
+export type AutoDsmActivityListResult = typeof AutoDsmActivityListResult.Type;
+
+export const AutoDsmComponentAgentStatusSchema = Schema.Literals([
+  "creating",
+  "active",
+  "archived",
+]);
+export type AutoDsmComponentAgentStatus = typeof AutoDsmComponentAgentStatusSchema.Type;
+
+export const AutoDsmComponentAgentSourceSchema = Schema.Literals(["starter", "user"]);
+export type AutoDsmComponentAgentSource = typeof AutoDsmComponentAgentSourceSchema.Type;
+
+export const AutoDsmComponentAgentRecord = Schema.Struct({
+  threadId: ThreadId,
+  sessionId: AutoDsmSessionId,
+  title: TrimmedNonEmptyString,
+  componentPath: AutoDsmWorkspaceRelativePath,
+  /** Semantic sidebar folder label (Buttons, Cards, …). */
+  group: Schema.optional(TrimmedNonEmptyString),
+  componentId: Schema.optional(AutoDsmComponentId),
+  status: AutoDsmComponentAgentStatusSchema,
+  source: AutoDsmComponentAgentSourceSchema,
+  createdAt: IsoDateTime,
+  lastRenderedAt: Schema.optional(IsoDateTime),
+});
+export type AutoDsmComponentAgentRecord = typeof AutoDsmComponentAgentRecord.Type;
+
+export const AutoDsmComponentAgentsManifest = Schema.Struct({
+  schemaVersion: Schema.Int,
+  workspaceId: TrimmedNonEmptyString,
+  agents: Schema.Array(AutoDsmComponentAgentRecord),
+});
+export type AutoDsmComponentAgentsManifest = typeof AutoDsmComponentAgentsManifest.Type;
+
+export const AutoDsmComponentConversationMessage = Schema.Struct({
+  role: Schema.Literals(["user", "assistant", "system"]),
+  text: TrimmedString,
+  threadId: Schema.optional(ThreadId),
+  turnId: Schema.optional(TurnId),
+  createdAt: IsoDateTime,
+});
+export type AutoDsmComponentConversationMessage = typeof AutoDsmComponentConversationMessage.Type;
+
+export const AutoDsmComponentConversation = Schema.Struct({
+  componentPath: AutoDsmWorkspaceRelativePath,
+  componentId: Schema.optional(AutoDsmComponentId),
+  threadIds: Schema.Array(ThreadId),
+  messages: Schema.Array(AutoDsmComponentConversationMessage),
+  updatedAt: IsoDateTime,
+});
+export type AutoDsmComponentConversation = typeof AutoDsmComponentConversation.Type;
+
+export const AutoDsmSessionStatusSchema = Schema.Literals(["active", "closed"]);
+export type AutoDsmSessionStatus = typeof AutoDsmSessionStatusSchema.Type;
+
+export const AutoDsmSession = Schema.Struct({
+  sessionId: AutoDsmSessionId,
+  componentPath: AutoDsmWorkspaceRelativePath,
+  componentId: Schema.optional(AutoDsmComponentId),
+  threadId: ThreadId,
+  branchName: Schema.optional(TrimmedNonEmptyString),
+  status: AutoDsmSessionStatusSchema,
+  changeSetIds: Schema.Array(AutoDsmChangeSetId),
+  createdAt: IsoDateTime,
+});
+export type AutoDsmSession = typeof AutoDsmSession.Type;
+
+export const AutoDsmComponentAgentListInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+});
+export type AutoDsmComponentAgentListInput = typeof AutoDsmComponentAgentListInput.Type;
+
+export const AutoDsmComponentAgentListResult = Schema.Struct({
+  manifest: AutoDsmComponentAgentsManifest,
+});
+export type AutoDsmComponentAgentListResult = typeof AutoDsmComponentAgentListResult.Type;
+
+export const AutoDsmComponentAgentRegisterInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  threadId: ThreadId,
+  title: TrimmedNonEmptyString,
+  componentPath: AutoDsmWorkspaceRelativePath,
+  group: Schema.optional(TrimmedNonEmptyString),
+  source: AutoDsmComponentAgentSourceSchema,
+  status: Schema.optional(AutoDsmComponentAgentStatusSchema),
+});
+export type AutoDsmComponentAgentRegisterInput = typeof AutoDsmComponentAgentRegisterInput.Type;
+
+export const AutoDsmComponentAgentRegisterResult = Schema.Struct({
+  agent: AutoDsmComponentAgentRecord,
+  session: AutoDsmSession,
+});
+export type AutoDsmComponentAgentRegisterResult = typeof AutoDsmComponentAgentRegisterResult.Type;
+
+export const AutoDsmComponentAgentUpdateInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  threadId: ThreadId,
+  status: Schema.optional(AutoDsmComponentAgentStatusSchema),
+  componentId: Schema.optional(AutoDsmComponentId),
+  lastRenderedAt: Schema.optional(IsoDateTime),
+});
+export type AutoDsmComponentAgentUpdateInput = typeof AutoDsmComponentAgentUpdateInput.Type;
+
+export const AutoDsmComponentAgentUpdateResult = Schema.Struct({
+  agent: AutoDsmComponentAgentRecord,
+});
+export type AutoDsmComponentAgentUpdateResult = typeof AutoDsmComponentAgentUpdateResult.Type;
+
+export const AutoDsmComponentConversationGetInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  componentPath: AutoDsmWorkspaceRelativePath,
+});
+export type AutoDsmComponentConversationGetInput = typeof AutoDsmComponentConversationGetInput.Type;
+
+export const AutoDsmComponentConversationGetResult = Schema.Struct({
+  conversation: Schema.NullOr(AutoDsmComponentConversation),
+});
+export type AutoDsmComponentConversationGetResult =
+  typeof AutoDsmComponentConversationGetResult.Type;
+
+export const AutoDsmComponentConversationAppendInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  componentPath: AutoDsmWorkspaceRelativePath,
+  componentId: Schema.optional(AutoDsmComponentId),
+  threadId: ThreadId,
+  message: AutoDsmComponentConversationMessage,
+});
+export type AutoDsmComponentConversationAppendInput =
+  typeof AutoDsmComponentConversationAppendInput.Type;
+
+export const AutoDsmComponentConversationAppendResult = Schema.Struct({
+  conversation: AutoDsmComponentConversation,
+});
+export type AutoDsmComponentConversationAppendResult =
+  typeof AutoDsmComponentConversationAppendResult.Type;
+
+export const AutoDsmSessionGetInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  sessionId: AutoDsmSessionId,
+});
+export type AutoDsmSessionGetInput = typeof AutoDsmSessionGetInput.Type;
+
+export const AutoDsmSessionGetResult = Schema.Struct({
+  session: Schema.NullOr(AutoDsmSession),
+});
+export type AutoDsmSessionGetResult = typeof AutoDsmSessionGetResult.Type;
+
+export const AutoDsmSessionCreateInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  threadId: ThreadId,
+  componentPath: AutoDsmWorkspaceRelativePath,
+  componentId: Schema.optional(AutoDsmComponentId),
+  branchName: Schema.optional(TrimmedNonEmptyString),
+});
+export type AutoDsmSessionCreateInput = typeof AutoDsmSessionCreateInput.Type;
+
+export const AutoDsmSessionCreateResult = Schema.Struct({
+  session: AutoDsmSession,
+});
+export type AutoDsmSessionCreateResult = typeof AutoDsmSessionCreateResult.Type;
+
+export const AutoDsmSessionChangeSetListInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  sessionId: AutoDsmSessionId,
+});
+export type AutoDsmSessionChangeSetListInput = typeof AutoDsmSessionChangeSetListInput.Type;
+
+export const AutoDsmSessionChangeSetListResult = Schema.Struct({
+  changeSets: Schema.Array(AutoDsmChangeSet),
+});
+export type AutoDsmSessionChangeSetListResult = typeof AutoDsmSessionChangeSetListResult.Type;
 
 export const AutoDsmGitSessionBranchInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,

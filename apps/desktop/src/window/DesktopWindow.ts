@@ -17,6 +17,7 @@ import * as ElectronTheme from "../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as IpcChannels from "../ipc/channels.ts";
 import * as DesktopServerExposure from "../backend/DesktopServerExposure.ts";
+import { sweepPreviewViewsForWindow } from "../componentPreview/componentPreviewViews.ts";
 
 const TITLEBAR_HEIGHT = 40;
 const TITLEBAR_COLOR = "#01000000"; // #00000000 does not work correctly on Linux
@@ -286,6 +287,7 @@ const make = Effect.gen(function* () {
     }
 
     window.on("closed", () => {
+      sweepPreviewViewsForWindow(window);
       void runPromise(electronWindow.clearMain(Option.some(window)));
     });
 

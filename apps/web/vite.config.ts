@@ -57,7 +57,11 @@ const devProxyTarget = resolveDevProxyTarget(configuredWsUrl);
 
 export default defineConfig({
   plugins: [
-    tanstackRouter(),
+    tanstackRouter({
+      target: "react",
+      routesDirectory: "./src/routes",
+      generatedRouteTree: "./src/routeTree.gen.ts",
+    }),
     react(),
     babel({
       // We need to be explicit about the parser options after moving to @vitejs/plugin-react v6.0.0
@@ -92,6 +96,11 @@ export default defineConfig({
     host,
     port,
     strictPort: true,
+    watch: {
+      // TanStack Router writes routeTree.gen.ts during dev; without this ignore Vite
+      // re-triggers generation on its own output and loops full-page reloads (macOS/APFS).
+      ignored: ["**/routeTree.gen.ts"],
+    },
     ...(devProxyTarget
       ? {
           proxy: {

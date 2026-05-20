@@ -81,5 +81,17 @@ export type AutoDsmChangeSetId = typeof AutoDsmChangeSetId.Type;
 export const AutoDsmPublishedSnapshotId = makeEntityId("AutoDsmPublishedSnapshotId");
 export type AutoDsmPublishedSnapshotId = typeof AutoDsmPublishedSnapshotId.Type;
 
+export const AutoDsmPublishedExportId = makeEntityId("AutoDsmPublishedExportId");
+export type AutoDsmPublishedExportId = typeof AutoDsmPublishedExportId.Type;
+
+export const AutoDsmPullRequestId = makeEntityId("AutoDsmPullRequestId");
+export type AutoDsmPullRequestId = typeof AutoDsmPullRequestId.Type;
+
+export const AutoDsmActivityEntryId = makeEntityId("AutoDsmActivityEntryId");
+export type AutoDsmActivityEntryId = typeof AutoDsmActivityEntryId.Type;
+
 export const AutoDsmGenerationPlanId = makeEntityId("AutoDsmGenerationPlanId");
 export type AutoDsmGenerationPlanId = typeof AutoDsmGenerationPlanId.Type;
+
+export const AutoDsmSessionId = makeEntityId("AutoDsmSessionId");
+export type AutoDsmSessionId = typeof AutoDsmSessionId.Type;

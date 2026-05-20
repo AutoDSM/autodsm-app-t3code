@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// @effect-diagnostics globalDate:off
 
 import * as NodeOS from "node:os";
 
@@ -16,6 +17,15 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { Argument, Command, Flag } from "effect/unstable/cli";
 import { ChildProcess } from "effect/unstable/process";
+
+import {
+  assertDevDesktopLockAvailable,
+  buildDesktopDevInstanceKey,
+  cleanupStaleDesktopElectronApps,
+  registerDevDesktopLockRelease,
+  writeDevDesktopLock,
+  type DevDesktopLockRecord,
+} from "./dev-runner-lock.ts";
 
 const BASE_SERVER_PORT = 13773;
 const BASE_WEB_PORT = 5733;
@@ -393,7 +403,60 @@ interface DevRunnerCliInput {
   readonly turboArgs: ReadonlyArray<string>;
 }
 
+function acquireDevDesktopLock(input: {
+  readonly t3Home: string;
+  readonly serverPort: string;
+  readonly webPort: string;
+  readonly portOffset: number | undefined;
+  readonly devInstance: string | undefined;
+  readonly explicitT3Home: boolean;
+  readonly startedAt: string;
+}): Effect.Effect<void, DevRunnerError, Path.Path> {
+  return Effect.gen(function* () {
+    const path = yield* Path.Path;
+    const lockPath = path.join(input.t3Home, "dev", "desktop-dev.lock.json");
+    const instanceKey = buildDesktopDevInstanceKey({
+      t3Home: input.t3Home,
+      portOffset: input.portOffset,
+      devInstance: input.devInstance,
+      explicitT3Home: input.explicitT3Home,
+    });
+
+    const lockRecord: DevDesktopLockRecord = {
+      pid: process.pid,
+      mode: "dev:desktop",
+      startedAt: input.startedAt,
+      instanceKey,
+      t3Home: input.t3Home,
+      serverPort: input.serverPort,
+      webPort: input.webPort,
+    };
+
+    const availability = assertDevDesktopLockAvailable(lockPath, lockRecord);
+    if (!availability.ok) {
+      return yield* new DevRunnerError({
+        message:
+          `Another desktop dev stack is already running for this instance ` +
+          `(pid=${availability.existing.pid}, webPort=${availability.existing.webPort}, ` +
+          `serverPort=${availability.existing.serverPort}). Stop it first, or start an isolated ` +
+          `instance with T3CODE_DEV_INSTANCE, T3CODE_PORT_OFFSET, or --home-dir.`,
+      });
+    }
+
+    if (availability.replacedStaleLock) {
+      const repoRoot = path.resolve(import.meta.dirname, "..");
+      const desktopDir = path.join(repoRoot, "apps", "desktop");
+      cleanupStaleDesktopElectronApps(desktopDir);
+    }
+
+    writeDevDesktopLock(lockPath, lockRecord);
+    registerDevDesktopLockRelease(lockPath, process.pid);
+  });
+}
+
 export function runDevRunnerWithInput(input: DevRunnerCliInput) {
+  const desktopLockStartedAt = new Date().toISOString();
+
   return Effect.gen(function* () {
     const { portOffset, devInstance } = yield* OffsetConfig.asEffect().pipe(
       Effect.mapError(
@@ -446,6 +509,18 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
 
     if (input.dryRun) {
       return;
+    }
+
+    if (input.mode === "dev:desktop") {
+      yield* acquireDevDesktopLock({
+        t3Home: String(env.T3CODE_HOME),
+        serverPort: String(env.T3CODE_PORT),
+        webPort: String(env.PORT),
+        portOffset,
+        devInstance,
+        explicitT3Home: input.t3Home !== undefined,
+        startedAt: desktopLockStartedAt,
+      });
     }
 
     const child = yield* ChildProcess.make(

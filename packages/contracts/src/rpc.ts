@@ -82,6 +82,8 @@ import {
   AutoDsmCreateWorkspaceResult,
   AutoDsmListWorkspaceHistoryInput,
   AutoDsmListWorkspaceHistoryResult,
+  AutoDsmDeleteWorkspaceInput,
+  AutoDsmDeleteWorkspaceResult,
   AutoDsmWorkspaceBuildInput,
   AutoDsmWorkspaceBuildResult,
   AutoDsmGenerationPlanAssembleInput,
@@ -110,7 +112,31 @@ import {
   AutoDsmSidecarStatusInput,
   AutoDsmSidecarStatusResult,
   AutoDsmIndexingProgressEvent,
+  AutoDsmActivityListInput,
+  AutoDsmActivityListResult,
+  AutoDsmComponentAgentListInput,
+  AutoDsmComponentAgentListResult,
+  AutoDsmComponentAgentRegisterInput,
+  AutoDsmComponentAgentRegisterResult,
+  AutoDsmComponentAgentUpdateInput,
+  AutoDsmComponentAgentUpdateResult,
+  AutoDsmComponentConversationAppendInput,
+  AutoDsmComponentConversationAppendResult,
+  AutoDsmComponentConversationGetInput,
+  AutoDsmComponentConversationGetResult,
+  AutoDsmSessionChangeSetListInput,
+  AutoDsmSessionChangeSetListResult,
+  AutoDsmSessionCreateInput,
+  AutoDsmSessionCreateResult,
+  AutoDsmSessionGetInput,
+  AutoDsmSessionGetResult,
   AutoDsmProviderCatalogResult,
+  AutoDsmPullRequestCreateInput,
+  AutoDsmPullRequestCreateResult,
+  AutoDsmPullRequestListInput,
+  AutoDsmPullRequestListResult,
+  AutoDsmPublishedExportInput,
+  AutoDsmPublishedExportResult,
 } from "./autodsmArtifacts.ts";
 import {
   TerminalClearInput,
@@ -190,11 +216,24 @@ export const WS_METHODS = {
   autodsmChangeSetApply: "autodsm.changeSetApply",
   autodsmChangeSetRollback: "autodsm.changeSetRollback",
   autodsmAssembleGenerationPlan: "autodsm.assembleGenerationPlan",
+  autodsmExportPublishedExport: "autodsm.exportPublishedExport",
   autodsmExportPublishedSnapshot: "autodsm.exportPublishedSnapshot",
+  autodsmCreatePullRequest: "autodsm.createPullRequest",
+  autodsmListPullRequests: "autodsm.listPullRequests",
+  autodsmListActivity: "autodsm.listActivity",
+  autodsmListComponentAgents: "autodsm.listComponentAgents",
+  autodsmRegisterComponentAgent: "autodsm.registerComponentAgent",
+  autodsmUpdateComponentAgent: "autodsm.updateComponentAgent",
+  autodsmGetComponentConversation: "autodsm.getComponentConversation",
+  autodsmAppendComponentConversation: "autodsm.appendComponentConversation",
+  autodsmGetSession: "autodsm.getSession",
+  autodsmCreateSession: "autodsm.createSession",
+  autodsmListChangeSetsForSession: "autodsm.listChangeSetsForSession",
   autodsmPrepareSessionBranch: "autodsm.prepareSessionBranch",
   autodsmGetIssuesForPrompt: "autodsm.getIssuesForPrompt",
   autodsmCreateWorkspace: "autodsm.createWorkspace",
   autodsmListWorkspaceHistory: "autodsm.listWorkspaceHistory",
+  autodsmDeleteWorkspace: "autodsm.deleteWorkspace",
 
   // Shell methods
   shellOpenInEditor: "shell.openInEditor",
@@ -564,6 +603,90 @@ export const WsAutodsmExportPublishedSnapshotRpc = Rpc.make(
   },
 );
 
+export const WsAutodsmExportPublishedExportRpc = Rpc.make(WS_METHODS.autodsmExportPublishedExport, {
+  payload: AutoDsmPublishedExportInput,
+  success: AutoDsmPublishedExportResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmCreatePullRequestRpc = Rpc.make(WS_METHODS.autodsmCreatePullRequest, {
+  payload: AutoDsmPullRequestCreateInput,
+  success: AutoDsmPullRequestCreateResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmListPullRequestsRpc = Rpc.make(WS_METHODS.autodsmListPullRequests, {
+  payload: AutoDsmPullRequestListInput,
+  success: AutoDsmPullRequestListResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmListActivityRpc = Rpc.make(WS_METHODS.autodsmListActivity, {
+  payload: AutoDsmActivityListInput,
+  success: AutoDsmActivityListResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmListComponentAgentsRpc = Rpc.make(WS_METHODS.autodsmListComponentAgents, {
+  payload: AutoDsmComponentAgentListInput,
+  success: AutoDsmComponentAgentListResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmRegisterComponentAgentRpc = Rpc.make(
+  WS_METHODS.autodsmRegisterComponentAgent,
+  {
+    payload: AutoDsmComponentAgentRegisterInput,
+    success: AutoDsmComponentAgentRegisterResult,
+    error: AutoDsmRpcError,
+  },
+);
+
+export const WsAutodsmUpdateComponentAgentRpc = Rpc.make(WS_METHODS.autodsmUpdateComponentAgent, {
+  payload: AutoDsmComponentAgentUpdateInput,
+  success: AutoDsmComponentAgentUpdateResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmGetComponentConversationRpc = Rpc.make(
+  WS_METHODS.autodsmGetComponentConversation,
+  {
+    payload: AutoDsmComponentConversationGetInput,
+    success: AutoDsmComponentConversationGetResult,
+    error: AutoDsmRpcError,
+  },
+);
+
+export const WsAutodsmAppendComponentConversationRpc = Rpc.make(
+  WS_METHODS.autodsmAppendComponentConversation,
+  {
+    payload: AutoDsmComponentConversationAppendInput,
+    success: AutoDsmComponentConversationAppendResult,
+    error: AutoDsmRpcError,
+  },
+);
+
+export const WsAutodsmGetSessionRpc = Rpc.make(WS_METHODS.autodsmGetSession, {
+  payload: AutoDsmSessionGetInput,
+  success: AutoDsmSessionGetResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmCreateSessionRpc = Rpc.make(WS_METHODS.autodsmCreateSession, {
+  payload: AutoDsmSessionCreateInput,
+  success: AutoDsmSessionCreateResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmListChangeSetsForSessionRpc = Rpc.make(
+  WS_METHODS.autodsmListChangeSetsForSession,
+  {
+    payload: AutoDsmSessionChangeSetListInput,
+    success: AutoDsmSessionChangeSetListResult,
+    error: AutoDsmRpcError,
+  },
+);
+
 export const WsAutodsmPrepareSessionBranchRpc = Rpc.make(WS_METHODS.autodsmPrepareSessionBranch, {
   payload: AutoDsmGitSessionBranchInput,
   success: AutoDsmGitSessionBranchResult,
@@ -585,6 +708,12 @@ export const WsAutodsmCreateWorkspaceRpc = Rpc.make(WS_METHODS.autodsmCreateWork
 export const WsAutodsmListWorkspaceHistoryRpc = Rpc.make(WS_METHODS.autodsmListWorkspaceHistory, {
   payload: AutoDsmListWorkspaceHistoryInput,
   success: AutoDsmListWorkspaceHistoryResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmDeleteWorkspaceRpc = Rpc.make(WS_METHODS.autodsmDeleteWorkspace, {
+  payload: AutoDsmDeleteWorkspaceInput,
+  success: AutoDsmDeleteWorkspaceResult,
   error: AutoDsmRpcError,
 });
 
@@ -830,11 +959,24 @@ export const WsRpcGroup = RpcGroup.make(
   WsAutodsmChangeSetApplyRpc,
   WsAutodsmChangeSetRollbackRpc,
   WsAutodsmAssembleGenerationPlanRpc,
+  WsAutodsmExportPublishedExportRpc,
   WsAutodsmExportPublishedSnapshotRpc,
+  WsAutodsmCreatePullRequestRpc,
+  WsAutodsmListPullRequestsRpc,
+  WsAutodsmListActivityRpc,
+  WsAutodsmListComponentAgentsRpc,
+  WsAutodsmRegisterComponentAgentRpc,
+  WsAutodsmUpdateComponentAgentRpc,
+  WsAutodsmGetComponentConversationRpc,
+  WsAutodsmAppendComponentConversationRpc,
+  WsAutodsmGetSessionRpc,
+  WsAutodsmCreateSessionRpc,
+  WsAutodsmListChangeSetsForSessionRpc,
   WsAutodsmPrepareSessionBranchRpc,
   WsAutodsmGetIssuesForPromptRpc,
   WsAutodsmCreateWorkspaceRpc,
   WsAutodsmListWorkspaceHistoryRpc,
+  WsAutodsmDeleteWorkspaceRpc,
   WsShellOpenInEditorRpc,
   WsFilesystemBrowseRpc,
   WsSubscribeVcsStatusRpc,

@@ -14,14 +14,16 @@ import {
 } from "~/components/ui/sidebar";
 import { readEnvironmentApi } from "~/environmentApi";
 import type { AutoDsmComponentAgentTab } from "~/lib/autoDsmComponentAgents";
+import { resolveAutoDsmAgentTabForPath } from "~/lib/autoDsmComponentAgents";
 import { cn, newCommandId } from "~/lib/utils";
 import { readLocalApi } from "~/localApi";
 
-export type AutoDsmComponentAgentTabBarLayout = "horizontal" | "sidebar";
+export type AutoDsmComponentAgentTabBarLayout = "horizontal" | "sidebar" | "sidebar-embedded";
 
 export interface AutoDsmComponentAgentTabBarProps {
   readonly tabs: readonly AutoDsmComponentAgentTab[];
   readonly activeThreadRef: ScopedThreadRef | null;
+  readonly activeComponentPath?: string | null;
   readonly onSelectTab: (threadRef: ScopedThreadRef) => void;
   /** Horizontal strip above chat (default) or vertical sidebar list. */
   readonly layout?: AutoDsmComponentAgentTabBarLayout;
@@ -264,11 +266,44 @@ function ComponentAgentTabButton(input: {
 }
 
 export function AutoDsmComponentAgentTabBar(props: AutoDsmComponentAgentTabBarProps) {
-  const { tabs, activeThreadRef, onSelectTab, layout = "horizontal" } = props;
+  const { tabs, activeThreadRef, activeComponentPath, onSelectTab, layout = "horizontal" } = props;
   const rename = useComponentAgentTabRename();
+  const activeTabByPath = resolveAutoDsmAgentTabForPath(activeComponentPath, tabs);
+
+  const isTabSelected = (tab: AutoDsmComponentAgentTab): boolean => {
+    if (activeTabByPath) {
+      return activeTabByPath.threadKey === tab.threadKey;
+    }
+    return activeThreadRef !== null && isSameThreadRef(activeThreadRef, tab.threadRef);
+  };
 
   if (tabs.length === 0) {
     return null;
+  }
+
+  if (layout === "sidebar-embedded") {
+    return (
+      <SidebarMenu
+        role="tablist"
+        aria-label="Component agents"
+        className="gap-0"
+        data-testid="autodsm-component-agent-tab-bar"
+      >
+        {tabs.map((tab) => {
+          const selected = isTabSelected(tab);
+          return (
+            <ComponentAgentTabButton
+              key={tab.threadKey}
+              tab={tab}
+              selected={selected}
+              onSelectTab={onSelectTab}
+              layout="sidebar"
+              rename={rename}
+            />
+          );
+        })}
+      </SidebarMenu>
+    );
   }
 
   if (layout === "sidebar") {
@@ -288,15 +323,14 @@ export function AutoDsmComponentAgentTabBar(props: AutoDsmComponentAgentTabBarPr
           data-testid="autodsm-component-agent-tab-bar"
         >
           {tabs.map((tab) => {
-            const selected =
-              activeThreadRef !== null && isSameThreadRef(activeThreadRef, tab.threadRef);
+            const selected = isTabSelected(tab);
             return (
               <ComponentAgentTabButton
                 key={tab.threadKey}
                 tab={tab}
                 selected={selected}
                 onSelectTab={onSelectTab}
-                layout={layout}
+                layout="sidebar"
                 rename={rename}
               />
             );
@@ -318,8 +352,7 @@ export function AutoDsmComponentAgentTabBar(props: AutoDsmComponentAgentTabBarPr
         className="flex min-w-0 flex-1 gap-1 overflow-x-auto overscroll-x-contain pb-px"
       >
         {tabs.map((tab) => {
-          const selected =
-            activeThreadRef !== null && isSameThreadRef(activeThreadRef, tab.threadRef);
+          const selected = isTabSelected(tab);
           return (
             <ComponentAgentTabButton
               key={tab.threadKey}

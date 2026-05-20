@@ -35,10 +35,12 @@ import {
 import {
   attachComponentPreview,
   captureComponentPreview,
+  detachAllComponentPreview,
   detachComponentPreview,
   primeComponentPreview,
   setComponentPreviewBounds,
 } from "./methods/componentPreview.ts";
+import { restartDesktopBackend } from "./methods/backend.ts";
 import {
   confirm,
   getAppBranding,
@@ -52,46 +54,50 @@ import {
 export const installDesktopIpcHandlers = Effect.gen(function* () {
   const ipc = yield* DesktopIpc.DesktopIpc;
 
-  yield* ipc.handleSync(getAppBranding);
-  yield* ipc.handleSync(getLocalEnvironmentBootstrap);
+  // Process-lifetime handlers: scoped cleanup removes listeners during shutdown while
+  // the renderer can still call sync IPC (e.g. branding), causing sendSync warnings.
+  yield* ipc.handleSyncForever(getAppBranding);
+  yield* ipc.handleSyncForever(getLocalEnvironmentBootstrap);
 
-  yield* ipc.handle(getClientSettings);
-  yield* ipc.handle(setClientSettings);
-  yield* ipc.handle(getSavedEnvironmentRegistry);
-  yield* ipc.handle(setSavedEnvironmentRegistry);
-  yield* ipc.handle(getSavedEnvironmentSecret);
-  yield* ipc.handle(setSavedEnvironmentSecret);
-  yield* ipc.handle(removeSavedEnvironmentSecret);
+  yield* ipc.handleForever(getClientSettings);
+  yield* ipc.handleForever(setClientSettings);
+  yield* ipc.handleForever(getSavedEnvironmentRegistry);
+  yield* ipc.handleForever(setSavedEnvironmentRegistry);
+  yield* ipc.handleForever(getSavedEnvironmentSecret);
+  yield* ipc.handleForever(setSavedEnvironmentSecret);
+  yield* ipc.handleForever(removeSavedEnvironmentSecret);
 
-  yield* ipc.handle(discoverSshHosts);
-  yield* ipc.handle(ensureSshEnvironment);
-  yield* ipc.handle(disconnectSshEnvironment);
-  yield* ipc.handle(fetchSshEnvironmentDescriptor);
-  yield* ipc.handle(bootstrapSshBearerSession);
-  yield* ipc.handle(fetchSshSessionState);
-  yield* ipc.handle(issueSshWebSocketToken);
-  yield* ipc.handle(resolveSshPasswordPrompt);
+  yield* ipc.handleForever(discoverSshHosts);
+  yield* ipc.handleForever(ensureSshEnvironment);
+  yield* ipc.handleForever(disconnectSshEnvironment);
+  yield* ipc.handleForever(fetchSshEnvironmentDescriptor);
+  yield* ipc.handleForever(bootstrapSshBearerSession);
+  yield* ipc.handleForever(fetchSshSessionState);
+  yield* ipc.handleForever(issueSshWebSocketToken);
+  yield* ipc.handleForever(resolveSshPasswordPrompt);
 
-  yield* ipc.handle(getServerExposureState);
-  yield* ipc.handle(setServerExposureMode);
-  yield* ipc.handle(setTailscaleServeEnabled);
-  yield* ipc.handle(getAdvertisedEndpoints);
+  yield* ipc.handleForever(getServerExposureState);
+  yield* ipc.handleForever(setServerExposureMode);
+  yield* ipc.handleForever(setTailscaleServeEnabled);
+  yield* ipc.handleForever(getAdvertisedEndpoints);
 
-  yield* ipc.handle(pickFolder);
-  yield* ipc.handle(confirm);
-  yield* ipc.handle(setTheme);
-  yield* ipc.handle(showContextMenu);
-  yield* ipc.handle(openExternal);
+  yield* ipc.handleForever(pickFolder);
+  yield* ipc.handleForever(confirm);
+  yield* ipc.handleForever(setTheme);
+  yield* ipc.handleForever(showContextMenu);
+  yield* ipc.handleForever(openExternal);
 
-  yield* ipc.handle(attachComponentPreview);
-  yield* ipc.handle(detachComponentPreview);
-  yield* ipc.handle(setComponentPreviewBounds);
-  yield* ipc.handle(primeComponentPreview);
-  yield* ipc.handle(captureComponentPreview);
+  yield* ipc.handleForever(attachComponentPreview);
+  yield* ipc.handleForever(detachComponentPreview);
+  yield* ipc.handleForever(detachAllComponentPreview);
+  yield* ipc.handleForever(setComponentPreviewBounds);
+  yield* ipc.handleForever(primeComponentPreview);
+  yield* ipc.handleForever(captureComponentPreview);
+  yield* ipc.handleForever(restartDesktopBackend);
 
-  yield* ipc.handle(getUpdateState);
-  yield* ipc.handle(setUpdateChannel);
-  yield* ipc.handle(downloadUpdate);
-  yield* ipc.handle(installUpdate);
-  yield* ipc.handle(checkForUpdate);
+  yield* ipc.handleForever(getUpdateState);
+  yield* ipc.handleForever(setUpdateChannel);
+  yield* ipc.handleForever(downloadUpdate);
+  yield* ipc.handleForever(installUpdate);
+  yield* ipc.handleForever(checkForUpdate);
 }).pipe(Effect.withSpan("desktop.ipc.installHandlers"));

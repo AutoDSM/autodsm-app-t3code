@@ -10,6 +10,7 @@ import {
   autodsmComponentRegistryQueryOptions,
 } from "~/lib/autodsmWorkspaceReactQuery";
 import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
+import { filterProductComponentAgentPaths } from "~/lib/filterProductComponentAgentPaths";
 import {
   SIDEBAR_COMPONENTS_SEARCH_PATH_INCLUDES,
   mergeSidebarComponentsCatalogViewModel,
@@ -21,6 +22,8 @@ export interface UseSrcComponentsCatalogOptions {
   readonly cwd: string | null;
   /** When false, skip registry/search queries entirely (still safe merge helpers unused). */
   readonly enabled: boolean;
+  /** When set, catalog paths are intersected with component-agent manifest paths (product mode). */
+  readonly productAgentPaths?: readonly string[] | null;
 }
 
 export interface UseSrcComponentsCatalogResult {
@@ -38,7 +41,7 @@ export interface UseSrcComponentsCatalogResult {
 export function useSrcComponentsCatalog(
   options: UseSrcComponentsCatalogOptions,
 ): UseSrcComponentsCatalogResult {
-  const { environmentId, cwd, enabled } = options;
+  const { environmentId, cwd, enabled, productAgentPaths } = options;
   const queryClient = useQueryClient();
 
   const baseCatalogEnabled = Boolean(enabled && environmentId !== null && cwd !== null);
@@ -73,7 +76,7 @@ export function useSrcComponentsCatalog(
     }),
   );
 
-  const catalog = useMemo(
+  const mergedCatalog = useMemo(
     () =>
       mergeSidebarComponentsCatalogViewModel({
         registry: registryData,
@@ -94,6 +97,13 @@ export function useSrcComponentsCatalog(
       registryQuery.isPending,
     ],
   );
+
+  const catalog = useMemo(() => {
+    if (!productAgentPaths || productAgentPaths.length === 0) {
+      return mergedCatalog;
+    }
+    return filterProductComponentAgentPaths(mergedCatalog, productAgentPaths);
+  }, [mergedCatalog, productAgentPaths]);
 
   const retryWorkspaceBuild = useMutation({
     mutationFn: async () => {
