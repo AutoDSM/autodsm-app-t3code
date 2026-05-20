@@ -82,6 +82,8 @@ import {
   type AutoDsmComponentAgentRegisterResult,
   type AutoDsmComponentAgentUpdateInput,
   type AutoDsmComponentAgentUpdateResult,
+  type AutoDsmComponentAgentRemoveInput,
+  type AutoDsmComponentAgentRemoveResult,
   type AutoDsmComponentConversationAppendInput,
   type AutoDsmComponentConversationAppendResult,
   type AutoDsmComponentConversationGetInput,
@@ -160,6 +162,7 @@ import {
   loadComponentAgentsManifest,
   reconcileComponentIdsFromRegistry,
   registerComponentAgent as registerComponentAgentRecord,
+  removeComponentAgent as removeComponentAgentRecord,
   updateComponentAgent as updateComponentAgentRecord,
 } from "./componentAgentStore.ts";
 import { appendComponentConversation, loadComponentConversation } from "./conversationStore.ts";
@@ -349,6 +352,9 @@ export interface AutoDsmWorkspaceShape {
   readonly updateComponentAgent: (
     input: AutoDsmComponentAgentUpdateInput,
   ) => Effect.Effect<AutoDsmComponentAgentUpdateResult, AutoDsmRpcError>;
+  readonly removeComponentAgent: (
+    input: AutoDsmComponentAgentRemoveInput,
+  ) => Effect.Effect<AutoDsmComponentAgentRemoveResult, AutoDsmRpcError>;
   readonly getComponentConversation: (
     input: AutoDsmComponentConversationGetInput,
   ) => Effect.Effect<AutoDsmComponentConversationGetResult, AutoDsmRpcError>;
@@ -1452,6 +1458,9 @@ export const AutoDsmWorkspaceLive = Layer.effect(
           }),
       });
 
+    const removeComponentAgent = (input: AutoDsmComponentAgentRemoveInput) =>
+      Effect.sync(() => removeComponentAgentRecord(input));
+
     const getComponentConversation = (input: AutoDsmComponentConversationGetInput) =>
       Effect.sync(() => ({
         conversation: loadComponentConversation(input.cwd, input.componentPath),
@@ -1539,6 +1548,7 @@ export const AutoDsmWorkspaceLive = Layer.effect(
       listComponentAgents,
       registerComponentAgent,
       updateComponentAgent,
+      removeComponentAgent,
       getComponentConversation,
       appendComponentConversation: appendComponentConversationHandler,
       getSession,

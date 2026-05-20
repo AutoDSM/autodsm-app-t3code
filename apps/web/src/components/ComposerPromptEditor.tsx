@@ -5,7 +5,11 @@ import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
-import { type ServerProviderSkill, type AutoDsmBrandToken } from "@t3tools/contracts";
+import {
+  type ServerProviderSkill,
+  type AutoDsmBrandToken,
+  type AutoDsmBrandTokenCategory,
+} from "@t3tools/contracts";
 import {
   $applyNodeReplacement,
   $createRangeSelection,
@@ -60,7 +64,7 @@ import {
   selectionTouchesMentionBoundary,
   splitPromptIntoComposerSegments,
 } from "~/composer-editor-mentions";
-import { tokenDisplayName } from "~/lib/designTokenGroups";
+import { normalizeTokenCategory, tokenDisplayName } from "~/lib/designTokenGroups";
 import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   type TerminalContextDraft,
@@ -68,6 +72,7 @@ import {
 import { cn } from "~/lib/utils";
 import { basenameOfPath, getVscodeIconUrlForEntry, inferEntryKindFromPath } from "~/vscode-icons";
 import {
+  COMPOSER_INLINE_BRAND_TOKEN_CHIP_CLASS_NAME,
   COMPOSER_INLINE_CHIP_CLASS_NAME,
   COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
   COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME,
@@ -75,6 +80,7 @@ import {
   SKILL_CHIP_ICON_SVG,
 } from "./composerInlineChip";
 import { ComposerPendingTerminalContextChip } from "./chat/ComposerPendingTerminalContexts";
+import { BrandTokenPreviewGlyph, brandTokenPreviewFromCategory } from "./BrandTokenPreviewGlyph";
 import { formatProviderSkillDisplayName } from "~/providerSkillPresentation";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
@@ -226,19 +232,21 @@ type SerializedComposerBrandTokenNode = Spread<
   SerializedLexicalNode
 >;
 
-function ComposerBrandTokenDecorator(props: { name: string; swatch?: string | undefined }) {
+function ComposerBrandTokenDecorator(props: {
+  name: string;
+  swatch?: string | undefined;
+  category?: AutoDsmBrandTokenCategory | undefined;
+}) {
   const chip = (
     <span
-      className={COMPOSER_INLINE_CHIP_CLASS_NAME}
+      className={COMPOSER_INLINE_BRAND_TOKEN_CHIP_CLASS_NAME}
       contentEditable={false}
       spellCheck={false}
       data-composer-brand-token-chip="true"
     >
-      {props.swatch ? (
-        <span
-          aria-hidden
-          className="inline-block size-3 shrink-0 rounded-full border border-border/70"
-          style={{ backgroundColor: props.swatch }}
+      {props.category === "typography" || props.swatch || props.category === "color" ? (
+        <BrandTokenPreviewGlyph
+          token={brandTokenPreviewFromCategory(props.category, props.swatch)}
         />
       ) : null}
       <span className={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}>@{props.name}</span>
@@ -258,13 +266,14 @@ function ComposerBrandTokenDecorator(props: { name: string; swatch?: string | un
 class ComposerBrandTokenNode extends DecoratorNode<React.ReactElement> {
   __name: string;
   __swatch?: string | undefined;
+  __category?: AutoDsmBrandTokenCategory | undefined;
 
   static override getType(): string {
     return "composer-brand-token";
   }
 
   static override clone(node: ComposerBrandTokenNode): ComposerBrandTokenNode {
-    return new ComposerBrandTokenNode(node.__name, node.__swatch, node.__key);
+    return new ComposerBrandTokenNode(node.__name, node.__swatch, node.__category, node.__key);
   }
 
   static override importJSON(
@@ -273,10 +282,16 @@ class ComposerBrandTokenNode extends DecoratorNode<React.ReactElement> {
     return $createComposerBrandTokenNode(serializedNode.name).updateFromJSON(serializedNode);
   }
 
-  constructor(name: string, swatch?: string | undefined, key?: NodeKey) {
+  constructor(
+    name: string,
+    swatch?: string | undefined,
+    category?: AutoDsmBrandTokenCategory | undefined,
+    key?: NodeKey,
+  ) {
     super(key);
     this.__name = name.startsWith("@") ? name.slice(1) : name;
     this.__swatch = swatch;
+    this.__category = category;
   }
 
   override exportJSON(): SerializedComposerBrandTokenNode {
@@ -307,15 +322,22 @@ class ComposerBrandTokenNode extends DecoratorNode<React.ReactElement> {
   }
 
   override decorate(): React.ReactElement {
-    return <ComposerBrandTokenDecorator name={this.__name} swatch={this.__swatch} />;
+    return (
+      <ComposerBrandTokenDecorator
+        name={this.__name}
+        swatch={this.__swatch}
+        category={this.__category}
+      />
+    );
   }
 }
 
 function $createComposerBrandTokenNode(
   name: string,
   swatch?: string | undefined,
+  category?: AutoDsmBrandTokenCategory | undefined,
 ): ComposerBrandTokenNode {
-  return $applyNodeReplacement(new ComposerBrandTokenNode(name, swatch));
+  return $applyNodeReplacement(new ComposerBrandTokenNode(name, swatch, category));
 }
 
 function resolveSkillDescription(
@@ -584,15 +606,18 @@ function skillSignature(skills: ReadonlyArray<ServerProviderSkill>): string {
 function brandTokenLookupMaps(tokens: ReadonlyArray<AutoDsmBrandToken> | undefined): {
   readonly names: ReadonlySet<string>;
   readonly swatches: ReadonlyMap<string, string | undefined>;
+  readonly categories: ReadonlyMap<string, AutoDsmBrandTokenCategory>;
 } {
   const names = new Set<string>();
   const swatches = new Map<string, string | undefined>();
+  const categories = new Map<string, AutoDsmBrandTokenCategory>();
   for (const token of tokens ?? []) {
     const key = tokenDisplayName(token).toLowerCase();
     names.add(key);
-    swatches.set(key, token.color?.light ?? token.value);
+    categories.set(key, normalizeTokenCategory(token.category));
+    swatches.set(key, token.category === "color" ? (token.color?.light ?? token.value) : undefined);
   }
-  return { names, swatches };
+  return { names, swatches, categories };
 }
 
 function clampExpandedCursor(value: string, cursor: number): number {
@@ -944,6 +969,7 @@ function $setComposerEditorPrompt(
   skillMetadata: ReadonlyMap<string, ComposerSkillMetadata>,
   brandTokenNames: ReadonlySet<string>,
   brandTokenSwatches: ReadonlyMap<string, string | undefined>,
+  brandTokenCategories: ReadonlyMap<string, AutoDsmBrandTokenCategory>,
 ): void {
   const root = $getRoot();
   root.clear();
@@ -959,10 +985,12 @@ function $setComposerEditorPrompt(
       continue;
     }
     if (segment.type === "brand-token") {
+      const tokenKey = segment.name.toLowerCase();
       paragraph.append(
         $createComposerBrandTokenNode(
           segment.name,
-          brandTokenSwatches.get(segment.name.toLowerCase()),
+          brandTokenSwatches.get(tokenKey),
+          brandTokenCategories.get(tokenKey),
         ),
       );
       continue;
@@ -1016,6 +1044,8 @@ interface ComposerPromptEditorProps {
   terminalContexts: ReadonlyArray<TerminalContextDraft>;
   skills: ReadonlyArray<ServerProviderSkill>;
   brandTokens?: ReadonlyArray<AutoDsmBrandToken>;
+  /** When true, the parent renders the keyboard-navigable token menu instead of the built-in typeahead. */
+  disableBrandTokenTypeahead?: boolean;
   disabled: boolean;
   placeholder: string;
   className?: string;
@@ -1334,6 +1364,7 @@ function ComposerSurroundSelectionPlugin(props: {
         skillMetadataRef.current,
         brandTokenMapsRef.current.names,
         brandTokenMapsRef.current.swatches,
+        brandTokenMapsRef.current.categories,
       );
       const selectionStart = collapseExpandedComposerCursor(
         nextValue,
@@ -1598,17 +1629,14 @@ function ComposerBrandTokenTypeaheadPlugin(props: {
                   skillMetadata,
                   brandMaps.names,
                   brandMaps.swatches,
+                  brandMaps.categories,
                 );
                 $setSelectionAtComposerOffset(atIndex + name.length + 2);
               });
               setQuery(null);
             }}
           >
-            <span
-              aria-hidden
-              className="inline-block size-3 rounded-full border border-border/70"
-              style={{ backgroundColor: token.color?.light ?? token.value }}
-            />
+            <BrandTokenPreviewGlyph token={token} />
             <span className="font-mono text-xs">@{name}</span>
           </button>
         );
@@ -1623,6 +1651,7 @@ function ComposerPromptEditorInner({
   terminalContexts,
   skills,
   brandTokens = [],
+  disableBrandTokenTypeahead = false,
   disabled,
   placeholder,
   className,
@@ -1707,6 +1736,7 @@ function ComposerPromptEditorInner({
           skillMetadataRef.current,
           brandTokenMapsRef.current.names,
           brandTokenMapsRef.current.swatches,
+          brandTokenMapsRef.current.categories,
         );
       }
       if (shouldRewriteEditorState || isFocused) {
@@ -1879,7 +1909,7 @@ function ComposerPromptEditorInner({
           skills={skills}
           brandTokens={brandTokens}
         />
-        {brandTokens.length > 0 ? (
+        {brandTokens.length > 0 && !disableBrandTokenTypeahead ? (
           <ComposerBrandTokenTypeaheadPlugin
             brandTokens={brandTokens}
             terminalContexts={terminalContexts}
@@ -1901,6 +1931,7 @@ export function ComposerPromptEditor({
   terminalContexts,
   skills,
   brandTokens = [],
+  disableBrandTokenTypeahead = false,
   disabled,
   placeholder,
   className,
@@ -1931,6 +1962,7 @@ export function ComposerPromptEditor({
           initialSkillMetadataRef.current,
           initialBrandMapsRef.current.names,
           initialBrandMapsRef.current.swatches,
+          initialBrandMapsRef.current.categories,
         );
       },
       onError: (error) => {
@@ -1948,6 +1980,7 @@ export function ComposerPromptEditor({
         terminalContexts={terminalContexts}
         skills={skills}
         brandTokens={brandTokens}
+        disableBrandTokenTypeahead={disableBrandTokenTypeahead}
         disabled={disabled}
         placeholder={placeholder}
         onRemoveTerminalContext={onRemoveTerminalContext}

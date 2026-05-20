@@ -121,6 +121,7 @@ export interface WsRpcClient {
       typeof WS_METHODS.autodsmRegisterComponentAgent
     >;
     readonly updateComponentAgent: RpcUnaryMethod<typeof WS_METHODS.autodsmUpdateComponentAgent>;
+    readonly removeComponentAgent: RpcUnaryMethod<typeof WS_METHODS.autodsmRemoveComponentAgent>;
     readonly getComponentConversation: RpcUnaryMethod<
       typeof WS_METHODS.autodsmGetComponentConversation
     >;
@@ -326,6 +327,8 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
         transport.request((client) => client[WS_METHODS.autodsmRegisterComponentAgent](input)),
       updateComponentAgent: (input) =>
         transport.request((client) => client[WS_METHODS.autodsmUpdateComponentAgent](input)),
+      removeComponentAgent: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmRemoveComponentAgent](input)),
       getComponentConversation: (input) =>
         transport.request((client) => client[WS_METHODS.autodsmGetComponentConversation](input)),
       appendComponentConversation: (input) =>

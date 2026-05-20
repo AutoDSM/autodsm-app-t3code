@@ -130,6 +130,26 @@ describe("detectComposerTrigger", () => {
     expect(trigger?.kind).toBe("path");
     expect(trigger?.query).toBe("");
   });
+
+  it("detects brand-token trigger instead of path when brandTokenMode is enabled", () => {
+    const text = "Use @prim";
+    const trigger = detectComposerTrigger(text, text.length, { brandTokenMode: true });
+
+    expect(trigger).toEqual({
+      kind: "brand-token",
+      query: "prim",
+      rangeStart: "Use ".length,
+      rangeEnd: text.length,
+    });
+  });
+
+  it("still detects path trigger when brandTokenMode is disabled", () => {
+    const text = "Use @src/foo";
+    const trigger = detectComposerTrigger(text, text.length, { brandTokenMode: false });
+
+    expect(trigger?.kind).toBe("path");
+    expect(trigger?.query).toBe("src/foo");
+  });
 });
 
 describe("replaceTextRange", () => {

@@ -204,7 +204,10 @@ export function AutoDsmOnboardingLoading(): JSX.Element {
           setFatalError("Workspace metadata is inconsistent. Reset the workspace and try again.");
           return;
         }
-        const message = formatUnknownErrorMessage(error);
+        const message = formatUnknownErrorMessage(
+          error,
+          "Workspace creation failed. Please retry.",
+        );
         setFatalError(message);
         toastManager.add(
           stackedThreadToast({
@@ -260,12 +263,17 @@ export function AutoDsmOnboardingLoading(): JSX.Element {
         setStageIndex(0);
         setRetryNonce((value) => value + 1);
       } catch (resetError) {
-        setFatalError(formatUnknownErrorMessage(resetError));
+        setFatalError(
+          formatUnknownErrorMessage(resetError, "Workspace creation failed. Please retry."),
+        );
         toastManager.add(
           stackedThreadToast({
             type: "error",
             title: "Could not reset workspace",
-            description: formatUnknownErrorMessage(resetError),
+            description: formatUnknownErrorMessage(
+              resetError,
+              "Workspace creation failed. Please retry.",
+            ),
           }),
         );
       } finally {

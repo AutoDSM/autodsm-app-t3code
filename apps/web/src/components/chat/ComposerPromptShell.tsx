@@ -10,6 +10,7 @@ export interface ComposerPromptShellProps {
   readonly className?: string;
   readonly frameClassName?: string;
   readonly surfaceClassName?: string;
+  readonly footerClassName?: string;
 }
 
 export function ComposerPromptShell({
@@ -18,6 +19,7 @@ export function ComposerPromptShell({
   className,
   frameClassName,
   surfaceClassName,
+  footerClassName,
 }: ComposerPromptShellProps): JSX.Element {
   return (
     <div className={cn("mx-auto w-full min-w-0 max-w-208", className)}>
@@ -35,7 +37,10 @@ export function ComposerPromptShell({
         >
           {children}
           <div
-            className="flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-visible px-2.5 pb-2.5 sm:px-3 sm:pb-3"
+            className={cn(
+              "flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-visible px-2.5 pb-2.5 sm:px-3 sm:pb-3",
+              footerClassName,
+            )}
             data-composer-prompt-footer="true"
           >
             {footer}

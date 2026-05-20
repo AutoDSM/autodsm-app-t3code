@@ -12,6 +12,8 @@ import { useCallback, useEffect, useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useShallow } from "zustand/react/shallow";
 
+import { stackedThreadToast, toastManager } from "~/components/ui/toast";
+import { readEnvironmentApi } from "~/environmentApi";
 import {
   buildAutoDsmComponentAgentTabs,
   resolveAutoDsmAgentTabForThread,
@@ -25,10 +27,17 @@ import { canonicalAutoDsmComponentPreviewPath } from "~/lib/autoDsmComponentPrev
 import { reconcileAutoDsmThreadComponentPaths } from "~/lib/autoDsmReconcileComponentAgentPaths";
 import { getStarterComponentAgents } from "~/lib/autoDsmStarterComponentAgents";
 import { isAutoDsmStarterId } from "~/lib/autoDsmStarterCatalog";
-import { autodsmComponentAgentsQueryOptions } from "~/lib/autodsmWorkspaceReactQuery";
+import {
+  autodsmComponentAgentsQueryOptions,
+  autodsmWorkspaceQueryKeys,
+} from "~/lib/autodsmWorkspaceReactQuery";
+import { formatUnknownErrorMessage } from "~/lib/formatUnknownErrorMessage";
 import { invalidateComponentPreviewQueries } from "~/lib/invalidateComponentPreviewQueries";
+import { readLocalApi } from "~/localApi";
 import { selectSidebarThreadsForProjectRefs, useStore } from "~/store";
 import { buildThreadRouteParams } from "~/threadRoutes";
+import { useThreadActions } from "~/hooks/useThreadActions";
+import { useSettings } from "~/hooks/useSettings";
 import { useUiStateStore } from "~/uiStateStore";
 
 export interface UseAutoDsmComponentAgentTabsInput {
@@ -79,6 +88,7 @@ export function useAutoDsmComponentAgentTabs(input: UseAutoDsmComponentAgentTabs
   readonly tabs: readonly AutoDsmComponentAgentTab[];
   readonly activeTab: AutoDsmComponentAgentTab | null;
   readonly selectAgentTab: (threadRef: ReturnType<typeof scopeThreadRef>) => void;
+  readonly deleteAgentTab: (tab: AutoDsmComponentAgentTab) => Promise<void>;
 } {
   const { environmentId, projectId, cwd, isMaterialized, activeThreadKey } = input;
   const autoDsmThreadComponentPathById = useUiStateStore(
@@ -88,6 +98,8 @@ export function useAutoDsmComponentAgentTabs(input: UseAutoDsmComponentAgentTabs
     (state) => state.mergeAutoDsmThreadComponentPaths,
   );
   const starterId = useUiStateStore((state) => state.autodsmOnboarding.starterId);
+  const confirmThreadDelete = useSettings((settings) => settings.confirmThreadDelete);
+  const { deleteThread } = useThreadActions();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -226,9 +238,83 @@ export function useAutoDsmComponentAgentTabs(input: UseAutoDsmComponentAgentTabs
     [cwd, environmentId, navigate, queryClient, tabs],
   );
 
+  const deleteAgentTab = useCallback(
+    async (tab: AutoDsmComponentAgentTab) => {
+      if (!environmentId || !cwd) {
+        return;
+      }
+      const api = readEnvironmentApi(environmentId);
+      const localApi = readLocalApi();
+      if (!api) {
+        return;
+      }
+
+      if (confirmThreadDelete && localApi) {
+        const confirmed = await localApi.dialogs.confirm(
+          [
+            `Delete component "${tab.title}"?`,
+            "This permanently clears the agent thread and removes it from the workspace.",
+          ].join("\n"),
+        );
+        if (!confirmed) {
+          return;
+        }
+      }
+
+      const isActive = activeThreadKey === tab.threadKey;
+      const fallbackTab = tabs.find((entry) => entry.threadKey !== tab.threadKey) ?? null;
+
+      try {
+        await api.autodsm.removeComponentAgent({
+          cwd,
+          threadId: tab.threadRef.threadId,
+        });
+      } catch {
+        // Manifest cleanup is best-effort; thread deletion is authoritative.
+      }
+
+      try {
+        await deleteThread(tab.threadRef);
+      } catch (error) {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Failed to delete component",
+            description: formatUnknownErrorMessage(error),
+          }),
+        );
+        return;
+      }
+
+      void queryClient.invalidateQueries({
+        queryKey: autodsmWorkspaceQueryKeys.componentAgents(environmentId, cwd),
+      });
+
+      if (isActive) {
+        if (fallbackTab) {
+          selectAgentTab(fallbackTab.threadRef);
+        } else {
+          void navigate({ to: "/design-components", replace: true });
+        }
+      }
+    },
+    [
+      activeThreadKey,
+      confirmThreadDelete,
+      cwd,
+      deleteThread,
+      environmentId,
+      navigate,
+      queryClient,
+      selectAgentTab,
+      tabs,
+    ],
+  );
+
   return {
     tabs,
     activeTab,
     selectAgentTab,
+    deleteAgentTab,
   };
 }

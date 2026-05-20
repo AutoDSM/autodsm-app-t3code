@@ -7,7 +7,7 @@ import type {
   AutoDsmBrandTokenPatch,
 } from "@t3tools/contracts";
 import { CheckIcon, PencilIcon, PlusIcon, Trash2Icon, XIcon } from "lucide-react";
-import { useState, type JSX } from "react";
+import { useMemo, useState, type JSX } from "react";
 
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -19,6 +19,12 @@ import {
   TableHeader,
   TableRow,
 } from "~/components/ui/table";
+import { formatOklchValueAsRgb } from "~/lib/colorFormat";
+import {
+  buildColorTokenScope,
+  resolveColorTokenValue,
+  type ResolvedColorValue,
+} from "~/lib/colorTokenTiers";
 import {
   buildTokenDraft,
   EMPTY_TOKEN_DRAFT_FIELDS,
@@ -31,6 +37,12 @@ import {
 interface DesignTokenTableProps {
   readonly category: AutoDsmBrandTokenCategory;
   readonly tokens: readonly AutoDsmBrandToken[];
+  /**
+   * Full color-token list used to resolve `var(--…)` references when rendering
+   * semantic color rows. Only consulted for the color category.
+   */
+  readonly colorResolutionScope?: readonly AutoDsmBrandToken[];
+  readonly emptyMessage?: string;
   readonly onAdd: (draft: AutoDsmBrandTokenDraft) => Promise<void>;
   readonly onUpdate: (tokenId: string, patch: AutoDsmBrandTokenPatch) => Promise<void>;
   readonly onRemove: (tokenId: string) => void;
@@ -58,26 +70,68 @@ function ColorSwatch({ value }: { readonly value: string | undefined }): JSX.Ele
   );
 }
 
-function ColorCell({ value }: { readonly value: string | undefined }): JSX.Element {
-  if (!value) {
+interface ColorCellProps {
+  readonly value: string | undefined;
+  readonly resolution?: ResolvedColorValue;
+}
+
+function ColorCell({ value, resolution }: ColorCellProps): JSX.Element {
+  if (!value && !resolution?.referenceName) {
     return <span className="text-muted-foreground">—</span>;
   }
+  const resolvedColor = resolution?.value ?? null;
+  const referenceName = resolution?.referenceName ?? null;
+  const swatchValue = resolvedColor ?? (value && !referenceName ? value : undefined);
+  const displayText = resolvedColor
+    ? formatOklchValueAsRgb(resolvedColor)
+    : referenceName
+      ? "Unresolved"
+      : value
+        ? formatOklchValueAsRgb(value)
+        : "—";
+
   return (
-    <span className="flex items-center gap-2">
-      <ColorSwatch value={value} />
-      <span className="font-mono text-muted-foreground">{value}</span>
+    <span className="flex flex-col gap-0.5">
+      <span className="flex items-center gap-2">
+        <ColorSwatch value={swatchValue} />
+        <span className="font-mono text-muted-foreground">{displayText}</span>
+      </span>
+      {referenceName ? (
+        <span className="ml-6 font-mono text-xs text-muted-foreground">→ @{referenceName}</span>
+      ) : null}
     </span>
   );
 }
 
-function valueCells(category: AutoDsmBrandTokenCategory, token: AutoDsmBrandToken): JSX.Element[] {
+function colorResolutionFor(
+  token: AutoDsmBrandToken,
+  channel: "light" | "dark",
+  scope: ReadonlyMap<string, AutoDsmBrandToken> | null,
+): ResolvedColorValue | undefined {
+  if (scope === null) return undefined;
+  return resolveColorTokenValue(token, scope, channel);
+}
+
+function valueCells(
+  category: AutoDsmBrandTokenCategory,
+  token: AutoDsmBrandToken,
+  colorScope: ReadonlyMap<string, AutoDsmBrandToken> | null,
+): JSX.Element[] {
   if (category === "color") {
+    const lightResolution = colorResolutionFor(token, "light", colorScope);
+    const darkResolution = colorResolutionFor(token, "dark", colorScope);
     return [
       <TableCell key="light">
-        <ColorCell value={token.color?.light ?? token.value} />
+        <ColorCell
+          value={token.color?.light ?? token.value}
+          {...(lightResolution !== undefined ? { resolution: lightResolution } : {})}
+        />
       </TableCell>,
       <TableCell key="dark">
-        <ColorCell value={token.color?.dark} />
+        <ColorCell
+          value={token.color?.dark}
+          {...(darkResolution !== undefined ? { resolution: darkResolution } : {})}
+        />
       </TableCell>,
     ];
   }
@@ -117,6 +171,8 @@ function draftToPatch(
 export function DesignTokenTable({
   category,
   tokens,
+  colorResolutionScope,
+  emptyMessage,
   onAdd,
   onUpdate,
   onRemove,
@@ -131,7 +187,12 @@ export function DesignTokenTable({
   const [error, setError] = useState<string | null>(null);
 
   const valueColumns = VALUE_COLUMNS[category];
-  const columnCount = 2 + valueColumns.length + 1;
+  const columnCount = 1 + valueColumns.length + 1;
+
+  const colorScope = useMemo<ReadonlyMap<string, AutoDsmBrandToken> | null>(() => {
+    if (category !== "color" || !colorResolutionScope) return null;
+    return buildColorTokenScope(colorResolutionScope);
+  }, [category, colorResolutionScope]);
 
   const setField = (key: keyof TokenDraftFields, value: string): void => {
     setFields((prev) => ({ ...prev, [key]: value }));
@@ -247,7 +308,6 @@ export function DesignTokenTable({
           <TableHeader>
             <TableRow className="bg-muted/40">
               <TableHead>Name</TableHead>
-              <TableHead>Mention</TableHead>
               {valueColumns.map((label) => (
                 <TableHead key={label}>{label}</TableHead>
               ))}
@@ -258,7 +318,8 @@ export function DesignTokenTable({
             {tokens.length === 0 && !adding ? (
               <TableRow>
                 <TableCell colSpan={columnCount} className="text-muted-foreground">
-                  No {category} tokens yet — resync from your design system or add one below.
+                  {emptyMessage ??
+                    `No ${category} tokens yet — resync from your design system or add one below.`}
                 </TableCell>
               </TableRow>
             ) : null}
@@ -266,9 +327,13 @@ export function DesignTokenTable({
             {tokens.map((token) =>
               editingId === token.id ? (
                 <TableRow key={token.id} className="bg-muted/20">
-                  <TableCell>{draftInput("name", "token name")}</TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
-                    {tokenMentionHandle({ ...token, name: fields.name || token.name })}
+                  <TableCell>
+                    <div className="flex flex-col gap-1">
+                      {draftInput("name", "token name")}
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {tokenMentionHandle({ ...token, name: fields.name || token.name })}
+                      </span>
+                    </div>
                   </TableCell>
                   {draftValueCells()}
                   {draftActionCells(() => {
@@ -277,13 +342,15 @@ export function DesignTokenTable({
                 </TableRow>
               ) : (
                 <TableRow key={token.id}>
-                  <TableCell className="font-medium text-foreground">
-                    {tokenDisplayName(token)}
+                  <TableCell>
+                    <div className="flex flex-col">
+                      <span className="font-medium text-foreground">{tokenDisplayName(token)}</span>
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {tokenMentionHandle(token)}
+                      </span>
+                    </div>
                   </TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
-                    {tokenMentionHandle(token)}
-                  </TableCell>
-                  {valueCells(category, token)}
+                  {valueCells(category, token, colorScope)}
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
                       <Button
@@ -316,9 +383,13 @@ export function DesignTokenTable({
 
             {adding ? (
               <TableRow className="bg-muted/20">
-                <TableCell>{draftInput("name", "token name")}</TableCell>
-                <TableCell className="font-mono text-xs text-muted-foreground">
-                  {fields.name.trim().length > 0 ? `@${fields.name.trim()}` : "—"}
+                <TableCell>
+                  <div className="flex flex-col gap-1">
+                    {draftInput("name", "token name")}
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {fields.name.trim().length > 0 ? `@${fields.name.trim()}` : "—"}
+                    </span>
+                  </div>
                 </TableCell>
                 {draftValueCells()}
                 {draftActionCells(() => {

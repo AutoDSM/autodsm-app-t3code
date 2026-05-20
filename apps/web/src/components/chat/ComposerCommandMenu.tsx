@@ -1,4 +1,6 @@
 import {
+  type AutoDsmBrandToken,
+  type AutoDsmBrandTokenCategory,
   type ProjectEntry,
   type ProviderDriverKind,
   type ServerProviderSkill,
@@ -8,6 +10,8 @@ import { BotIcon } from "lucide-react";
 import { memo, useLayoutEffect, useMemo, useRef } from "react";
 
 import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../composer-logic";
+import { groupBrandTokenComposerMenuItems } from "~/lib/brandTokenComposerMenu";
+import { BrandTokenPreviewGlyph } from "../BrandTokenPreviewGlyph";
 import { formatProviderSkillInstallSource } from "~/providerSkillPresentation";
 import { cn } from "~/lib/utils";
 import {
@@ -51,6 +55,15 @@ export type ComposerCommandItem =
       skill: ServerProviderSkill;
       label: string;
       description: string;
+    }
+  | {
+      id: string;
+      type: "brand-token";
+      token: AutoDsmBrandToken;
+      tokenName: string;
+      category: AutoDsmBrandTokenCategory;
+      label: string;
+      description: string;
     };
 
 type ComposerCommandGroup = {
@@ -85,6 +98,13 @@ function groupCommandItems(
 ): ComposerCommandGroup[] {
   if (triggerKind === "skill") {
     return items.length > 0 ? [{ id: "skills", label: "Skills", items }] : [];
+  }
+  if (triggerKind === "brand-token") {
+    return groupBrandTokenComposerMenuItems(items).map((group) => ({
+      id: group.id,
+      label: group.label,
+      items: group.items,
+    }));
   }
   if (triggerKind !== "slash-command" || !groupSlashCommandSections) {
     return [{ id: "default", label: null, items }];
@@ -188,7 +208,9 @@ export const ComposerCommandMenu = memo(function ComposerCommandMenu(props: {
                   : (props.emptyStateText ??
                     (props.triggerKind === "path"
                       ? "No matching files or folders."
-                      : "No matching command."))}
+                      : props.triggerKind === "brand-token"
+                        ? "No matching design tokens."
+                        : "No matching command."))}
               </p>
             )}
           </div>
@@ -246,8 +268,18 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
           <SkillGlyph className="size-3.5" />
         </span>
       ) : null}
+      {props.item.type === "brand-token" ? (
+        <BrandTokenPreviewGlyph token={props.item.token} />
+      ) : null}
       <span className="flex min-w-0 flex-1 items-center gap-2">
-        <span className="shrink-0">{props.item.label}</span>
+        <span
+          className={cn(
+            "shrink-0",
+            props.item.type === "brand-token" && "font-mono text-[#8a38f5] dark:text-[#c084fc]",
+          )}
+        >
+          {props.item.label}
+        </span>
         <span className="min-w-0 flex-1 truncate text-muted-foreground/70 text-xs">
           {props.item.description}
         </span>

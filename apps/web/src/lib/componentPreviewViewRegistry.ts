@@ -36,6 +36,15 @@ export function detachAllComponentPreviewViews(): void {
     hideAndDetachComponentPreviewView(viewId);
   }
   activeViewIds.clear();
+  sweepStaleNativeComponentPreviewViews();
+}
+
+/**
+ * Clears orphaned native previews after a renderer reload. The desktop main
+ * process keeps WebContentsView children across reloads; this renderer-side
+ * bootstrap call ensures stale views never overlay the fresh UI.
+ */
+export function sweepStaleNativeComponentPreviewViews(): void {
   void window.desktopBridge?.detachAllComponentPreview?.();
 }
 

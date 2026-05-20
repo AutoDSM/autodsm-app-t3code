@@ -120,6 +120,8 @@ import {
   AutoDsmComponentAgentRegisterResult,
   AutoDsmComponentAgentUpdateInput,
   AutoDsmComponentAgentUpdateResult,
+  AutoDsmComponentAgentRemoveInput,
+  AutoDsmComponentAgentRemoveResult,
   AutoDsmComponentConversationAppendInput,
   AutoDsmComponentConversationAppendResult,
   AutoDsmComponentConversationGetInput,
@@ -224,6 +226,7 @@ export const WS_METHODS = {
   autodsmListComponentAgents: "autodsm.listComponentAgents",
   autodsmRegisterComponentAgent: "autodsm.registerComponentAgent",
   autodsmUpdateComponentAgent: "autodsm.updateComponentAgent",
+  autodsmRemoveComponentAgent: "autodsm.removeComponentAgent",
   autodsmGetComponentConversation: "autodsm.getComponentConversation",
   autodsmAppendComponentConversation: "autodsm.appendComponentConversation",
   autodsmGetSession: "autodsm.getSession",
@@ -648,6 +651,12 @@ export const WsAutodsmUpdateComponentAgentRpc = Rpc.make(WS_METHODS.autodsmUpdat
   error: AutoDsmRpcError,
 });
 
+export const WsAutodsmRemoveComponentAgentRpc = Rpc.make(WS_METHODS.autodsmRemoveComponentAgent, {
+  payload: AutoDsmComponentAgentRemoveInput,
+  success: AutoDsmComponentAgentRemoveResult,
+  error: AutoDsmRpcError,
+});
+
 export const WsAutodsmGetComponentConversationRpc = Rpc.make(
   WS_METHODS.autodsmGetComponentConversation,
   {
@@ -967,6 +976,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsAutodsmListComponentAgentsRpc,
   WsAutodsmRegisterComponentAgentRpc,
   WsAutodsmUpdateComponentAgentRpc,
+  WsAutodsmRemoveComponentAgentRpc,
   WsAutodsmGetComponentConversationRpc,
   WsAutodsmAppendComponentConversationRpc,
   WsAutodsmGetSessionRpc,

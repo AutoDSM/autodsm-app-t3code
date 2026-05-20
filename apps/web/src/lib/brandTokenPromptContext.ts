@@ -89,14 +89,34 @@ export function formatBrandTokenPromptAppendix(input: {
     }
   }
 
-  lines.push(`Active brand profile (${profile.tokens.length} tokens):`);
-  const preview = profile.tokens.slice(0, 32);
-  for (const token of preview) {
-    lines.push(formatTokenLine(token));
-  }
-  if (profile.tokens.length > preview.length) {
-    lines.push(`… and ${profile.tokens.length - preview.length} more`);
+  const shouldIncludeProfilePreview = referenced.length === 0 || referenced.length > 2;
+  if (shouldIncludeProfilePreview) {
+    lines.push(`Active brand profile (${profile.tokens.length} tokens):`);
+    const preview = profile.tokens.slice(0, 32);
+    for (const token of preview) {
+      lines.push(formatTokenLine(token));
+    }
+    if (profile.tokens.length > preview.length) {
+      lines.push(`… and ${profile.tokens.length - preview.length} more`);
+    }
   }
 
   return lines.join("\n");
+}
+
+/** Append the design-token appendix block when profile data is available. */
+export function appendBrandTokenContextToPrompt(input: {
+  readonly prompt: string;
+  readonly profile: AutoDsmBrandProfile | undefined;
+  /** When set, @token references are resolved from this text instead of `prompt`. */
+  readonly tokenSourcePrompt?: string;
+}): string {
+  const appendix = formatBrandTokenPromptAppendix({
+    profile: input.profile,
+    prompt: input.tokenSourcePrompt ?? input.prompt,
+  });
+  if (!appendix || appendix.trim().length === 0) {
+    return input.prompt;
+  }
+  return `${input.prompt}\n\n--- Design tokens ---\n${appendix}`;
 }

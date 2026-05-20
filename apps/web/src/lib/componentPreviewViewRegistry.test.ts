@@ -6,6 +6,7 @@ import {
   hideAndDetachComponentPreviewView,
   registerComponentPreviewView,
   resetComponentPreviewViewRegistryForTests,
+  sweepStaleNativeComponentPreviewViews,
   unregisterComponentPreviewView,
 } from "./componentPreviewViewRegistry";
 
@@ -47,5 +48,10 @@ describe("componentPreviewViewRegistry", () => {
     expect(window.desktopBridge?.detachComponentPreview).toHaveBeenCalledTimes(2);
     expect(window.desktopBridge?.detachAllComponentPreview).toHaveBeenCalledTimes(1);
     expect(getRegisteredComponentPreviewViewIds()).toEqual([]);
+  });
+
+  it("sweeps stale native previews on renderer bootstrap", () => {
+    sweepStaleNativeComponentPreviewViews();
+    expect(window.desktopBridge?.detachAllComponentPreview).toHaveBeenCalledTimes(1);
   });
 });

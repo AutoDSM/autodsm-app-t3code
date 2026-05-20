@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime";
 import type { ModelSelection, ProviderDriverKind } from "@t3tools/contracts";
 import type { UnifiedSettings } from "@t3tools/contracts/settings";
@@ -17,6 +18,8 @@ import { useSettings } from "~/hooks/useSettings";
 import { useSrcComponentsCatalog } from "~/hooks/useSrcComponentsCatalog";
 import { inferCreateComponentMetadata } from "~/lib/autoDsmCreateComponentRequest";
 import { formatCreateComponentOutgoingPrompt } from "~/lib/autoDsmCreateComponentPrompt";
+import { appendBrandTokenContextToPrompt } from "~/lib/brandTokenPromptContext";
+import { autodsmBrandProfileQueryOptions } from "~/lib/autodsmWorkspaceReactQuery";
 import { formatUnknownErrorMessage } from "~/lib/formatUnknownErrorMessage";
 import { DEFAULT_INTERACTION_MODE, DEFAULT_RUNTIME_MODE } from "~/types";
 import { newCommandId, newMessageId, newThreadId } from "~/lib/utils";
@@ -68,6 +71,13 @@ export function useAutoDsmCreateComponent(): UseAutoDsmCreateComponentResult {
     cwd,
     enabled: Boolean(cwd && environmentId),
   });
+  const brandProfileQuery = useQuery(
+    autodsmBrandProfileQueryOptions({
+      environmentId,
+      cwd,
+      enabled: Boolean(cwd && environmentId),
+    }),
+  );
 
   const providerInstanceEntries = useMemo(
     () => deriveProviderInstanceEntries(providers),
@@ -126,13 +136,17 @@ export function useAutoDsmCreateComponent(): UseAutoDsmCreateComponentResult {
         modelOptions: modelSelection.options,
       });
 
-      const outgoingPrompt = formatCreateComponentOutgoingPrompt({
-        provider: selectedProvider,
-        model: selectedModel,
-        models: selectedModels,
-        effort: composerState.promptEffort,
-        userPrompt: prompt,
-        componentPath: metadata.componentPath,
+      const outgoingPrompt = appendBrandTokenContextToPrompt({
+        prompt: formatCreateComponentOutgoingPrompt({
+          provider: selectedProvider,
+          model: selectedModel,
+          models: selectedModels,
+          effort: composerState.promptEffort,
+          userPrompt: prompt,
+          componentPath: metadata.componentPath,
+        }),
+        profile: brandProfileQuery.data,
+        tokenSourcePrompt: prompt,
       });
 
       const createdAt = new Date().toISOString();
@@ -236,6 +250,7 @@ export function useAutoDsmCreateComponent(): UseAutoDsmCreateComponentResult {
       }
     },
     [
+      brandProfileQuery.data,
       catalog.paths,
       cwd,
       environmentId,

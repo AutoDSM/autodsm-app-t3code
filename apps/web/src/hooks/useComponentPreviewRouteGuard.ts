@@ -1,8 +1,12 @@
 import { useLayoutEffect } from "react";
 import { useLocation, useSearch } from "@tanstack/react-router";
 
+import { parseDiffRouteSearch } from "~/diffRouteSearch";
 import { shouldDetachAllComponentPreviewsOnRoute } from "~/lib/componentPreviewRouteScope";
-import { detachAllComponentPreviewViews } from "~/lib/componentPreviewViewRegistry";
+import {
+  detachAllComponentPreviewViews,
+  sweepStaleNativeComponentPreviewViews,
+} from "~/lib/componentPreviewViewRegistry";
 
 /**
  * Ensures native Electron preview WebContentsViews never survive navigation to
@@ -10,16 +14,24 @@ import { detachAllComponentPreviewViews } from "~/lib/componentPreviewViewRegist
  */
 export function useComponentPreviewRouteGuard(): void {
   const pathname = useLocation({ select: (location) => location.pathname });
-  const search = useSearch({ strict: false });
+  const componentPath = useSearch({
+    strict: false,
+    select: (search) =>
+      parseDiffRouteSearch(search as Record<string, unknown>).componentPath ?? null,
+  });
+
+  useLayoutEffect(() => {
+    sweepStaleNativeComponentPreviewViews();
+  }, []);
 
   useLayoutEffect(() => {
     if (
       shouldDetachAllComponentPreviewsOnRoute({
         pathname,
-        search: search as Record<string, unknown>,
+        search: componentPath ? { componentPath } : {},
       })
     ) {
       detachAllComponentPreviewViews();
     }
-  }, [pathname, search]);
+  }, [componentPath, pathname]);
 }

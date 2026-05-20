@@ -1,7 +1,7 @@
 import { splitPromptIntoComposerSegments } from "./composer-editor-mentions";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 
-export type ComposerTriggerKind = "path" | "slash-command" | "skill";
+export type ComposerTriggerKind = "path" | "slash-command" | "skill" | "brand-token";
 export type ComposerSlashCommand = "model" | "plan" | "default";
 
 export interface ComposerTrigger {
@@ -239,7 +239,16 @@ export function isCollapsedCursorAdjacentToInlineToken(
 
 export const isCollapsedCursorAdjacentToMention = isCollapsedCursorAdjacentToInlineToken;
 
-export function detectComposerTrigger(text: string, cursorInput: number): ComposerTrigger | null {
+export interface DetectComposerTriggerOptions {
+  /** When true, `@` opens design-token picker instead of file-path mentions. */
+  readonly brandTokenMode?: boolean;
+}
+
+export function detectComposerTrigger(
+  text: string,
+  cursorInput: number,
+  options?: DetectComposerTriggerOptions,
+): ComposerTrigger | null {
   const cursor = clampCursor(text, cursorInput);
   const lineStart = text.lastIndexOf("\n", Math.max(0, cursor - 1)) + 1;
   const linePrefix = text.slice(lineStart, cursor);
@@ -269,6 +278,15 @@ export function detectComposerTrigger(text: string, cursorInput: number): Compos
   }
   if (!token.startsWith("@")) {
     return null;
+  }
+
+  if (options?.brandTokenMode) {
+    return {
+      kind: "brand-token",
+      query: token.slice(1),
+      rangeStart: tokenStart,
+      rangeEnd: cursor,
+    };
   }
 
   return {

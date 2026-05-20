@@ -12,6 +12,7 @@ import {
   AutoDsmChangeSetId,
   type AutoDsmComponentAgentRegisterInput,
   type AutoDsmComponentAgentUpdateInput,
+  type AutoDsmComponentAgentRemoveInput,
   type AutoDsmComponentAgentSource,
   type AutoDsmComponentId,
   type ThreadId,
@@ -160,6 +161,18 @@ export function updateComponentAgent(
   agents[index] = next;
   writeComponentAgentsManifest(input.cwd, { ...manifest, agents });
   return next;
+}
+
+export function removeComponentAgent(input: AutoDsmComponentAgentRemoveInput): {
+  removed: boolean;
+} {
+  const manifest = loadComponentAgentsManifest(input.cwd);
+  const nextAgents = manifest.agents.filter((agent) => agent.threadId !== input.threadId);
+  if (nextAgents.length === manifest.agents.length) {
+    return { removed: false };
+  }
+  writeComponentAgentsManifest(input.cwd, { ...manifest, agents: nextAgents });
+  return { removed: true };
 }
 
 export function findComponentAgentByThreadId(

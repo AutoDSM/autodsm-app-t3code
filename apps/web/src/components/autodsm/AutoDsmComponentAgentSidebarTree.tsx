@@ -23,12 +23,14 @@ export interface AutoDsmComponentAgentSidebarTreeProps {
   readonly activeThreadRef: Parameters<typeof AutoDsmComponentAgentTabBar>[0]["activeThreadRef"];
   readonly activeComponentPath?: string | null;
   readonly onSelectTab: Parameters<typeof AutoDsmComponentAgentTabBar>[0]["onSelectTab"];
+  readonly onDeleteTab?: Parameters<typeof AutoDsmComponentAgentTabBar>[0]["onDeleteTab"];
 }
 
 export const AutoDsmComponentAgentSidebarTree = memo(function AutoDsmComponentAgentSidebarTree(
   props: AutoDsmComponentAgentSidebarTreeProps,
 ) {
-  const { workspaceKey, groups, activeThreadRef, activeComponentPath, onSelectTab } = props;
+  const { workspaceKey, groups, activeThreadRef, activeComponentPath, onSelectTab, onDeleteTab } =
+    props;
   const expandedByWorkspace = useUiStateStore(
     (state) => state.autoDsmComponentAgentGroupExpandedByWorkspaceKey,
   );
@@ -79,20 +81,24 @@ export const AutoDsmComponentAgentSidebarTree = memo(function AutoDsmComponentAg
             <SidebarMenuButton
               type="button"
               size="sm"
-              className="gap-2 px-2 py-1.5 text-left text-sm text-muted-foreground hover:text-foreground"
+              className="w-full gap-2 px-2 py-1.5 text-left text-sm text-muted-foreground hover:text-foreground"
               onClick={handleGroupClick(group.groupId)}
               onKeyDown={handleGroupKeyDown(group.groupId)}
               data-testid={`autodsm-component-agent-group:${group.groupId}`}
             >
-              <ChevronRightIcon
-                className={cn("size-3.5 shrink-0 transition-transform", expanded && "rotate-90")}
-              />
               {expanded ? (
                 <FolderOpenIcon className="size-3.5 shrink-0 opacity-70" />
               ) : (
                 <FolderIcon className="size-3.5 shrink-0 opacity-70" />
               )}
-              <span className="truncate font-medium">{group.label}</span>
+              <span className="min-w-0 flex-1 truncate font-medium">{group.label}</span>
+              <ChevronRightIcon
+                aria-hidden
+                className={cn(
+                  "ml-auto size-3.5 shrink-0 transition-transform",
+                  expanded && "rotate-90",
+                )}
+              />
             </SidebarMenuButton>
             {expanded ? (
               <SidebarMenuSub className="mx-0 border-none px-0 py-0.5">
@@ -102,6 +108,7 @@ export const AutoDsmComponentAgentSidebarTree = memo(function AutoDsmComponentAg
                   activeThreadRef={activeThreadRef}
                   {...(activeComponentPath !== undefined ? { activeComponentPath } : {})}
                   onSelectTab={onSelectTab}
+                  {...(onDeleteTab ? { onDeleteTab } : {})}
                 />
               </SidebarMenuSub>
             ) : null}
@@ -115,6 +122,7 @@ export const AutoDsmComponentAgentSidebarTree = memo(function AutoDsmComponentAg
       handleGroupClick,
       handleGroupKeyDown,
       isGroupExpanded,
+      onDeleteTab,
       onSelectTab,
     ],
   );

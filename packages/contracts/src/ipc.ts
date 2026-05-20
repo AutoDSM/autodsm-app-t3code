@@ -74,6 +74,8 @@ import type {
   AutoDsmComponentAgentRegisterResult,
   AutoDsmComponentAgentUpdateInput,
   AutoDsmComponentAgentUpdateResult,
+  AutoDsmComponentAgentRemoveInput,
+  AutoDsmComponentAgentRemoveResult,
   AutoDsmComponentConversationAppendInput,
   AutoDsmComponentConversationAppendResult,
   AutoDsmComponentConversationGetInput,
@@ -729,6 +731,9 @@ export interface EnvironmentApi {
     updateComponentAgent: (
       input: AutoDsmComponentAgentUpdateInput,
     ) => Promise<AutoDsmComponentAgentUpdateResult>;
+    removeComponentAgent: (
+      input: AutoDsmComponentAgentRemoveInput,
+    ) => Promise<AutoDsmComponentAgentRemoveResult>;
     getComponentConversation: (
       input: AutoDsmComponentConversationGetInput,
     ) => Promise<AutoDsmComponentConversationGetResult>;

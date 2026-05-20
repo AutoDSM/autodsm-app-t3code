@@ -58,6 +58,7 @@ export function createEnvironmentApi(rpcClient: WsRpcClient): EnvironmentApi {
       listComponentAgents: rpcClient.autodsm.listComponentAgents,
       registerComponentAgent: rpcClient.autodsm.registerComponentAgent,
       updateComponentAgent: rpcClient.autodsm.updateComponentAgent,
+      removeComponentAgent: rpcClient.autodsm.removeComponentAgent,
       getComponentConversation: rpcClient.autodsm.getComponentConversation,
       appendComponentConversation: rpcClient.autodsm.appendComponentConversation,
       getSession: rpcClient.autodsm.getSession,

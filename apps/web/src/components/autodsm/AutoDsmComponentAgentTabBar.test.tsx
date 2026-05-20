@@ -125,6 +125,7 @@ describe("AutoDsmComponentAgentTabBar", () => {
 
     expect(html).toContain('data-testid="autodsm-component-agent-tab-bar"');
     expect(html).not.toContain('data-testid="autodsm-component-agent-sidebar"');
+    expect(html).toContain("pl-[1.875rem]");
     expect(html).toContain("Button");
   });
 });

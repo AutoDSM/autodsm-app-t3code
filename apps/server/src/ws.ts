@@ -1277,6 +1277,12 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
             autoDsm.updateComponentAgent(input),
             { "rpc.aggregate": "autodsm" },
           ),
+        [WS_METHODS.autodsmRemoveComponentAgent]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.autodsmRemoveComponentAgent,
+            autoDsm.removeComponentAgent(input),
+            { "rpc.aggregate": "autodsm" },
+          ),
         [WS_METHODS.autodsmGetComponentConversation]: (input) =>
           observeRpcEffect(
             WS_METHODS.autodsmGetComponentConversation,

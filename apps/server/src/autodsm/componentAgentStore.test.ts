@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   loadComponentAgentsManifest,
   registerComponentAgent,
+  removeComponentAgent,
   seedComponentAgentsManifest,
   updateComponentAgent,
 } from "./componentAgentStore.ts";
@@ -63,5 +64,27 @@ describe("componentAgentStore", () => {
     });
     expect(updated.status).toBe("active");
     expect(updated.componentId).toBe("cmp-primary-button");
+  });
+
+  it("removes a component agent by thread id", () => {
+    const cwd = makeSystemCwd();
+    const threadId = "11111111-1111-4111-8111-111111111111" as ThreadId;
+
+    seedComponentAgentsManifest({
+      cwd,
+      agents: [
+        {
+          threadId,
+          title: "Button",
+          componentPath: "/src/components/Button.tsx",
+          source: "starter",
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(removeComponentAgent({ cwd, threadId })).toEqual({ removed: true });
+    expect(loadComponentAgentsManifest(cwd).agents).toHaveLength(0);
+    expect(removeComponentAgent({ cwd, threadId })).toEqual({ removed: false });
   });
 });

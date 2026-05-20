@@ -185,7 +185,7 @@ import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { ChatLaunchEmptyState } from "./autodsm/ChatLaunchEmptyState";
 import { useAutoDsmWorkspace } from "~/hooks/useAutoDsmWorkspace";
 import { autodsmBrandProfileQueryOptions } from "~/lib/autodsmWorkspaceReactQuery";
-import { formatBrandTokenPromptAppendix } from "~/lib/brandTokenPromptContext";
+import { appendBrandTokenContextToPrompt } from "~/lib/brandTokenPromptContext";
 import { resolveEffectiveEnvMode, resolveEnvironmentOptionLabel } from "./BranchToolbar.logic";
 import { ProviderStatusBanner } from "./chat/ProviderStatusBanner";
 import { ThreadErrorBanner } from "./chat/ThreadErrorBanner";
@@ -2982,13 +2982,11 @@ export default function ChatView(props: ChatViewProps) {
     if (previewAppendix && previewAppendix.trim().length > 0) {
       outgoingMessageText = `${outgoingMessageText}\n\n--- Component preview ---\n${previewAppendix}`;
     }
-    const brandAppendix = formatBrandTokenPromptAppendix({
+    outgoingMessageText = appendBrandTokenContextToPrompt({
+      prompt: outgoingMessageText,
       profile: brandProfileRef.current,
-      prompt: messageTextForSend,
+      tokenSourcePrompt: messageTextForSend,
     });
-    if (brandAppendix && brandAppendix.trim().length > 0) {
-      outgoingMessageText = `${outgoingMessageText}\n\n--- Design tokens ---\n${brandAppendix}`;
-    }
     const turnAttachmentsPromise = Promise.all(
       composerImagesSnapshot.map(async (image) => ({
         type: "image" as const,

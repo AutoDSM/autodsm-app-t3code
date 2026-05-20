@@ -65,7 +65,7 @@ export const AutoDsmComponentAgentSidebarSection = memo(
 
     const isMaterialized = cwd !== null && isAutodsmMaterializedSystemCwd(cwd);
 
-    const { tabs, selectAgentTab } = useAutoDsmComponentAgentTabs({
+    const { tabs, selectAgentTab, deleteAgentTab } = useAutoDsmComponentAgentTabs({
       environmentId: isMaterialized ? environmentId : null,
       projectId: isMaterialized ? projectId : null,
       cwd: isMaterialized ? cwd : null,
@@ -116,6 +116,13 @@ export const AutoDsmComponentAgentSidebarSection = memo(
       [closeMobileSidebar, selectAgentTab],
     );
 
+    const handleDeleteTab = useCallback(
+      (tab: Parameters<typeof deleteAgentTab>[0]) => {
+        void deleteAgentTab(tab);
+      },
+      [deleteAgentTab],
+    );
+
     if (!isMaterialized || !cwd) {
       return null;
     }
@@ -150,6 +157,7 @@ export const AutoDsmComponentAgentSidebarSection = memo(
         activeThreadRef={routeThreadRef}
         activeComponentPath={componentPreviewPath}
         onSelectTab={handleSelectTab}
+        onDeleteTab={handleDeleteTab}
       />
     );
   },

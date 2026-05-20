@@ -953,6 +953,17 @@ export const AutoDsmComponentAgentUpdateResult = Schema.Struct({
 });
 export type AutoDsmComponentAgentUpdateResult = typeof AutoDsmComponentAgentUpdateResult.Type;
 
+export const AutoDsmComponentAgentRemoveInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  threadId: ThreadId,
+});
+export type AutoDsmComponentAgentRemoveInput = typeof AutoDsmComponentAgentRemoveInput.Type;
+
+export const AutoDsmComponentAgentRemoveResult = Schema.Struct({
+  removed: Schema.Boolean,
+});
+export type AutoDsmComponentAgentRemoveResult = typeof AutoDsmComponentAgentRemoveResult.Type;
+
 export const AutoDsmComponentConversationGetInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   componentPath: AutoDsmWorkspaceRelativePath,

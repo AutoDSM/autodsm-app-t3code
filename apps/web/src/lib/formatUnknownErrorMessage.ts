@@ -1,7 +1,10 @@
 /**
  * Best-effort user-facing text for values thrown from Effect `runPromise` / RPC clients.
  */
-export function formatUnknownErrorMessage(error: unknown): string {
+export function formatUnknownErrorMessage(
+  error: unknown,
+  fallback = "An unexpected error occurred.",
+): string {
   if (error instanceof Error && error.message.trim().length > 0) {
     return error.message.trim();
   }
@@ -10,6 +13,12 @@ export function formatUnknownErrorMessage(error: unknown): string {
   }
   if (typeof error === "object" && error !== null) {
     const record = error as Record<string, unknown>;
+    if (record._tag === "RpcClientError" || record._tag === "AutoDsmRpcError") {
+      const tagged = String(error).trim();
+      if (tagged.length > 0 && tagged !== "[object Object]") {
+        return tagged;
+      }
+    }
     const msg = record.message;
     if (typeof msg === "string" && msg.trim().length > 0) {
       return msg.trim();
@@ -23,7 +32,7 @@ export function formatUnknownErrorMessage(error: unknown): string {
     }
     const cause = record.cause;
     if (cause !== undefined && cause !== error) {
-      const nested = formatUnknownErrorMessage(cause);
+      const nested = formatUnknownErrorMessage(cause, fallback);
       if (nested.length > 0) {
         return nested;
       }
@@ -38,5 +47,5 @@ export function formatUnknownErrorMessage(error: unknown): string {
     }
   }
   const asString = String(error);
-  return asString !== "[object Object]" ? asString : "Workspace creation failed. Please retry.";
+  return asString !== "[object Object]" ? asString : fallback;
 }

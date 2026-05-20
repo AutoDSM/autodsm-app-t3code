@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { AutoDsmBrandProfile } from "@t3tools/contracts";
 
 import {
+  appendBrandTokenContextToPrompt,
   collectReferencedBrandTokenNames,
   formatBrandTokenPromptAppendix,
 } from "./brandTokenPromptContext";
@@ -38,13 +39,32 @@ describe("brandTokenPromptContext", () => {
     expect(collectReferencedBrandTokenNames("Use @src/foo.tsx", profile)).toEqual([]);
   });
 
-  it("formats a design-token appendix for agent prompts", () => {
+  it("formats a design-token appendix focused on referenced tokens", () => {
     const appendix = formatBrandTokenPromptAppendix({
       profile,
       prompt: "Style with @primary",
     });
     expect(appendix).toContain("Referenced tokens:");
     expect(appendix).toContain("@primary");
+    expect(appendix).not.toContain("Active brand profile");
+  });
+
+  it("includes the profile preview when no tokens are referenced", () => {
+    const appendix = formatBrandTokenPromptAppendix({
+      profile,
+      prompt: "Style the button",
+    });
     expect(appendix).toContain("Active brand profile");
+  });
+
+  it("appends the design-token block to outbound prompts", () => {
+    const result = appendBrandTokenContextToPrompt({
+      prompt: "Build a button",
+      profile,
+      tokenSourcePrompt: "Use @primary",
+    });
+    expect(result).toContain("Build a button");
+    expect(result).toContain("--- Design tokens ---");
+    expect(result).toContain("@primary");
   });
 });

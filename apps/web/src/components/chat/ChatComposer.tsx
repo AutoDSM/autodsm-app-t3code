@@ -33,6 +33,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useDebouncedValue } from "@tanstack/react-pacer";
 import { projectSearchEntriesQueryOptions } from "~/lib/projectReactQuery";
+import { buildBrandTokenComposerMenuItems } from "~/lib/brandTokenComposerMenu";
 import {
   clampCollapsedComposerCursor,
   type ComposerTrigger,
@@ -537,6 +538,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     keybindings,
     terminalOpen,
     gitCwd,
+    brandTokens: brandTokensProp,
     promptRef,
     composerRef,
     composerImagesRef,
@@ -568,6 +570,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // ------------------------------------------------------------------
   const composerDraft = useComposerThreadDraft(composerDraftTarget);
   const prompt = composerDraft.prompt;
+  const brandTokens = useMemo(() => brandTokensProp ?? [], [brandTokensProp]);
+  const brandTokenMode = brandTokens.length > 0;
+  const detectComposerTriggerWithMode = useCallback(
+    (text: string, cursor: number) => detectComposerTrigger(text, cursor, { brandTokenMode }),
+    [brandTokenMode],
+  );
   const composerImages = composerDraft.images;
   const composerTerminalContexts = composerDraft.terminalContexts;
   const nonPersistedComposerImageIds = composerDraft.nonPersistedImageIds;
@@ -788,7 +796,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     collapseExpandedComposerCursor(prompt, prompt.length),
   );
   const [composerTrigger, setComposerTrigger] = useState<ComposerTrigger | null>(() =>
-    detectComposerTrigger(prompt, prompt.length),
+    detectComposerTrigger(prompt, prompt.length, { brandTokenMode }),
   );
   const [composerHighlightedItemId, setComposerHighlightedItemId] = useState<string | null>(null);
   const [composerHighlightedSearchKey, setComposerHighlightedSearchKey] = useState<string | null>(
@@ -923,8 +931,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         }),
       );
     }
+    if (composerTrigger.kind === "brand-token") {
+      return buildBrandTokenComposerMenuItems(brandTokens, composerTrigger.query);
+    }
     return [];
-  }, [composerTrigger, selectedProvider, selectedProviderStatus, workspaceEntries]);
+  }, [brandTokens, composerTrigger, selectedProvider, selectedProviderStatus, workspaceEntries]);
 
   const composerMenuOpen = Boolean(composerTrigger);
   const composerMenuSearchKey = composerTrigger
@@ -997,6 +1008,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     if (composerTriggerKind === "skill") {
       return "No skills found. Try / to browse provider commands.";
     }
+    if (composerTriggerKind === "brand-token") {
+      return "No matching design tokens.";
+    }
     return composerTriggerKind === "path"
       ? "No matching files or folders."
       : "No matching command.";
@@ -1015,10 +1029,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       setComposerDraftPrompt(composerDraftTarget, nextPrompt);
       const nextCursor = collapseExpandedComposerCursor(nextPrompt, nextPrompt.length);
       setComposerCursor(nextCursor);
-      setComposerTrigger(detectComposerTrigger(nextPrompt, nextPrompt.length));
+      setComposerTrigger(detectComposerTriggerWithMode(nextPrompt, nextPrompt.length));
       scheduleComposerFocus();
     },
-    [composerDraftTarget, promptRef, scheduleComposerFocus, setComposerDraftPrompt],
+    [
+      composerDraftTarget,
+      detectComposerTriggerWithMode,
+      promptRef,
+      scheduleComposerFocus,
+      setComposerDraftPrompt,
+    ],
   );
 
   const providerTraitsMenuContent = renderProviderTraitsMenuContent({
@@ -1103,7 +1123,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       removeComposerDraftTerminalContext(composerDraftTarget, contextId);
       const nextCursor = collapseExpandedComposerCursor(removal.prompt, removal.cursor);
       setComposerCursor(nextCursor);
-      setComposerTrigger(detectComposerTrigger(removal.prompt, removal.cursor));
+      setComposerTrigger(detectComposerTriggerWithMode(removal.prompt, removal.cursor));
     },
     [
       composerDraftTarget,
@@ -1191,7 +1211,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const nextCursor = collapseExpandedComposerCursor(nextCustomAnswer, nextCustomAnswer.length);
     setComposerCursor(nextCursor);
     setComposerTrigger(
-      detectComposerTrigger(
+      detectComposerTriggerWithMode(
         nextCustomAnswer,
         expandCollapsedComposerCursor(nextCustomAnswer, nextCursor),
       ),
@@ -1210,10 +1230,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   useEffect(() => {
     setComposerHighlightedItemId(null);
     setComposerCursor(collapseExpandedComposerCursor(promptRef.current, promptRef.current.length));
-    setComposerTrigger(detectComposerTrigger(promptRef.current, promptRef.current.length));
+    setComposerTrigger(detectComposerTriggerWithMode(promptRef.current, promptRef.current.length));
     dragDepthRef.current = 0;
     setIsDragOverComposer(false);
-  }, [draftId, activeThreadId, promptRef]);
+  }, [draftId, activeThreadId, detectComposerTriggerWithMode, promptRef]);
 
   // ------------------------------------------------------------------
   // Footer compact layout observation
@@ -1355,7 +1375,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       if (activePendingProgress?.activeQuestion && pendingUserInputs.length > 0) {
         setComposerCursor(nextCursor);
         setComposerTrigger(
-          cursorAdjacentToMention ? null : detectComposerTrigger(nextPrompt, expandedCursor),
+          cursorAdjacentToMention
+            ? null
+            : detectComposerTriggerWithMode(nextPrompt, expandedCursor),
         );
         onChangeActivePendingUserInputCustomAnswer(
           activePendingProgress.activeQuestion.id,
@@ -1376,7 +1398,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }
       setComposerCursor(nextCursor);
       setComposerTrigger(
-        cursorAdjacentToMention ? null : detectComposerTrigger(nextPrompt, expandedCursor),
+        cursorAdjacentToMention ? null : detectComposerTriggerWithMode(nextPrompt, expandedCursor),
       );
     },
     [
@@ -1388,6 +1410,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerDraftTarget,
       composerTerminalContexts,
       setComposerDraftTerminalContexts,
+      detectComposerTriggerWithMode,
     ],
   );
 
@@ -1427,7 +1450,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         setPrompt(next.text);
       }
       setComposerCursor(nextCursor);
-      setComposerTrigger(detectComposerTrigger(next.text, nextExpandedCursor));
+      setComposerTrigger(detectComposerTriggerWithMode(next.text, nextExpandedCursor));
       if (options?.focusEditorAfterReplace !== false) {
         window.requestAnimationFrame(() => {
           composerEditorRef.current?.focusAt(nextCursor);
@@ -1438,6 +1461,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     [
       activePendingProgress?.activeQuestion,
       activePendingUserInput,
+      detectComposerTriggerWithMode,
       onChangeActivePendingUserInputCustomAnswer,
       promptRef,
       setPrompt,
@@ -1469,9 +1493,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const snapshot = readComposerSnapshot();
     return {
       snapshot,
-      trigger: detectComposerTrigger(snapshot.value, snapshot.expandedCursor),
+      trigger: detectComposerTriggerWithMode(snapshot.value, snapshot.expandedCursor),
     };
-  }, [readComposerSnapshot]);
+  }, [detectComposerTriggerWithMode, readComposerSnapshot]);
 
   const onSelectComposerItem = useCallback(
     (item: ComposerCommandItem) => {
@@ -1556,6 +1580,23 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           setComposerHighlightedItemId(null);
         }
         return;
+      }
+      if (item.type === "brand-token") {
+        const replacement = `@${item.tokenName} `;
+        const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
+          snapshot.value,
+          trigger.rangeEnd,
+          replacement,
+        );
+        const applied = applyPromptReplacement(
+          trigger.rangeStart,
+          replacementRangeEnd,
+          replacement,
+          { expectedText: snapshot.value.slice(trigger.rangeStart, replacementRangeEnd) },
+        );
+        if (applied) {
+          setComposerHighlightedItemId(null);
+        }
       }
     },
     [applyPromptReplacement, handleInteractionModeChange, resolveActiveComposerTrigger],
@@ -1867,7 +1908,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         setComposerCursor(cursor);
         setComposerTrigger(
           options?.detectTrigger
-            ? detectComposerTrigger(
+            ? detectComposerTriggerWithMode(
                 promptForState,
                 expandCollapsedComposerCursor(promptForState, cursor),
               )
@@ -1904,7 +1945,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         if (!inserted) return;
         promptRef.current = insertion.prompt;
         setComposerCursor(nextCollapsedCursor);
-        setComposerTrigger(detectComposerTrigger(insertion.prompt, insertion.cursor));
+        setComposerTrigger(detectComposerTriggerWithMode(insertion.prompt, insertion.cursor));
         window.requestAnimationFrame(() => {
           composerEditorRef.current?.focusAt(nextCollapsedCursor);
         });
@@ -2246,7 +2287,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     : []
                 }
                 skills={selectedProviderStatus?.skills ?? []}
-                brandTokens={props.brandTokens ?? []}
+                brandTokens={brandTokens}
+                disableBrandTokenTypeahead={brandTokenMode}
                 {...(showMobilePendingAnswerActions ? { className: "max-sm:pb-11" } : {})}
                 onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
                 onChange={onPromptChange}
@@ -2269,7 +2311,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                               }`
                             : phase === "disconnected"
                               ? "Ask for follow-up changes or attach images"
-                              : "Ask anything, @tag files/folders, $use skills, or / for commands"
+                              : brandTokenMode
+                                ? "Ask anything, @ for design tokens, $use skills, or / for commands"
+                                : "Ask anything, @tag files/folders, $use skills, or / for commands"
                 }
                 disabled={
                   isConnecting ||

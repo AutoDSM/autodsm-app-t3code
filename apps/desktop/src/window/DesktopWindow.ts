@@ -244,6 +244,9 @@ const make = Effect.gen(function* () {
     window.webContents.on("did-finish-load", () => {
       window.setTitle(environment.displayName);
     });
+    window.webContents.on("did-start-loading", () => {
+      sweepPreviewViewsForWindow(window);
+    });
     window.webContents.on(
       "did-fail-load",
       (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {

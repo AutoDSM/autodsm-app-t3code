@@ -20,11 +20,15 @@ import { readLocalApi } from "~/localApi";
 
 export type AutoDsmComponentAgentTabBarLayout = "horizontal" | "sidebar" | "sidebar-embedded";
 
+/** Align embedded tab text with folder label text (px-2 + size-3.5 icon + gap-2). */
+const SIDEBAR_EMBEDDED_TAB_INSET_CLASS = "pl-[1.875rem] pr-2";
+
 export interface AutoDsmComponentAgentTabBarProps {
   readonly tabs: readonly AutoDsmComponentAgentTab[];
   readonly activeThreadRef: ScopedThreadRef | null;
   readonly activeComponentPath?: string | null;
   readonly onSelectTab: (threadRef: ScopedThreadRef) => void;
+  readonly onDeleteTab?: (tab: AutoDsmComponentAgentTab) => void | Promise<void>;
   /** Horizontal strip above chat (default) or vertical sidebar list. */
   readonly layout?: AutoDsmComponentAgentTabBarLayout;
 }
@@ -130,10 +134,11 @@ function ComponentAgentTabButton(input: {
   readonly tab: AutoDsmComponentAgentTab;
   readonly selected: boolean;
   readonly onSelectTab: (threadRef: ScopedThreadRef) => void;
+  readonly onDeleteTab?: (tab: AutoDsmComponentAgentTab) => void | Promise<void>;
   readonly layout: AutoDsmComponentAgentTabBarLayout;
   readonly rename: ComponentAgentTabRenameState;
 }) {
-  const { tab, selected, onSelectTab, layout, rename } = input;
+  const { tab, selected, onSelectTab, onDeleteTab, layout, rename } = input;
   const isRenaming = rename.renamingThreadKey === tab.threadKey;
 
   const handleContextMenu = useCallback(
@@ -144,16 +149,26 @@ function ComponentAgentTabButton(input: {
         if (!api) {
           return;
         }
-        const clicked = await api.contextMenu.show([{ id: "rename", label: "Rename component" }], {
-          x: event.clientX,
-          y: event.clientY,
-        });
+        const clicked = await api.contextMenu.show(
+          [
+            { id: "rename", label: "Rename component" },
+            ...(onDeleteTab ? [{ id: "delete", label: "Delete", destructive: true as const }] : []),
+          ],
+          {
+            x: event.clientX,
+            y: event.clientY,
+          },
+        );
         if (clicked === "rename") {
           rename.beginRename(tab);
+          return;
+        }
+        if (clicked === "delete" && onDeleteTab) {
+          void onDeleteTab(tab);
         }
       })();
     },
-    [rename, tab],
+    [onDeleteTab, rename, tab],
   );
 
   const handleRenameInputRef = useCallback(
@@ -209,7 +224,7 @@ function ComponentAgentTabButton(input: {
     <span className="truncate">{tab.title}</span>
   );
 
-  if (layout === "sidebar") {
+  if (layout === "sidebar" || layout === "sidebar-embedded") {
     return (
       <SidebarMenuItem key={tab.threadKey} className="list-none">
         <SidebarMenuButton
@@ -223,7 +238,8 @@ function ComponentAgentTabButton(input: {
           isActive={selected}
           className={cn(
             resolveThreadRowClassName({ isActive: selected, isSelected: false }),
-            "gap-2 px-2 py-1.5 text-left text-sm",
+            "gap-2 py-1.5 text-left text-sm",
+            layout === "sidebar-embedded" ? SIDEBAR_EMBEDDED_TAB_INSET_CLASS : "px-2",
           )}
           onClick={() => {
             if (!isRenaming) {
@@ -266,7 +282,14 @@ function ComponentAgentTabButton(input: {
 }
 
 export function AutoDsmComponentAgentTabBar(props: AutoDsmComponentAgentTabBarProps) {
-  const { tabs, activeThreadRef, activeComponentPath, onSelectTab, layout = "horizontal" } = props;
+  const {
+    tabs,
+    activeThreadRef,
+    activeComponentPath,
+    onSelectTab,
+    onDeleteTab,
+    layout = "horizontal",
+  } = props;
   const rename = useComponentAgentTabRename();
   const activeTabByPath = resolveAutoDsmAgentTabForPath(activeComponentPath, tabs);
 
@@ -286,7 +309,7 @@ export function AutoDsmComponentAgentTabBar(props: AutoDsmComponentAgentTabBarPr
       <SidebarMenu
         role="tablist"
         aria-label="Component agents"
-        className="gap-0"
+        className="gap-0.5"
         data-testid="autodsm-component-agent-tab-bar"
       >
         {tabs.map((tab) => {
@@ -297,7 +320,8 @@ export function AutoDsmComponentAgentTabBar(props: AutoDsmComponentAgentTabBarPr
               tab={tab}
               selected={selected}
               onSelectTab={onSelectTab}
-              layout="sidebar"
+              {...(onDeleteTab ? { onDeleteTab } : {})}
+              layout="sidebar-embedded"
               rename={rename}
             />
           );
@@ -330,6 +354,7 @@ export function AutoDsmComponentAgentTabBar(props: AutoDsmComponentAgentTabBarPr
                 tab={tab}
                 selected={selected}
                 onSelectTab={onSelectTab}
+                {...(onDeleteTab ? { onDeleteTab } : {})}
                 layout="sidebar"
                 rename={rename}
               />
