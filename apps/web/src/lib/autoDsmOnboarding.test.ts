@@ -1,4 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("./supabase/config", () => ({
+  isSupabaseAuthConfigured: vi.fn(() => false),
+}));
+
+vi.mock("./devSupabaseBypass", () => ({
+  allowFakeOnboardingAuth: vi.fn(() => true),
+}));
 
 import {
   canReenterProjectCreationOnboarding,
@@ -9,6 +17,8 @@ import {
   loadingLabelForStarter,
   mergeAutodsmOnboarding,
   normalizeDesignSystemName,
+  isOnboardingAuthSatisfied,
+  resolveOnboardingBetaStatus,
   parseOnboardingPath,
   resolveChatIndexOnboarding,
   sanitizeAutodsmOnboarding,
@@ -36,6 +46,7 @@ describe("sanitizeAutodsmOnboarding", () => {
       designSystemName: "Acme DS",
       buildMethod: "library",
       starterId: "shadcn-ui",
+      briefUploaded: false,
     });
   });
 
@@ -53,6 +64,27 @@ describe("sanitizeAutodsmOnboarding", () => {
       designSystemName: null,
       buildMethod: null,
       starterId: null,
+      briefUploaded: false,
+    });
+  });
+
+  it("preserves briefUploaded when present in persisted state", () => {
+    expect(
+      sanitizeAutodsmOnboarding({
+        completed: true,
+        fakeAuthProvider: "github",
+        designSystemName: "Acme",
+        buildMethod: "scratch",
+        starterId: "modern-starter",
+        briefUploaded: true,
+      }),
+    ).toEqual({
+      completed: true,
+      fakeAuthProvider: "github",
+      designSystemName: "Acme",
+      buildMethod: "scratch",
+      starterId: "modern-starter",
+      briefUploaded: true,
     });
   });
 });
@@ -146,6 +178,28 @@ describe("getOnboardingGuardRedirect", () => {
     expect(getOnboardingGuardRedirect("loading", lib)).toBe("/onboarding/method");
     expect(getOnboardingGuardRedirect("loading", { ...lib, starterId: "shadcn-ui" })).toBeNull();
   });
+
+  it("guards brief by starterId — both scratch and library flows are admitted", () => {
+    const authed = { ...fresh, fakeAuthProvider: "github" as const, designSystemName: "Acme" };
+    // Without a starter, send the user back to pick a build method.
+    expect(getOnboardingGuardRedirect("brief", authed)).toBe("/onboarding/method");
+    // Scratch flow: starter is auto-set to modern-starter — brief is reachable.
+    expect(
+      getOnboardingGuardRedirect("brief", {
+        ...authed,
+        buildMethod: "scratch",
+        starterId: "modern-starter",
+      }),
+    ).toBeNull();
+    // Library flow: starter set to a chosen library — brief is also reachable.
+    expect(
+      getOnboardingGuardRedirect("brief", {
+        ...authed,
+        buildMethod: "library",
+        starterId: "shadcn-ui",
+      }),
+    ).toBeNull();
+  });
 });
 
 describe("resolveChatIndexOnboarding", () => {
@@ -184,6 +238,15 @@ describe("resolveChatIndexOnboarding", () => {
         { hasActiveWorkspaceProject: false, hasDesignSystemOnDisk: false },
       ),
     ).toBeNull();
+  });
+
+  it("auto-opens a matched workspace even when localStorage says not completed", () => {
+    expect(
+      resolveChatIndexOnboarding(defaultAutodsmOnboardingState, true, true, {
+        hasActiveWorkspaceProject: false,
+        hasDesignSystemOnDisk: true,
+      }),
+    ).toEqual({ kind: "home", to: "/home" });
   });
 });
 
@@ -232,10 +295,81 @@ describe("getOnboardingGuardRedirect completed re-entry", () => {
   });
 });
 
+describe("isOnboardingAuthSatisfied", () => {
+  it("is true when fakeAuthProvider is set in dev fallback mode", () => {
+    expect(
+      isOnboardingAuthSatisfied(
+        {
+          ...defaultAutodsmOnboardingState,
+          fakeAuthProvider: "github",
+        },
+        {
+          supabaseConfigured: false,
+          supabaseSessionActive: false,
+          supabaseBetaStatus: null,
+        },
+      ),
+    ).toBe(true);
+  });
+
+  it("requires an approved Supabase session when configured", () => {
+    expect(
+      isOnboardingAuthSatisfied(defaultAutodsmOnboardingState, {
+        supabaseConfigured: true,
+        supabaseSessionActive: true,
+        supabaseBetaStatus: "approved",
+      }),
+    ).toBe(true);
+    expect(
+      isOnboardingAuthSatisfied(
+        { ...defaultAutodsmOnboardingState, fakeAuthProvider: "github" },
+        {
+          supabaseConfigured: true,
+          supabaseSessionActive: true,
+          supabaseBetaStatus: "pending",
+        },
+      ),
+    ).toBe(false);
+  });
+
+  it("allows create when session is active and beta status is null", () => {
+    expect(
+      isOnboardingAuthSatisfied(defaultAutodsmOnboardingState, {
+        supabaseConfigured: true,
+        supabaseSessionActive: true,
+        supabaseBetaStatus: null,
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects create when Supabase session is missing", () => {
+    expect(
+      isOnboardingAuthSatisfied(defaultAutodsmOnboardingState, {
+        supabaseConfigured: true,
+        supabaseSessionActive: false,
+        supabaseBetaStatus: null,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("resolveOnboardingBetaStatus", () => {
+  it("defaults null to approved", () => {
+    expect(resolveOnboardingBetaStatus(null)).toBe("approved");
+  });
+
+  it("preserves pending and rejected", () => {
+    expect(resolveOnboardingBetaStatus("pending")).toBe("pending");
+    expect(resolveOnboardingBetaStatus("rejected")).toBe("rejected");
+  });
+});
+
 describe("parseOnboardingPath", () => {
   it("maps known routes", () => {
     expect(parseOnboardingPath("/onboarding/welcome")).toBe("welcome");
+    expect(parseOnboardingPath("/onboarding/beta")).toBe("beta");
     expect(parseOnboardingPath("/onboarding/name")).toBe("name");
+    expect(parseOnboardingPath("/onboarding/brief")).toBe("brief");
     expect(parseOnboardingPath("/onboarding/loading")).toBe("loading");
   });
 

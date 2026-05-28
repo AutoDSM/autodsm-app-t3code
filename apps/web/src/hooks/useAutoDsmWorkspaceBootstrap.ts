@@ -9,7 +9,7 @@ import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { readEnvironmentApi } from "~/environmentApi";
 import { usePrimaryEnvironmentId } from "~/environments/primary";
 import { useHandleNewThread } from "~/hooks/useHandleNewThread";
-import { usePrimaryAutoDsmDesignSystemHistory } from "~/hooks/useAutoDsmDesignSystemHistory";
+import { useOwnerScopedPrimaryAutoDsmDesignSystemHistory } from "~/hooks/useAutoDsmDesignSystemHistory";
 import { useSettings } from "~/hooks/useSettings";
 import { hasAutoDsmDesignSystem } from "~/lib/autoDsmDesignSystemPresence";
 import { bootstrapAutoDsmWorkspaceFromDisk } from "~/lib/autoDsmWorkspaceBootstrap";
@@ -24,7 +24,7 @@ export function useAutoDsmSingleDesignSystemMode(): {
   readonly hasDesignSystemOnDisk: boolean;
   readonly isHistoryLoading: boolean;
 } {
-  const history = usePrimaryAutoDsmDesignSystemHistory();
+  const history = useOwnerScopedPrimaryAutoDsmDesignSystemHistory();
   return {
     hasDesignSystemOnDisk: hasAutoDsmDesignSystem(history.rows),
     isHistoryLoading: history.isLoading,
@@ -39,7 +39,7 @@ export function useAutoDsmWorkspaceBootstrap(options?: { readonly enabled?: bool
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
-  const history = usePrimaryAutoDsmDesignSystemHistory();
+  const history = useOwnerScopedPrimaryAutoDsmDesignSystemHistory();
   const settings = useSettings();
   const { handleNewThread } = useHandleNewThread();
   const projects = useStore(useShallow((state) => selectProjectsAcrossEnvironments(state)));

@@ -5,8 +5,10 @@ import { ChatLaunchEmptyState } from "~/components/autodsm/ChatLaunchEmptyState"
 import { ElectronAuthenticatedChatLanding } from "~/components/autodsm/ElectronAuthenticatedChatLanding";
 import { ElectronWorkspaceBootstrapLoading } from "~/components/autodsm/ElectronWorkspaceBootstrapLoading";
 import { resolveChatIndexOnboarding } from "~/lib/autoDsmOnboarding";
-import { fetchHasAutoDsmDesignSystemOnDisk } from "~/lib/autoDsmDesignSystemPresence";
-import { isDevPairingBypassActive } from "~/lib/devPairingBypass";
+import {
+  fetchAutoDsmDesignSystemOnDisk,
+  resolveOwnerSubjectFromSupabase,
+} from "~/lib/autoDsmDesignSystemPresence";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
 import { SidebarInset, SidebarTrigger } from "../components/ui/sidebar";
@@ -27,9 +29,6 @@ function ChatIndexRouteView() {
 
   if (isElectron) {
     if (authGateState.status === "requires-auth") {
-      if (isDevPairingBypassActive(authGateState.auth)) {
-        return <ElectronWorkspaceBootstrapLoading authPending />;
-      }
       return <ElectronWorkspaceBootstrapLoading authFailed />;
     }
     if (authGateState.status === "authenticated") {
@@ -52,7 +51,10 @@ export const Route = createFileRoute("/_chat/")({
     const onboarding = useUiStateStore.getState().autodsmOnboarding;
     const hasActiveWorkspaceProject =
       useUiStateStore.getState().autoDsmWorkspaceProjectRef !== null;
-    const hasDesignSystemOnDisk = await fetchHasAutoDsmDesignSystemOnDisk();
+    const ownerSubject = await resolveOwnerSubjectFromSupabase();
+    const { hasMatch: hasDesignSystemOnDisk } = await fetchAutoDsmDesignSystemOnDisk({
+      ownerSubject,
+    });
     const resolution = resolveChatIndexOnboarding(onboarding, true, true, {
       hasActiveWorkspaceProject,
       hasDesignSystemOnDisk,
@@ -90,7 +92,7 @@ function HostedStaticOnboardingState() {
                 Connect an environment to get started
               </EmptyTitle>
               <EmptyDescription className="mt-2 text-sm leading-relaxed text-muted-foreground/78">
-                Open a pairing link from your T3 Code desktop app or add a reachable backend
+                Open a pairing link from your AutoDSM desktop app or add a reachable backend
                 manually. Your saved environments stay in this browser.
               </EmptyDescription>
               <div className="mt-6 flex justify-center">

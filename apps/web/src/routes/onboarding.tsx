@@ -4,8 +4,13 @@ import {
   canReenterProjectCreationOnboarding,
   getOnboardingGuardRedirect,
   parseOnboardingPath,
+  readOnboardingAuthContext,
 } from "~/lib/autoDsmOnboarding";
-import { fetchHasAutoDsmDesignSystemOnDisk } from "~/lib/autoDsmDesignSystemPresence";
+import {
+  fetchAutoDsmDesignSystemOnDisk,
+  resolveOwnerSubjectFromSupabase,
+} from "~/lib/autoDsmDesignSystemPresence";
+import { isElectron } from "~/env";
 import { shouldSkipPairingRedirect } from "~/lib/devPairingBypass";
 import { useUiStateStore } from "~/uiStateStore";
 
@@ -14,6 +19,7 @@ export const Route = createFileRoute("/onboarding")({
     if (
       context.authGateState.status !== "authenticated" &&
       context.authGateState.status !== "hosted-static" &&
+      !isElectron &&
       !shouldSkipPairingRedirect(
         context.authGateState.status === "requires-auth" ? context.authGateState.auth : undefined,
       )
@@ -27,8 +33,19 @@ export const Route = createFileRoute("/onboarding")({
     }
 
     const onboarding = useUiStateStore.getState().autodsmOnboarding;
-    const hasDesignSystemOnDisk = await fetchHasAutoDsmDesignSystemOnDisk();
+    const ownerSubject = await resolveOwnerSubjectFromSupabase();
+    const { hasMatch: hasDesignSystemOnDisk } = await fetchAutoDsmDesignSystemOnDisk({
+      ownerSubject,
+    });
+    const authContext = await readOnboardingAuthContext();
     const parsed = parseOnboardingPath(path);
+
+    // Presence is the source of truth: if the signed-in user already has a
+    // matching design system on disk, skip the wizard entirely and let bootstrap
+    // open it from /home (Electron) or / (browser).
+    if (hasDesignSystemOnDisk) {
+      throw redirect({ to: isElectron ? "/home" : "/", replace: true });
+    }
 
     const allowCompletedReentry = canReenterProjectCreationOnboarding({
       onboardingCompleted: onboarding.completed,
@@ -46,6 +63,7 @@ export const Route = createFileRoute("/onboarding")({
 
     const guardTarget = getOnboardingGuardRedirect(parsed, onboarding, {
       allowCompletedReentry,
+      auth: authContext,
     });
     if (guardTarget && guardTarget !== path) {
       throw redirect({ to: guardTarget, replace: true });

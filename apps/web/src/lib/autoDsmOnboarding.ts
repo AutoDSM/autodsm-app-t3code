@@ -1,3 +1,7 @@
+import { allowFakeOnboardingAuth } from "./devSupabaseBypass";
+import { isSupabaseAuthConfigured } from "./supabase/config";
+import type { AutoDsmBetaStatus } from "./supabase/profile";
+
 import type { AutoDsmStarterId } from "./autoDsmStarterCatalog";
 import {
   getStarterCatalogEntry,
@@ -15,6 +19,12 @@ export interface AutoDsmOnboardingState {
   designSystemName: string | null;
   buildMethod: AutoDsmOnboardingBuildMethod | null;
   starterId: AutoDsmStarterId | null;
+  /**
+   * Whether the user uploaded (or skipped) a `design.md` brief during onboarding.
+   * Set to `true` on Skip OR on successful brief upload+apply. Soft signal —
+   * never gates forward navigation; brief is optional.
+   */
+  briefUploaded: boolean;
 }
 
 export const defaultAutodsmOnboardingState: AutoDsmOnboardingState = {
@@ -23,15 +33,113 @@ export const defaultAutodsmOnboardingState: AutoDsmOnboardingState = {
   designSystemName: null,
   buildMethod: null,
   starterId: null,
+  briefUploaded: false,
 };
 
 export type AutoDsmOnboardingRouteSegment =
   | "welcome"
+  | "beta"
   | "create"
   | "name"
   | "method"
   | "library"
+  | "brief"
   | "loading";
+
+export interface OnboardingAuthContext {
+  readonly supabaseConfigured: boolean;
+  readonly supabaseSessionActive: boolean;
+  readonly supabaseBetaStatus: AutoDsmBetaStatus | null;
+}
+
+/** Maps missing beta rows to approved (matches profile.ts fallback for OAuth users). */
+export function resolveOnboardingBetaStatus(
+  betaStatus: AutoDsmBetaStatus | null,
+): AutoDsmBetaStatus | null {
+  if (betaStatus === "pending" || betaStatus === "rejected") {
+    return betaStatus;
+  }
+  return "approved";
+}
+
+/** Whether onboarding auth step is satisfied (Supabase session or dev fake auth). */
+export function isOnboardingAuthSatisfied(
+  state: AutoDsmOnboardingState,
+  auth: OnboardingAuthContext = {
+    supabaseConfigured: isSupabaseAuthConfigured(),
+    supabaseSessionActive: false,
+    supabaseBetaStatus: null,
+  },
+): boolean {
+  if (auth.supabaseConfigured) {
+    return (
+      auth.supabaseSessionActive &&
+      resolveOnboardingBetaStatus(auth.supabaseBetaStatus) === "approved"
+    );
+  }
+  if (allowFakeOnboardingAuth()) {
+    return state.fakeAuthProvider !== null;
+  }
+  return false;
+}
+
+function isOnboardingBetaGateSatisfied(
+  auth: OnboardingAuthContext = {
+    supabaseConfigured: isSupabaseAuthConfigured(),
+    supabaseSessionActive: false,
+    supabaseBetaStatus: null,
+  },
+): boolean {
+  return (
+    auth.supabaseConfigured && auth.supabaseSessionActive && auth.supabaseBetaStatus === "pending"
+  );
+}
+
+export async function readOnboardingAuthContext(): Promise<OnboardingAuthContext> {
+  const supabaseConfigured = isSupabaseAuthConfigured();
+  if (!supabaseConfigured) {
+    return {
+      supabaseConfigured: false,
+      supabaseSessionActive: false,
+      supabaseBetaStatus: null,
+    };
+  }
+
+  const { getSupabaseBrowserClient } = await import("./supabase/browserClient");
+  const { fetchCurrentSupabaseProfile } = await import("./supabase/auth");
+  const client = getSupabaseBrowserClient();
+  if (client === null) {
+    return {
+      supabaseConfigured: true,
+      supabaseSessionActive: false,
+      supabaseBetaStatus: null,
+    };
+  }
+
+  const { data: sessionData, error: sessionError } = await client.auth.getSession();
+  if (sessionError || !sessionData.session) {
+    return {
+      supabaseConfigured: true,
+      supabaseSessionActive: false,
+      supabaseBetaStatus: null,
+    };
+  }
+
+  try {
+    const profile = await fetchCurrentSupabaseProfile();
+    return {
+      supabaseConfigured: true,
+      supabaseSessionActive: true,
+      supabaseBetaStatus: resolveOnboardingBetaStatus(profile?.betaStatus ?? null),
+    };
+  } catch {
+    return {
+      supabaseConfigured: true,
+      supabaseSessionActive: true,
+      supabaseBetaStatus: "approved",
+    };
+  }
+}
 
 const DESIGN_SYSTEM_NAME_MAX_LENGTH = 120;
 
@@ -60,10 +168,12 @@ export function parseOnboardingPath(pathname: string): AutoDsmOnboardingRouteSeg
   const tail = trimmed.slice(prefix.length);
   switch (tail) {
     case "welcome":
+    case "beta":
     case "create":
     case "name":
     case "method":
     case "library":
+    case "brief":
     case "loading":
       return tail;
     default:
@@ -89,12 +199,14 @@ export function sanitizeAutodsmOnboarding(raw: unknown): AutoDsmOnboardingState 
   const starterId = isAutoDsmStarterId(o.starterId) ? o.starterId : null;
   const designSystemName =
     typeof o.designSystemName === "string" ? normalizeDesignSystemName(o.designSystemName) : null;
+  const briefUploaded = o.briefUploaded === true;
   return {
     completed,
     fakeAuthProvider,
     designSystemName,
     buildMethod,
     starterId,
+    briefUploaded,
   };
 }
 
@@ -133,33 +245,52 @@ export function loadingLabelForStarter(starterId: AutoDsmStarterId | null): stri
 export function getOnboardingGuardRedirect(
   segment: AutoDsmOnboardingRouteSegment,
   state: AutoDsmOnboardingState,
-  input?: { readonly allowCompletedReentry?: boolean },
+  input?: {
+    readonly allowCompletedReentry?: boolean;
+    readonly auth?: OnboardingAuthContext;
+  },
 ): `/onboarding/${AutoDsmOnboardingRouteSegment}` | null {
+  const authContext = input?.auth;
   if (state.completed && !input?.allowCompletedReentry) {
     return "/onboarding/welcome";
   }
   switch (segment) {
     case "welcome":
       return null;
+    case "beta":
+      return isOnboardingBetaGateSatisfied(authContext) ? null : "/onboarding/welcome";
     case "create":
-      return state.fakeAuthProvider ? null : "/onboarding/welcome";
+      return isOnboardingAuthSatisfied(state, authContext) ? null : "/onboarding/welcome";
     case "name":
-      return state.fakeAuthProvider ? null : "/onboarding/welcome";
+      return isOnboardingAuthSatisfied(state, authContext) ? null : "/onboarding/welcome";
     case "method":
-      if (!state.fakeAuthProvider) {
+      if (!isOnboardingAuthSatisfied(state, authContext)) {
         return "/onboarding/welcome";
       }
       return hasDesignSystemName(state) ? null : "/onboarding/name";
     case "library":
-      if (!state.fakeAuthProvider) {
+      if (!isOnboardingAuthSatisfied(state, authContext)) {
         return "/onboarding/welcome";
       }
       if (!hasDesignSystemName(state)) {
         return "/onboarding/name";
       }
       return state.buildMethod === "library" ? null : "/onboarding/method";
+    case "brief":
+      // `brief` is the shared landing page for BOTH the scratch and library
+      // flows. Precondition is just that a starterId has been chosen, which
+      // is true for scratch (auto-set to `modern-starter`) and for library
+      // (set to the picked library id). The brief itself is optional — this
+      // case never blocks forward navigation.
+      if (!isOnboardingAuthSatisfied(state, authContext)) {
+        return "/onboarding/welcome";
+      }
+      if (!hasDesignSystemName(state)) {
+        return "/onboarding/name";
+      }
+      return state.starterId ? null : "/onboarding/method";
     case "loading":
-      if (!state.fakeAuthProvider) {
+      if (!isOnboardingAuthSatisfied(state, authContext)) {
         return "/onboarding/welcome";
       }
       if (!hasDesignSystemName(state)) {
@@ -181,6 +312,7 @@ export function isAutoDsmProjectCreationOnboardingSegment(
     segment === "name" ||
     segment === "method" ||
     segment === "library" ||
+    segment === "brief" ||
     segment === "loading"
   );
 }
@@ -209,8 +341,15 @@ export function resolveChatIndexOnboarding(
   if (!isElectron || !isAuthenticated) {
     return null;
   }
+  // Presence-driven: an owner-matched workspace on disk always wins, even when
+  // localStorage says `completed === false` (cleared storage, fresh browser,
+  // upgraded build). This is the disk-truth signal — `hasActiveWorkspaceProject`
+  // alone (a localStorage flag) is not enough to override the wizard.
+  if (input.hasDesignSystemOnDisk) {
+    return { kind: "home", to: "/home" };
+  }
   if (onboarding.completed) {
-    if (input.hasActiveWorkspaceProject || input.hasDesignSystemOnDisk) {
+    if (input.hasActiveWorkspaceProject) {
       return { kind: "home", to: "/home" };
     }
     return null;
@@ -229,6 +368,7 @@ export function mergeAutodsmOnboarding(
       patch.designSystemName !== undefined ? patch.designSystemName : current.designSystemName,
     buildMethod: patch.buildMethod ?? current.buildMethod,
     starterId: patch.starterId !== undefined ? patch.starterId : current.starterId,
+    briefUploaded: patch.briefUploaded ?? current.briefUploaded,
   };
 }
 
