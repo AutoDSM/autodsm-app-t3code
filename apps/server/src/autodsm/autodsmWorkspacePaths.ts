@@ -2,6 +2,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import {
+  componentAgentsPath as persistenceComponentAgentsPath,
+  workspaceMetaPath as persistenceWorkspaceMetaPath,
+} from "./autodsmPersistencePaths.ts";
+
 export interface AutodsmWorkspaceLayout {
   readonly systemDir: string;
   readonly workspaceRoot: string;
@@ -30,12 +35,12 @@ export function resolveAutodsmWorkspaceLayout(cwd: string): AutodsmWorkspaceLayo
   const systemDir = path.resolve(cwd);
   const workspaceRoot = path.dirname(systemDir);
   const workspaceId = path.basename(workspaceRoot);
-  const metaPath = path.join(workspaceRoot, "meta.json");
+  const metaPath = persistenceWorkspaceMetaPath(workspaceRoot);
   return {
     systemDir,
     workspaceRoot,
     workspaceId: readWorkspaceIdFromMeta(metaPath, workspaceId),
-    componentAgentsPath: path.join(workspaceRoot, "component-agents.json"),
+    componentAgentsPath: persistenceComponentAgentsPath(workspaceRoot),
     conversationsDir: path.join(workspaceRoot, "conversations"),
     sessionsDir: path.join(workspaceRoot, "sessions"),
     prsDir: path.join(workspaceRoot, "prs"),

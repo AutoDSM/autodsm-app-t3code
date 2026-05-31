@@ -386,6 +386,15 @@ function createTextGeneration(overrides: Partial<FakeGitTextGeneration> = {}): T
             }),
         ),
       ),
+    // Git-manager tests don't exercise the design-brief proposer; fail-on-call
+    // is enough to satisfy the interface and surface accidental usage.
+    generateDesignBriefProposal: () =>
+      Effect.fail(
+        new TextGenerationError({
+          operation: "generateDesignBriefProposal",
+          detail: "design-brief stub not configured for git-manager tests",
+        }),
+      ),
   };
 }
 

@@ -18,18 +18,21 @@ export function isDevPairingBypassActive(auth: ServerAuthDescriptor): boolean {
 }
 
 /** Electron ships a silent desktop-bootstrap token; never send builders to /pair. */
-export function shouldSkipPairingRedirectForElectronProduct(): boolean {
+export function isElectronProductAuthPath(): boolean {
   return (
     typeof window !== "undefined" &&
     (window.desktopBridge !== undefined || window.nativeApi !== undefined)
   );
 }
 
+/** @deprecated Use {@link isElectronProductAuthPath} */
+export const shouldSkipPairingRedirectForElectronProduct = isElectronProductAuthPath;
+
 export function shouldSkipPairingRedirect(auth?: ServerAuthDescriptor): boolean {
   if (auth && isDevPairingBypassActive(auth)) {
     return true;
   }
-  if (shouldSkipPairingRedirectForElectronProduct()) {
+  if (isElectronProductAuthPath()) {
     return true;
   }
   return isLocalDevLoopbackTarget();

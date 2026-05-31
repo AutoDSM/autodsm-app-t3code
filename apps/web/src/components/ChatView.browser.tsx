@@ -1856,7 +1856,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
     });
 
     try {
-      await expect.element(page.getByText("autoDSM")).toBeInTheDocument();
+      await expect.element(page.getByText("AutoDSM")).toBeInTheDocument();
       await expect.element(page.getByRole("button", { name: "Open folder" })).toBeInTheDocument();
       await expect.element(page.getByRole("button", { name: "Clone repo" })).toBeInTheDocument();
       expect(document.body.innerText).not.toContain("Pick a thread to continue");
@@ -5982,7 +5982,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
           model: "gpt-5.3-codex-spark",
         },
         planMarkdown:
-          "# Imaginary Long-Range Plan: T3 Code Adaptive Orchestration and Safe-Delay Execution Initiative",
+          "# Imaginary Long-Range Plan: AutoDSM Adaptive Orchestration and Safe-Delay Execution Initiative",
       }),
     });
 
@@ -6015,7 +6015,7 @@ describe("ChatView timeline estimator parity (full app)", () => {
           model: "gpt-5.3-codex-spark",
         },
         planMarkdown:
-          "# Imaginary Long-Range Plan: T3 Code Adaptive Orchestration and Safe-Delay Execution Initiative",
+          "# Imaginary Long-Range Plan: AutoDSM Adaptive Orchestration and Safe-Delay Execution Initiative",
       }),
     });
 

@@ -56,6 +56,9 @@ import {
   ProjectBuildComponentPreviewError,
   ProjectBuildComponentPreviewInput,
   ProjectBuildComponentPreviewResult,
+  ProjectBuildComponentVariantShowcaseError,
+  ProjectBuildComponentVariantShowcaseInput,
+  ProjectBuildComponentVariantShowcaseResult,
   ProjectReadFileError,
   ProjectReadFileInput,
   ProjectReadFileResult,
@@ -72,8 +75,12 @@ import {
   AutoDsmBrandTokenRemoveInput,
   AutoDsmBrandTokenResyncInput,
   AutoDsmBrandTokenUpdateInput,
+  AutoDsmInstallIconLibraryInput,
+  AutoDsmInstallIconLibraryResult,
   AutoDsmWorkspacePreviewCssResult,
   AutoDsmChangeSetCreateInput,
+  AutoDsmChangeSetFromTurnDiffInput,
+  AutoDsmChangeSetHunkDecisionInput,
   AutoDsmChangeSetIdInput,
   AutoDsmChangeSetMutationResult,
   AutoDsmComponentRegistry,
@@ -122,6 +129,8 @@ import {
   AutoDsmComponentAgentUpdateResult,
   AutoDsmComponentAgentRemoveInput,
   AutoDsmComponentAgentRemoveResult,
+  AutoDsmComponentAgentResyncInput,
+  AutoDsmComponentAgentResyncResult,
   AutoDsmComponentConversationAppendInput,
   AutoDsmComponentConversationAppendResult,
   AutoDsmComponentConversationGetInput,
@@ -139,6 +148,13 @@ import {
   AutoDsmPullRequestListResult,
   AutoDsmPublishedExportInput,
   AutoDsmPublishedExportResult,
+  AutoDsmDesignBriefUploadInput,
+  AutoDsmDesignBriefUploadResult,
+  AutoDsmDesignBriefProposeInput,
+  AutoDsmDesignBriefProposeResult,
+  AutoDsmDesignBriefApplyInput,
+  AutoDsmDesignBriefApplyResult,
+  AutoDsmDesignBriefGetResult,
 } from "./autodsmArtifacts.ts";
 import {
   TerminalClearInput,
@@ -192,6 +208,7 @@ export const WS_METHODS = {
   projectsReadFile: "projects.readFile",
   projectsAnalyzeReactComponent: "projects.analyzeReactComponent",
   projectsBuildComponentPreview: "projects.buildComponentPreview",
+  projectsBuildComponentVariantShowcase: "projects.buildComponentVariantShowcase",
 
   autodsmGetProjectProfile: "autodsm.getProjectProfile",
   autodsmGetBrandProfile: "autodsm.getBrandProfile",
@@ -199,6 +216,7 @@ export const WS_METHODS = {
   autodsmRemoveBrandToken: "autodsm.removeBrandToken",
   autodsmUpdateBrandToken: "autodsm.updateBrandToken",
   autodsmResyncBrandTokens: "autodsm.resyncBrandTokens",
+  autodsmInstallIconLibrary: "autodsm.installIconLibrary",
   autodsmGetWorkspacePreviewCss: "autodsm.getWorkspacePreviewCss",
   autodsmGetComponentRegistry: "autodsm.getComponentRegistry",
   autodsmRunWorkspaceBuild: "autodsm.runWorkspaceBuild",
@@ -217,7 +235,14 @@ export const WS_METHODS = {
   autodsmChangeSetPreview: "autodsm.changeSetPreview",
   autodsmChangeSetApply: "autodsm.changeSetApply",
   autodsmChangeSetRollback: "autodsm.changeSetRollback",
+  autodsmChangeSetCreateFromTurnDiff: "autodsm.changeSetCreateFromTurnDiff",
+  autodsmChangeSetSetHunkDecisions: "autodsm.changeSetSetHunkDecisions",
+  autodsmChangeSetApplyDecisions: "autodsm.changeSetApplyDecisions",
   autodsmAssembleGenerationPlan: "autodsm.assembleGenerationPlan",
+  autodsmUploadDesignBrief: "autodsm.uploadDesignBrief",
+  autodsmProposeDesignBrief: "autodsm.proposeDesignBrief",
+  autodsmApplyDesignBriefProposal: "autodsm.applyDesignBriefProposal",
+  autodsmGetDesignBrief: "autodsm.getDesignBrief",
   autodsmExportPublishedExport: "autodsm.exportPublishedExport",
   autodsmExportPublishedSnapshot: "autodsm.exportPublishedSnapshot",
   autodsmCreatePullRequest: "autodsm.createPullRequest",
@@ -227,6 +252,7 @@ export const WS_METHODS = {
   autodsmRegisterComponentAgent: "autodsm.registerComponentAgent",
   autodsmUpdateComponentAgent: "autodsm.updateComponentAgent",
   autodsmRemoveComponentAgent: "autodsm.removeComponentAgent",
+  autodsmResyncComponentAgents: "autodsm.resyncComponentAgents",
   autodsmGetComponentConversation: "autodsm.getComponentConversation",
   autodsmAppendComponentConversation: "autodsm.appendComponentConversation",
   autodsmGetSession: "autodsm.getSession",
@@ -431,6 +457,15 @@ export const WsProjectsBuildComponentPreviewRpc = Rpc.make(
   },
 );
 
+export const WsProjectsBuildComponentVariantShowcaseRpc = Rpc.make(
+  WS_METHODS.projectsBuildComponentVariantShowcase,
+  {
+    payload: ProjectBuildComponentVariantShowcaseInput,
+    success: ProjectBuildComponentVariantShowcaseResult,
+    error: ProjectBuildComponentVariantShowcaseError,
+  },
+);
+
 export const WsAutodsmGetProjectProfileRpc = Rpc.make(WS_METHODS.autodsmGetProjectProfile, {
   payload: AutoDsmCwdInput,
   success: AutoDsmProjectProfile,
@@ -464,6 +499,39 @@ export const WsAutodsmUpdateBrandTokenRpc = Rpc.make(WS_METHODS.autodsmUpdateBra
 export const WsAutodsmResyncBrandTokensRpc = Rpc.make(WS_METHODS.autodsmResyncBrandTokens, {
   payload: AutoDsmBrandTokenResyncInput,
   success: AutoDsmBrandProfile,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmUploadDesignBriefRpc = Rpc.make(WS_METHODS.autodsmUploadDesignBrief, {
+  payload: AutoDsmDesignBriefUploadInput,
+  success: AutoDsmDesignBriefUploadResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmProposeDesignBriefRpc = Rpc.make(WS_METHODS.autodsmProposeDesignBrief, {
+  payload: AutoDsmDesignBriefProposeInput,
+  success: AutoDsmDesignBriefProposeResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmApplyDesignBriefProposalRpc = Rpc.make(
+  WS_METHODS.autodsmApplyDesignBriefProposal,
+  {
+    payload: AutoDsmDesignBriefApplyInput,
+    success: AutoDsmDesignBriefApplyResult,
+    error: AutoDsmRpcError,
+  },
+);
+
+export const WsAutodsmGetDesignBriefRpc = Rpc.make(WS_METHODS.autodsmGetDesignBrief, {
+  payload: AutoDsmCwdInput,
+  success: AutoDsmDesignBriefGetResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmInstallIconLibraryRpc = Rpc.make(WS_METHODS.autodsmInstallIconLibrary, {
+  payload: AutoDsmInstallIconLibraryInput,
+  success: AutoDsmInstallIconLibraryResult,
   error: AutoDsmRpcError,
 });
 
@@ -588,6 +656,33 @@ export const WsAutodsmChangeSetRollbackRpc = Rpc.make(WS_METHODS.autodsmChangeSe
   error: AutoDsmRpcError,
 });
 
+export const WsAutodsmChangeSetCreateFromTurnDiffRpc = Rpc.make(
+  WS_METHODS.autodsmChangeSetCreateFromTurnDiff,
+  {
+    payload: AutoDsmChangeSetFromTurnDiffInput,
+    success: AutoDsmChangeSetMutationResult,
+    error: AutoDsmRpcError,
+  },
+);
+
+export const WsAutodsmChangeSetSetHunkDecisionsRpc = Rpc.make(
+  WS_METHODS.autodsmChangeSetSetHunkDecisions,
+  {
+    payload: AutoDsmChangeSetHunkDecisionInput,
+    success: AutoDsmChangeSetMutationResult,
+    error: AutoDsmRpcError,
+  },
+);
+
+export const WsAutodsmChangeSetApplyDecisionsRpc = Rpc.make(
+  WS_METHODS.autodsmChangeSetApplyDecisions,
+  {
+    payload: AutoDsmChangeSetIdInput,
+    success: AutoDsmChangeSetMutationResult,
+    error: AutoDsmRpcError,
+  },
+);
+
 export const WsAutodsmAssembleGenerationPlanRpc = Rpc.make(
   WS_METHODS.autodsmAssembleGenerationPlan,
   {
@@ -654,6 +749,12 @@ export const WsAutodsmUpdateComponentAgentRpc = Rpc.make(WS_METHODS.autodsmUpdat
 export const WsAutodsmRemoveComponentAgentRpc = Rpc.make(WS_METHODS.autodsmRemoveComponentAgent, {
   payload: AutoDsmComponentAgentRemoveInput,
   success: AutoDsmComponentAgentRemoveResult,
+  error: AutoDsmRpcError,
+});
+
+export const WsAutodsmResyncComponentAgentsRpc = Rpc.make(WS_METHODS.autodsmResyncComponentAgents, {
+  payload: AutoDsmComponentAgentResyncInput,
+  success: AutoDsmComponentAgentResyncResult,
   error: AutoDsmRpcError,
 });
 
@@ -943,12 +1044,18 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsReadFileRpc,
   WsProjectsAnalyzeReactComponentRpc,
   WsProjectsBuildComponentPreviewRpc,
+  WsProjectsBuildComponentVariantShowcaseRpc,
   WsAutodsmGetProjectProfileRpc,
   WsAutodsmGetBrandProfileRpc,
   WsAutodsmAddBrandTokenRpc,
   WsAutodsmRemoveBrandTokenRpc,
   WsAutodsmUpdateBrandTokenRpc,
   WsAutodsmResyncBrandTokensRpc,
+  WsAutodsmUploadDesignBriefRpc,
+  WsAutodsmProposeDesignBriefRpc,
+  WsAutodsmApplyDesignBriefProposalRpc,
+  WsAutodsmGetDesignBriefRpc,
+  WsAutodsmInstallIconLibraryRpc,
   WsAutodsmGetWorkspacePreviewCssRpc,
   WsAutodsmGetComponentRegistryRpc,
   WsAutodsmRunWorkspaceBuildRpc,
@@ -967,6 +1074,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsAutodsmChangeSetPreviewRpc,
   WsAutodsmChangeSetApplyRpc,
   WsAutodsmChangeSetRollbackRpc,
+  WsAutodsmChangeSetCreateFromTurnDiffRpc,
+  WsAutodsmChangeSetSetHunkDecisionsRpc,
+  WsAutodsmChangeSetApplyDecisionsRpc,
   WsAutodsmAssembleGenerationPlanRpc,
   WsAutodsmExportPublishedExportRpc,
   WsAutodsmExportPublishedSnapshotRpc,
@@ -977,6 +1087,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsAutodsmRegisterComponentAgentRpc,
   WsAutodsmUpdateComponentAgentRpc,
   WsAutodsmRemoveComponentAgentRpc,
+  WsAutodsmResyncComponentAgentsRpc,
   WsAutodsmGetComponentConversationRpc,
   WsAutodsmAppendComponentConversationRpc,
   WsAutodsmGetSessionRpc,

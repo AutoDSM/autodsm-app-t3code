@@ -1,7 +1,11 @@
 // @effect-diagnostics preferSchemaOverJson:off
+// @effect-diagnostics globalDate:off
 // @effect-diagnostics globalDateInEffect:off
+// @effect-diagnostics globalConsoleInEffect:off
+// @effect-diagnostics globalTimers:off
 // @effect-diagnostics nodeBuiltinImport:off
 import * as crypto from "node:crypto";
+import { existsSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
@@ -22,9 +26,22 @@ import {
   type AutoDsmBrandTokenRemoveInput,
   type AutoDsmBrandTokenResyncInput,
   type AutoDsmBrandTokenUpdateInput,
+  type AutoDsmDesignBriefApplyInput,
+  type AutoDsmDesignBriefApplyResult,
+  type AutoDsmDesignBriefProposal,
+  type AutoDsmDesignBriefProposeInput,
+  type AutoDsmDesignBriefProposeResult,
+  type AutoDsmDesignBriefUploadInput,
+  type AutoDsmDesignBriefUploadResult,
+  type AutoDsmDesignBriefGetResult,
+  type AutoDsmInstallIconLibraryInput,
+  type AutoDsmInstallIconLibraryResult,
   type AutoDsmChangeOp,
   type AutoDsmChangeSet,
+  type AutoDsmChangeHunk,
   type AutoDsmChangeSetCreateInput,
+  type AutoDsmChangeSetFromTurnDiffInput,
+  type AutoDsmChangeSetHunkDecisionInput,
   type AutoDsmChangeSetIdInput,
   type AutoDsmChangeSetMutationResult,
   type AutoDsmChangeSetPreview,
@@ -84,6 +101,8 @@ import {
   type AutoDsmComponentAgentUpdateResult,
   type AutoDsmComponentAgentRemoveInput,
   type AutoDsmComponentAgentRemoveResult,
+  type AutoDsmComponentAgentResyncInput,
+  type AutoDsmComponentAgentResyncResult,
   type AutoDsmComponentConversationAppendInput,
   type AutoDsmComponentConversationAppendResult,
   type AutoDsmComponentConversationGetInput,
@@ -98,6 +117,7 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import { resolveAutodsmSessionBranchName } from "@t3tools/shared/git";
+import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -107,7 +127,10 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
 import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
-import { analyzeReactComponentFile } from "../componentPreview/analyzeReactComponent.ts";
+import {
+  analyzeReactComponentBatch,
+  analyzeReactComponentFile,
+} from "../componentPreview/analyzeReactComponent.ts";
 import { bundleComponentPreview } from "../componentPreview/bundleComponentPreview.ts";
 import { WorkspaceEntries } from "../workspace/Services/WorkspaceEntries.ts";
 import {
@@ -141,6 +164,14 @@ import {
   resyncBrandTokens,
   updateBrandToken,
 } from "./autoDsmTokenStore.ts";
+import { loadDesignBrief, writeDesignBrief } from "./designBriefStore.ts";
+import {
+  makeDesignBriefGenerateFromTextGeneration,
+  proposeFromBrief,
+} from "./designBriefProposer.ts";
+import { TextGeneration } from "../textGeneration/TextGeneration.ts";
+import { applyProposal } from "./designBriefApplier.ts";
+import { installIconLibrary } from "./autoDsmIconLibrary.ts";
 import { readWorkspacePreviewCss } from "./readWorkspacePreviewCss.ts";
 import { PROVIDER_PACK_CATALOG, matchProviderPacks } from "./providerPackCatalog.ts";
 import {
@@ -148,6 +179,7 @@ import {
   executeWorkspacePackageBuild,
   workspaceBuildResultToRegistryGate,
 } from "./workspaceBuild.ts";
+import { isWorkspaceCwdInsideStagingDirectory } from "./autodsmWorkspaceStaging.ts";
 import {
   peekAutodsmPreviewSidecar,
   startAutodsmPreviewSidecar,
@@ -163,6 +195,7 @@ import {
   reconcileComponentIdsFromRegistry,
   registerComponentAgent as registerComponentAgentRecord,
   removeComponentAgent as removeComponentAgentRecord,
+  resyncComponentAgentsFromTemplate,
   updateComponentAgent as updateComponentAgentRecord,
 } from "./componentAgentStore.ts";
 import { appendComponentConversation, loadComponentConversation } from "./conversationStore.ts";
@@ -172,6 +205,11 @@ import {
   persistChangeSet,
   resolveSessionIdForChangeSet,
 } from "./changeSetStore.ts";
+import {
+  deriveChangeSetOpsAndHunks,
+  reconstructFileWithDecisions,
+  summarizeDecisions,
+} from "./changeSetHunks.ts";
 import { createSession, loadSession } from "./sessionStore.ts";
 import { createPullRequest, listPullRequests } from "./pullRequestStore.ts";
 import { exportPublishedExport } from "./publishedExportStore.ts";
@@ -264,6 +302,21 @@ export interface AutoDsmWorkspaceShape {
   readonly resyncBrandTokens: (
     input: AutoDsmBrandTokenResyncInput,
   ) => Effect.Effect<AutoDsmBrandProfile, AutoDsmRpcError>;
+  readonly uploadDesignBrief: (
+    input: AutoDsmDesignBriefUploadInput,
+  ) => Effect.Effect<AutoDsmDesignBriefUploadResult, AutoDsmRpcError>;
+  readonly proposeDesignBrief: (
+    input: AutoDsmDesignBriefProposeInput,
+  ) => Effect.Effect<AutoDsmDesignBriefProposeResult, AutoDsmRpcError>;
+  readonly applyDesignBriefProposal: (
+    input: AutoDsmDesignBriefApplyInput,
+  ) => Effect.Effect<AutoDsmDesignBriefApplyResult, AutoDsmRpcError>;
+  readonly getDesignBrief: (
+    input: AutoDsmCwdInput,
+  ) => Effect.Effect<AutoDsmDesignBriefGetResult, AutoDsmRpcError>;
+  readonly installIconLibrary: (
+    input: AutoDsmInstallIconLibraryInput,
+  ) => Effect.Effect<AutoDsmInstallIconLibraryResult, AutoDsmRpcError>;
   readonly getWorkspacePreviewCss: (
     input: AutoDsmCwdInput,
   ) => Effect.Effect<{ css: string }, AutoDsmRpcError>;
@@ -319,6 +372,15 @@ export interface AutoDsmWorkspaceShape {
   readonly changeSetRollback: (
     input: AutoDsmChangeSetIdInput,
   ) => Effect.Effect<AutoDsmChangeSetMutationResult, AutoDsmRpcError>;
+  readonly changeSetCreateFromTurnDiff: (
+    input: AutoDsmChangeSetFromTurnDiffInput,
+  ) => Effect.Effect<AutoDsmChangeSetMutationResult, AutoDsmRpcError>;
+  readonly changeSetSetHunkDecisions: (
+    input: AutoDsmChangeSetHunkDecisionInput,
+  ) => Effect.Effect<AutoDsmChangeSetMutationResult, AutoDsmRpcError>;
+  readonly changeSetApplyDecisions: (
+    input: AutoDsmChangeSetIdInput,
+  ) => Effect.Effect<AutoDsmChangeSetMutationResult, AutoDsmRpcError>;
   readonly assembleGenerationPlan: (
     input: AutoDsmGenerationPlanAssembleInput,
   ) => Effect.Effect<{ plan: AutoDsmGenerationPlan }, AutoDsmRpcError>;
@@ -355,6 +417,9 @@ export interface AutoDsmWorkspaceShape {
   readonly removeComponentAgent: (
     input: AutoDsmComponentAgentRemoveInput,
   ) => Effect.Effect<AutoDsmComponentAgentRemoveResult, AutoDsmRpcError>;
+  readonly resyncComponentAgents: (
+    input: AutoDsmComponentAgentResyncInput,
+  ) => Effect.Effect<AutoDsmComponentAgentResyncResult, AutoDsmRpcError>;
   readonly getComponentConversation: (
     input: AutoDsmComponentConversationGetInput,
   ) => Effect.Effect<AutoDsmComponentConversationGetResult, AutoDsmRpcError>;
@@ -384,6 +449,14 @@ export const AutoDsmWorkspaceLive = Layer.effect(
     const scans = yield* Ref.make(new Map<string, AutoDsmScanArtifact>());
     const changeSets = yield* Ref.make(new Map<string, AutoDsmChangeSet>());
     const workspaceBuildCache = yield* Ref.make(new Map<string, AutoDsmWorkspaceBuildResult>());
+    // TextGeneration is resolved lazily INSIDE `proposeDesignBrief` rather
+    // than at layer-construction time. Eager `yield* TextGeneration` here
+    // forced this layer's construction context to include
+    // `ProviderInstanceRegistry` (TextGeneration.layer's own dependency),
+    // which produced a "Service not found" crash on backend boot whenever
+    // the wider runtime composition didn't surface ProviderInstanceRegistry
+    // at this exact layer node. Resolving it inside the method body defers
+    // the lookup until call-time, where the full runtime context is live.
 
     const emitChangeSetActivity = (input: {
       readonly threadId: ThreadId | undefined;
@@ -464,6 +537,110 @@ export const AutoDsmWorkspaceLive = Layer.effect(
           }),
       });
 
+    // In-memory cache of pending design-brief proposals, keyed by
+    // `${cwd}:${proposalId}`. Proposals are short-lived (≤ 1 hour) and never
+    // persisted across server restarts — clients re-propose if they restart.
+    const designBriefProposals = new Map<
+      string,
+      { readonly proposal: AutoDsmDesignBriefProposal; readonly expiresAtMs: number }
+    >();
+    const DESIGN_BRIEF_PROPOSAL_TTL_MS = 60 * 60 * 1000;
+
+    const pruneExpiredProposals = (): void => {
+      const now = Date.now();
+      for (const [key, entry] of designBriefProposals) {
+        if (entry.expiresAtMs <= now) {
+          designBriefProposals.delete(key);
+        }
+      }
+    };
+
+    const uploadDesignBriefEffect = (input: AutoDsmDesignBriefUploadInput) =>
+      Effect.try({
+        try: () => ({ doc: writeDesignBrief(input.cwd, input.markdown) }),
+        catch: (cause) =>
+          new AutoDsmRpcError({
+            message: cause instanceof Error ? cause.message : "Failed to upload design brief",
+            cause,
+          }),
+      });
+
+    const proposeDesignBriefEffect = (input: AutoDsmDesignBriefProposeInput) =>
+      Effect.gen(function* () {
+        // Resolved lazily here (not at layer construction) so TextGeneration's
+        // own ProviderInstanceRegistry dependency is satisfied by the runtime
+        // context at call time, not at AutoDsmWorkspaceLive boot.
+        const textGeneration = yield* TextGeneration;
+        pruneExpiredProposals();
+        const loaded = loadDesignBrief(input.cwd);
+        if (!loaded) {
+          return yield* new AutoDsmRpcError({
+            message:
+              "No design brief has been uploaded for this workspace. Upload a `design.md` first.",
+          });
+        }
+        const profile = yield* Effect.try({
+          try: () => loadBrandProfile(input.cwd),
+          catch: (cause) =>
+            new AutoDsmRpcError({
+              message: cause instanceof Error ? cause.message : "Failed to load brand profile",
+              cause,
+            }),
+        });
+        const proposal = yield* proposeFromBrief({
+          cwd: input.cwd,
+          markdown: loaded.markdown,
+          profile,
+          generate: makeDesignBriefGenerateFromTextGeneration(textGeneration, input.modelSelection),
+        });
+        designBriefProposals.set(`${input.cwd}:${proposal.proposalId}`, {
+          proposal,
+          expiresAtMs: Date.now() + DESIGN_BRIEF_PROPOSAL_TTL_MS,
+        });
+        return { proposal };
+      });
+
+    const applyDesignBriefProposalEffect = (input: AutoDsmDesignBriefApplyInput) =>
+      Effect.gen(function* () {
+        pruneExpiredProposals();
+        const cacheKey = `${input.cwd}:${input.proposalId}`;
+        const cached = designBriefProposals.get(cacheKey);
+        if (!cached) {
+          return yield* new AutoDsmRpcError({
+            message:
+              "Design brief proposal expired or unknown. Generate a new proposal and try again.",
+          });
+        }
+        const acceptedSet = new Set(input.acceptedOpIds);
+        return yield* Effect.try({
+          try: () =>
+            applyProposal({
+              cwd: input.cwd,
+              proposal: cached.proposal,
+              acceptedOpIds: acceptedSet,
+            }),
+          catch: (cause) =>
+            new AutoDsmRpcError({
+              message:
+                cause instanceof Error ? cause.message : "Failed to apply design brief proposal",
+              cause,
+            }),
+        });
+      });
+
+    const getDesignBriefEffect = (input: AutoDsmCwdInput) =>
+      Effect.try({
+        try: (): AutoDsmDesignBriefGetResult => {
+          const loaded = loadDesignBrief(input.cwd);
+          return loaded ? { doc: loaded.doc, markdown: loaded.markdown } : {};
+        },
+        catch: (cause) =>
+          new AutoDsmRpcError({
+            message: cause instanceof Error ? cause.message : "Failed to read design brief",
+            cause,
+          }),
+      });
+
     const resyncBrandTokensEffect = (input: AutoDsmBrandTokenResyncInput) =>
       Effect.try({
         try: () =>
@@ -473,6 +650,16 @@ export const AutoDsmWorkspaceLive = Layer.effect(
         catch: (cause) =>
           new AutoDsmRpcError({
             message: cause instanceof Error ? cause.message : "Failed to resync brand tokens",
+            cause,
+          }),
+      });
+
+    const installIconLibraryEffect = (input: AutoDsmInstallIconLibraryInput) =>
+      Effect.try({
+        try: () => ({ profile: installIconLibrary(input.cwd, input.library) }),
+        catch: (cause) =>
+          new AutoDsmRpcError({
+            message: cause instanceof Error ? cause.message : "Failed to install icon library",
             cause,
           }),
       });
@@ -546,6 +733,50 @@ export const AutoDsmWorkspaceLive = Layer.effect(
 
     const getComponentRegistry = (input: AutoDsmCwdInput) =>
       Effect.gen(function* () {
+        const registryStartedAtMs = Date.now();
+
+        if (isWorkspaceCwdInsideStagingDirectory(input.cwd)) {
+          return yield* new AutoDsmRpcError({
+            message: `Workspace path lives in the staging directory (${input.cwd}); reload the app to refresh the workspace list.`,
+          });
+        }
+
+        // Short-circuit when the cwd doesn't look like a real workspace. Without
+        // this gate the registry indexer happily runs against e.g. a stale
+        // .staging/<id>/system/ path the frontend is still holding from a
+        // crashed creation flow, returning entries:[] with status:"partial".
+        // That fed the UI an empty-but-success registry, hid the underlying
+        // "wrong cwd" cause, and let the analyzer's previous unconditional
+        // ensureViteWorkspaceScaffold call recreate phantom files inside the
+        // swept-empty staging directory.
+        if (!existsSync(path.join(input.cwd, "package.json"))) {
+          const notInitializedRegistry: AutoDsmComponentRegistry = {
+            meta: {
+              kind: "component-registry",
+              schemaVersion: 1,
+              owner: "component-registry-indexer",
+              invalidationKey: sha256Hex(`${input.cwd}:workspace_not_initialized`),
+              consumers: ["workbench-ui", "render-runtime", "scanner", "agent-supervisor"],
+            },
+            entries: [],
+            status: "failed",
+            gate: {
+              code: "workspace_not_initialized",
+              summary: `Workspace at ${input.cwd} is not initialized (package.json missing). Re-create the workspace or pick another one from the sidebar.`,
+              commandDisplay: null,
+              stdoutTail: null,
+              stderrTail: null,
+              exitCode: null,
+            },
+          };
+          // eslint-disable-next-line no-console
+          console.info("[component-preview] registry-not-initialized", {
+            cwd: input.cwd,
+            durationMs: Date.now() - registryStartedAtMs,
+          });
+          return notInitializedRegistry;
+        }
+
         const workspaceEntries = yield* WorkspaceEntries;
         const workspacePaths = yield* WorkspacePaths;
         const profile = yield* getProjectProfile(input);
@@ -571,15 +802,21 @@ export const AutoDsmWorkspaceLive = Layer.effect(
           (e) => e.kind === "file" && isWorkspaceSrcComponentsUiRelativePath(e.path),
         );
 
-        const entries: AutoDsmComponentRegistryEntry[] = [];
-
-        yield* Effect.forEach(
+        // Resolve every workspace-relative path first so we can hand the
+        // whole batch to `analyzeReactComponentBatch` and reuse a single
+        // ts.Program (loading lib.d.ts once, not 49 times).
+        type ResolvedEntry = {
+          readonly relativePath: string;
+          readonly absolutePath: string;
+          readonly registryRelativePath: string;
+        };
+        const resolvedFiles = yield* Effect.forEach(
           componentFiles,
           (entry) =>
             Effect.gen(function* () {
               const relativePath = entry.path.replace(/\\/g, "/");
               if (!isWorkspaceSrcComponentsUiRelativePath(relativePath)) {
-                return;
+                return null as ResolvedEntry | null;
               }
               const resolved = yield* workspacePaths
                 .resolveRelativePathWithinRoot({
@@ -595,45 +832,59 @@ export const AutoDsmWorkspaceLive = Layer.effect(
                       }),
                   ),
                 );
-
-              const manifest = analyzeReactComponentFile({
+              const out: ResolvedEntry = {
+                relativePath: resolved.relativePath,
                 absolutePath: resolved.absolutePath,
-                cwd: input.cwd,
-                relativePathPosix: resolved.relativePath,
-              });
-
-              const entryId = AutoDsmRegistryEntryId.make(
-                sha256Hex(
-                  `${resolved.relativePath}:${manifest.exports.map((e) => e.name).join(",")}`,
-                ),
-              );
-              const componentId = AutoDsmComponentId.make(
-                sha256Hex(`${resolved.relativePath}:component`),
-              );
-
-              const propsByExport: Record<
-                string,
-                (typeof manifest.propsByExport)[number]["props"]
-              > = {};
-              for (const row of manifest.propsByExport) {
-                propsByExport[row.exportName] = [...row.props];
-              }
-
-              entries.push({
-                id: entryId,
-                componentId,
-                relativePath: relativePath.startsWith("/") ? relativePath : `/${relativePath}`,
-                exports: [...manifest.exports],
-                propsByExport,
-                slotShape: undefined,
-                providerHints: [],
-                dependencyEdges: [],
-                usageImports: {},
-                manifest,
-              });
+                registryRelativePath: relativePath.startsWith("/")
+                  ? relativePath
+                  : `/${relativePath}`,
+              };
+              return out;
             }),
           { concurrency: 4 },
         );
+
+        const resolved = resolvedFiles.filter((r): r is ResolvedEntry => r !== null);
+
+        const analyzeStartedAtMs = Date.now();
+        const manifests = analyzeReactComponentBatch({
+          cwd: input.cwd,
+          files: resolved.map((r) => ({
+            absolutePath: r.absolutePath,
+            relativePathPosix: r.relativePath,
+          })),
+        });
+        // eslint-disable-next-line no-console
+        console.info("[component-preview] registry-batch-analyzed", {
+          cwd: input.cwd,
+          fileCount: resolved.length,
+          durationMs: Date.now() - analyzeStartedAtMs,
+        });
+
+        const entries: AutoDsmComponentRegistryEntry[] = resolved.map((r, idx) => {
+          const manifest = manifests[idx]!;
+          const entryId = AutoDsmRegistryEntryId.make(
+            sha256Hex(`${r.relativePath}:${manifest.exports.map((e) => e.name).join(",")}`),
+          );
+          const componentId = AutoDsmComponentId.make(sha256Hex(`${r.relativePath}:component`));
+          const propsByExport: Record<string, (typeof manifest.propsByExport)[number]["props"]> =
+            {};
+          for (const row of manifest.propsByExport) {
+            propsByExport[row.exportName] = [...row.props];
+          }
+          return {
+            id: entryId,
+            componentId,
+            relativePath: r.registryRelativePath,
+            exports: [...manifest.exports],
+            propsByExport,
+            slotShape: undefined,
+            providerHints: [],
+            dependencyEdges: [],
+            usageImports: {},
+            manifest,
+          };
+        });
 
         const processed = entries.length;
 
@@ -678,6 +929,15 @@ export const AutoDsmWorkspaceLive = Layer.effect(
               relativePath: entry.relativePath,
             })),
           );
+        });
+
+        // eslint-disable-next-line no-console
+        console.info("[component-preview] registry-indexed", {
+          cwd: input.cwd,
+          fileCount: componentFiles.length,
+          entryCount: entries.length,
+          status,
+          durationMs: Date.now() - registryStartedAtMs,
         });
 
         return registry;
@@ -860,29 +1120,45 @@ export const AutoDsmWorkspaceLive = Layer.effect(
 
     const executeRenderPlan = (input: AutoDsmRenderPlanInput) =>
       Effect.gen(function* () {
+        if (isWorkspaceCwdInsideStagingDirectory(input.cwd)) {
+          return yield* new AutoDsmRpcError({
+            message: `Workspace path lives in the staging directory (${input.cwd}); reload the app to refresh the workspace list.`,
+          });
+        }
+
         const workspaceFileSystem = yield* WorkspaceFileSystem;
         const startedAtMs = Date.now();
 
-        yield* Effect.promise(() => startAutodsmPreviewSidecar(input.cwd)).pipe(
-          Effect.catchCause(() => Effect.void),
+        // Kick the sidecar boot off in parallel with the bundle. The bundle
+        // doesn't read the sidecar's origin — `peekAutodsmPreviewSidecar`
+        // only feeds it into the plan metadata at the end. So we don't need
+        // to block bundling on Vite's `createServer({...}).listen()`, which
+        // can take 10s+ on a fresh shadcn workspace with ~30 deps and used
+        // to leave the iframe stuck on the "Waiting for component bundle…"
+        // spinner.
+        const sidecarStartedAt = Date.now();
+        let sidecarStartupError: string | null = null;
+        const sidecarPromise = startAutodsmPreviewSidecar(input.cwd).catch(
+          (cause: unknown): null => {
+            sidecarStartupError =
+              cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
+            return null;
+          },
         );
 
         const profile = yield* getProjectProfile({ cwd: input.cwd });
         const rep = yield* getRenderEnvironmentProfile({ cwd: input.cwd });
-        const peek = peekAutodsmPreviewSidecar(input.cwd);
         const css = detectCssPreviewEntryCandidates(input.cwd);
 
         const target = yield* locateRegistryPreviewTarget(input);
-        const plan = finalizeRenderPlan({
-          input,
-          target,
-          profile,
-          rep,
-          sidecarPeekOrigin: peek?.origin,
-          cssEntryRelativePaths: css,
-        });
 
         const bundlingStarted = Date.now();
+        // eslint-disable-next-line no-console
+        console.info("[component-preview] execute-render-plan-bundle-start", {
+          cwd: input.cwd,
+          relativePath: target.hit.relativePath,
+          exportName: input.exportName,
+        });
         const bundled = yield* Effect.tryPromise({
           try: async () =>
             await bundleComponentPreview({
@@ -897,13 +1173,70 @@ export const AutoDsmWorkspaceLive = Layer.effect(
             warnings: [],
             errors: [cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause)],
           }),
-        });
+        }).pipe(
+          Effect.timeout("30 seconds"),
+          Effect.catchCause((cause) =>
+            Effect.succeed<ProjectBuildComponentPreviewResult>({
+              ok: false,
+              javascript: undefined,
+              warnings: [],
+              errors: [`bundleComponentPreview timed out: ${Cause.pretty(cause)}`],
+            }),
+          ),
+        );
 
         const bundleFinished = Date.now();
         const elapsedBundle = Math.max(0, bundleFinished - bundlingStarted);
 
+        // The bundle is done — now give the sidecar up to 5 more seconds so
+        // its origin can ride along on the plan metadata. If it still isn't
+        // ready, ship the plan without it and surface the elapsed time as a
+        // diagnostic. The previous code awaited the sidecar up-front with a
+        // 30s budget, which is what produced the indefinite spinner the
+        // user was hitting.
+        const sidecarDeadline = 5_000;
+        const sidecarRace = yield* Effect.promise(
+          (): Promise<"settled" | "timeout"> =>
+            Promise.race([
+              sidecarPromise.then(() => "settled" as const),
+              new Promise<"timeout">((resolve) =>
+                setTimeout(() => resolve("timeout"), sidecarDeadline),
+              ),
+            ]),
+        );
+        const sidecarElapsedMs = Math.max(0, Date.now() - sidecarStartedAt);
+        if (sidecarRace === "timeout" && sidecarStartupError === null) {
+          sidecarStartupError = `still booting after ${sidecarElapsedMs}ms`;
+        }
+        const peek = peekAutodsmPreviewSidecar(input.cwd);
+        // eslint-disable-next-line no-console
+        console.info("[component-preview] sidecar-status", {
+          cwd: input.cwd,
+          race: sidecarRace,
+          sidecarElapsedMs,
+          sidecarStartupError,
+          hasOrigin: peek?.origin !== undefined,
+        });
+
+        const plan = finalizeRenderPlan({
+          input,
+          target,
+          profile,
+          rep,
+          sidecarPeekOrigin: peek?.origin,
+          cssEntryRelativePaths: css,
+        });
+
         const diagnostics: AutoDsmRenderDiagnosticsEntry[] = [];
         let nextAt = bundleFinished;
+        if (sidecarStartupError !== null) {
+          diagnostics.push({
+            level: "error",
+            source: "sidecar",
+            message: `Preview sidecar failed to start after ${sidecarElapsedMs}ms: ${sidecarStartupError}`,
+            atMs: nextAt++,
+          });
+        }
         for (const warning of bundled.warnings) {
           diagnostics.push({
             level: "warn",
@@ -1060,6 +1393,7 @@ export const AutoDsmWorkspaceLive = Layer.effect(
           },
           cwd: input.cwd,
           ops: [...input.ops],
+          ...(input.hunks && input.hunks.length > 0 ? { hunks: [...input.hunks] } : {}),
           createdAt,
         };
 
@@ -1286,6 +1620,140 @@ export const AutoDsmWorkspaceLive = Layer.effect(
         return { changeSet, outcome };
       });
 
+    // --- Hunk-level diff review (Phase 9) -----------------------------------
+    // The agent writes files directly to the worktree; the turn diff is the
+    // record of those edits. `changeSetCreateFromTurnDiff` captures that diff as
+    // a reviewable ChangeSet (ops + per-hunk records), `...SetHunkDecisions`
+    // records approve/reject/discard per hunk, and `...ApplyDecisions` reverts
+    // the rejected/discarded hunks back to their pre-turn content.
+
+    const changeSetCreateFromTurnDiff = (input: AutoDsmChangeSetFromTurnDiffInput) =>
+      Effect.gen(function* () {
+        const { ops, hunks } = deriveChangeSetOpsAndHunks(input.diff);
+        return yield* changeSetCreate({
+          cwd: input.cwd,
+          ops,
+          hunks,
+          threadId: input.threadId,
+        });
+      });
+
+    const changeSetSetHunkDecisions = (input: AutoDsmChangeSetHunkDecisionInput) =>
+      Effect.gen(function* () {
+        const changeSet = yield* loadChangeSet({
+          cwd: input.cwd,
+          changeSetId: input.changeSetId,
+          ...(input.threadId !== undefined ? { threadId: input.threadId } : {}),
+        });
+        const decisionById = new Map(input.decisions.map((d) => [d.hunkId, d.decision]));
+        const nextHunks = (changeSet.hunks ?? []).map((hunk) =>
+          decisionById.has(hunk.id) ? { ...hunk, decision: decisionById.get(hunk.id)! } : hunk,
+        );
+        const nextChangeSet: AutoDsmChangeSet = { ...changeSet, hunks: nextHunks };
+
+        yield* Ref.update(changeSets, (m) => new Map(m).set(nextChangeSet.id, nextChangeSet));
+        const recordedAt = yield* Effect.map(DateTime.now, DateTime.formatIso);
+        yield* Effect.sync(() => {
+          const sessionId = resolveSessionIdForChangeSet(input.cwd, input.threadId);
+          if (sessionId) {
+            persistChangeSet({ cwd: input.cwd, sessionId, changeSet: nextChangeSet });
+          }
+          const summary = summarizeDecisions(nextHunks);
+          appendWorkspaceActivity({
+            cwd: input.cwd,
+            kind: "changeset.hunk-decided",
+            summary: `ChangeSet ${nextChangeSet.id} hunk decisions updated (${summary})`,
+            payload: {
+              changeSetId: nextChangeSet.id,
+              threadId: input.threadId ?? null,
+              approved: nextHunks.filter((h) => h.decision === "approved").length,
+              rejected: nextHunks.filter(
+                (h) => h.decision === "rejected" || h.decision === "discarded",
+              ).length,
+              pending: nextHunks.filter((h) => h.decision === "pending").length,
+            },
+            createdAt: recordedAt,
+          });
+        });
+
+        return { changeSet: nextChangeSet };
+      });
+
+    const changeSetApplyDecisions = (input: AutoDsmChangeSetIdInput) =>
+      Effect.gen(function* () {
+        const workspaceFileSystem = yield* WorkspaceFileSystem;
+        const changeSet = yield* loadChangeSet({
+          cwd: input.cwd,
+          changeSetId: input.changeSetId,
+          ...(input.threadId !== undefined ? { threadId: input.threadId } : {}),
+        });
+        const hunks = changeSet.hunks ?? [];
+
+        // Group hunks by file; revert files that contain rejected/discarded hunks.
+        const byFile = new Map<string, AutoDsmChangeHunk[]>();
+        for (const hunk of hunks) {
+          const list = byFile.get(hunk.filePath) ?? [];
+          list.push(hunk);
+          byFile.set(hunk.filePath, list);
+        }
+
+        for (const [filePath, fileHunks] of byFile) {
+          const needsRevert = fileHunks.some(
+            (h) => h.decision === "rejected" || h.decision === "discarded",
+          );
+          if (!needsRevert) {
+            continue;
+          }
+          const rp = filePath.replace(/\\/g, "/").replace(/^\//, "");
+          const afterContent = yield* workspaceFileSystem
+            .readFile({ cwd: input.cwd, relativePath: rp })
+            .pipe(
+              Effect.map((r) => r.contents),
+              Effect.orElseSucceed(() => ""),
+            );
+          const reconstructed = reconstructFileWithDecisions(afterContent, fileHunks);
+          if (reconstructed !== afterContent) {
+            yield* applyOp(input.cwd, { kind: "update", path: filePath, contents: reconstructed });
+          }
+        }
+
+        const disposition = ((): AutoDsmEditOutcome["disposition"] => {
+          const summary = summarizeDecisions(hunks);
+          if (summary === "rejected") return "reverted";
+          if (summary === "mixed") return "partial";
+          return "accepted";
+        })();
+
+        const recordedAt = yield* Effect.map(DateTime.now, DateTime.formatIso);
+        const outcome: AutoDsmEditOutcome = {
+          changeSetId: input.changeSetId,
+          disposition,
+          affectedComponentIds: [],
+          recordedAt,
+        };
+
+        yield* emitChangeSetActivity({
+          threadId: input.threadId,
+          changeSetId: input.changeSetId,
+          phase: "applied",
+        });
+        yield* Effect.sync(() => {
+          appendWorkspaceActivity({
+            cwd: input.cwd,
+            kind: "changeset.applied",
+            summary: `ChangeSet ${input.changeSetId} applied (${disposition})`,
+            payload: {
+              changeSetId: input.changeSetId,
+              threadId: input.threadId ?? null,
+              disposition,
+            },
+            createdAt: recordedAt,
+          });
+        });
+
+        return { changeSet, outcome };
+      });
+
     const assembleGenerationPlan = (input: AutoDsmGenerationPlanAssembleInput) =>
       Effect.gen(function* () {
         const profile = yield* getProjectProfile({ cwd: input.cwd });
@@ -1461,6 +1929,23 @@ export const AutoDsmWorkspaceLive = Layer.effect(
     const removeComponentAgent = (input: AutoDsmComponentAgentRemoveInput) =>
       Effect.sync(() => removeComponentAgentRecord(input));
 
+    const resyncComponentAgentsEffect = (input: AutoDsmComponentAgentResyncInput) =>
+      Effect.try({
+        try: () =>
+          resyncComponentAgentsFromTemplate({
+            cwd: input.cwd,
+            ...(input.mode ? { mode: input.mode } : {}),
+          }),
+        catch: (cause) =>
+          new AutoDsmRpcError({
+            message:
+              cause instanceof Error
+                ? cause.message
+                : "Failed to resync component agents from template",
+            cause,
+          }),
+      });
+
     const getComponentConversation = (input: AutoDsmComponentConversationGetInput) =>
       Effect.sync(() => ({
         conversation: loadComponentConversation(input.cwd, input.componentPath),
@@ -1505,7 +1990,43 @@ export const AutoDsmWorkspaceLive = Layer.effect(
     const listPullRequestsHandler = (input: AutoDsmPullRequestListInput) =>
       Effect.sync(() => listPullRequests(input.cwd));
 
-    const createWorkspace = autodsmMaterializeWorkspace;
+    // Eagerly run the workspace build (typically a no-op skip for shadcn-style
+    // starters, a real build for ones with scripts.build) so the first preview
+    // click doesn't pay the cost lazily. resolveWorkspaceBuild caches by
+    // invalidation hash, so subsequent getComponentRegistry calls return
+    // immediately. If the build itself fails, we still return the materialized
+    // workspace and let the registry surface the gate to the UI — the user can
+    // then retry via the new registry-error panel in WebContentsView.
+    const createWorkspace = (input: AutoDsmCreateWorkspaceInput) =>
+      Effect.gen(function* () {
+        const result = yield* autodsmMaterializeWorkspace(input);
+        const startedAt = Date.now();
+        yield* Effect.logInfo("autodsm.createWorkspace", {
+          phase: "workspace-build-warmup-start",
+          workspaceId: result.workspaceId,
+          cwd: result.cwd,
+        });
+        yield* runWorkspaceBuild({ cwd: result.cwd, force: false }).pipe(
+          Effect.tap((buildResult) =>
+            Effect.logInfo("autodsm.createWorkspace", {
+              phase: "workspace-build-warmup-complete",
+              workspaceId: result.workspaceId,
+              ok: buildResult.ok,
+              skipped: buildResult.skipped,
+              elapsedMs: Date.now() - startedAt,
+            }),
+          ),
+          Effect.catch((cause) =>
+            Effect.logWarning("autodsm.createWorkspace", {
+              phase: "workspace-build-warmup-failed",
+              workspaceId: result.workspaceId,
+              elapsedMs: Date.now() - startedAt,
+              cause: cause instanceof Error ? cause.message : String(cause),
+            }),
+          ),
+        );
+        return result;
+      });
     const listWorkspaceHistory = listAutodsmWorkspaceHistoryFromDisk;
     const deleteWorkspace = autodsmDeleteWorkspaceFromDisk;
 
@@ -1518,7 +2039,12 @@ export const AutoDsmWorkspaceLive = Layer.effect(
       addBrandToken: addBrandTokenEffect,
       removeBrandToken: removeBrandTokenEffect,
       updateBrandToken: updateBrandTokenEffect,
+      uploadDesignBrief: uploadDesignBriefEffect,
+      proposeDesignBrief: proposeDesignBriefEffect,
+      applyDesignBriefProposal: applyDesignBriefProposalEffect,
+      getDesignBrief: getDesignBriefEffect,
       resyncBrandTokens: resyncBrandTokensEffect,
+      installIconLibrary: installIconLibraryEffect,
       getWorkspacePreviewCss: getWorkspacePreviewCssEffect,
       getComponentRegistry,
       runWorkspaceBuild,
@@ -1537,6 +2063,9 @@ export const AutoDsmWorkspaceLive = Layer.effect(
       changeSetPreview,
       changeSetApply,
       changeSetRollback,
+      changeSetCreateFromTurnDiff,
+      changeSetSetHunkDecisions,
+      changeSetApplyDecisions,
       assembleGenerationPlan,
       exportPublishedSnapshot,
       exportPublishedExport: exportPublishedExportHandler,
@@ -1549,6 +2078,7 @@ export const AutoDsmWorkspaceLive = Layer.effect(
       registerComponentAgent,
       updateComponentAgent,
       removeComponentAgent,
+      resyncComponentAgents: resyncComponentAgentsEffect,
       getComponentConversation,
       appendComponentConversation: appendComponentConversationHandler,
       getSession,

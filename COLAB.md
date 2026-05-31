@@ -1,6 +1,6 @@
-# T3 Code - Complete Architecture Documentation
+# AutoDSM - Complete Architecture Documentation
 
-> A comprehensive guide to understanding T3 Code's architecture for developers building on top of this platform.
+> A comprehensive guide to understanding AutoDSM's architecture for developers building on top of this platform.
 
 ## Table of Contents
 
@@ -25,7 +25,7 @@
 
 ## Overview
 
-T3 Code is a minimal web GUI for coding agents (Codex, Claude, OpenCode). It provides a unified interface for interacting with multiple AI coding assistants through both a web application and an Electron desktop app.
+AutoDSM is a local-first design-system workspace built on a coding-agent substrate (Codex, Claude, OpenCode). It provides a unified interface for creating and shipping React design systems through both a web application and an Electron desktop app.
 
 ### Key Technologies
 
@@ -47,7 +47,7 @@ T3 Code is a minimal web GUI for coding agents (Codex, Claude, OpenCode). It pro
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              T3 CODE SYSTEM                                  │
+│                              AUTODSM SYSTEM                                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
 │  ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐    │
@@ -1379,4 +1379,4 @@ T3_LOG_LEVEL=info
 
 ---
 
-_This documentation was generated to help developers understand and extend T3 Code. For the latest updates, refer to the source code and official documentation._
+_This documentation was generated to help developers understand and extend AutoDSM. For the latest updates, refer to the source code and official documentation._

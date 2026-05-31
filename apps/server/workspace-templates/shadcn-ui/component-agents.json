@@ -1,10 +1,269 @@
 {
   "agents": [
-    { "title": "Button", "componentPath": "/src/components/ShadcnButton.tsx", "group": "Buttons" },
-    { "title": "Card", "componentPath": "/src/components/ShadcnCard.tsx", "group": "Cards" },
-    { "title": "Badge", "componentPath": "/src/components/ShadcnBadge.tsx", "group": "Badges" },
-    { "title": "Input", "componentPath": "/src/components/ShadcnInput.tsx", "group": "Inputs" },
-    { "title": "Theme card", "componentPath": "/src/components/ThemeCard.tsx", "group": "Cards" },
-    { "title": "Pill label", "componentPath": "/src/components/PillLabel.tsx", "group": "Badges" }
+    {
+      "title": "Pill label",
+      "componentPath": "/src/components/PillLabel.tsx",
+      "group": "Display"
+    },
+    {
+      "title": "Accordion",
+      "componentPath": "/src/components/ShadcnAccordion.tsx",
+      "group": "Navigation"
+    },
+    {
+      "title": "Alert",
+      "componentPath": "/src/components/ShadcnAlert.tsx",
+      "group": "Feedback",
+      "exportName": "ShadcnAlert"
+    },
+    {
+      "title": "Alert dialog",
+      "componentPath": "/src/components/ShadcnAlertDialog.tsx",
+      "group": "Overlays",
+      "exportName": "ShadcnAlertDialog"
+    },
+    {
+      "title": "Aspect ratio",
+      "componentPath": "/src/components/ShadcnAspectRatio.tsx",
+      "group": "Display",
+      "exportName": "ShadcnAspectRatio"
+    },
+    {
+      "title": "Avatar",
+      "componentPath": "/src/components/ShadcnAvatar.tsx",
+      "group": "Display"
+    },
+    {
+      "title": "Badge",
+      "componentPath": "/src/components/ShadcnBadge.tsx",
+      "group": "Display",
+      "exportName": "ShadcnBadge"
+    },
+    {
+      "title": "Breadcrumb",
+      "componentPath": "/src/components/ShadcnBreadcrumb.tsx",
+      "group": "Navigation"
+    },
+    {
+      "title": "Button",
+      "componentPath": "/src/components/ShadcnButton.tsx",
+      "group": "Buttons",
+      "exportName": "ShadcnButton"
+    },
+    {
+      "title": "Calendar",
+      "componentPath": "/src/components/ShadcnCalendar.tsx",
+      "group": "Data"
+    },
+    {
+      "title": "Card",
+      "componentPath": "/src/components/ShadcnCard.tsx",
+      "group": "Cards"
+    },
+    {
+      "title": "Carousel",
+      "componentPath": "/src/components/ShadcnCarousel.tsx",
+      "group": "Data"
+    },
+    {
+      "title": "Checkbox",
+      "componentPath": "/src/components/ShadcnCheckbox.tsx",
+      "group": "Forms",
+      "exportName": "ShadcnCheckbox"
+    },
+    {
+      "title": "Collapsible",
+      "componentPath": "/src/components/ShadcnCollapsible.tsx",
+      "group": "Layout"
+    },
+    {
+      "title": "Combobox",
+      "componentPath": "/src/components/ShadcnCombobox.tsx",
+      "group": "Forms"
+    },
+    {
+      "title": "Command",
+      "componentPath": "/src/components/ShadcnCommand.tsx",
+      "group": "Data"
+    },
+    {
+      "title": "Context menu",
+      "componentPath": "/src/components/ShadcnContextMenu.tsx",
+      "group": "Overlays"
+    },
+    {
+      "title": "Data table",
+      "componentPath": "/src/components/ShadcnDataTable.tsx",
+      "group": "Display"
+    },
+    {
+      "title": "Date picker",
+      "componentPath": "/src/components/ShadcnDatePicker.tsx",
+      "group": "Data"
+    },
+    {
+      "title": "Dialog",
+      "componentPath": "/src/components/ShadcnDialog.tsx",
+      "group": "Overlays"
+    },
+    {
+      "title": "Drawer",
+      "componentPath": "/src/components/ShadcnDrawer.tsx",
+      "group": "Cards"
+    },
+    {
+      "title": "Dropdown menu",
+      "componentPath": "/src/components/ShadcnDropdownMenu.tsx",
+      "group": "Overlays",
+      "exportName": "ShadcnDropdownMenu"
+    },
+    {
+      "title": "Form",
+      "componentPath": "/src/components/ShadcnForm.tsx",
+      "group": "Forms"
+    },
+    {
+      "title": "Hover card",
+      "componentPath": "/src/components/ShadcnHoverCard.tsx",
+      "group": "Overlays"
+    },
+    {
+      "title": "Input",
+      "componentPath": "/src/components/ShadcnInput.tsx",
+      "group": "Forms",
+      "exportName": "ShadcnInput"
+    },
+    {
+      "title": "Input OTP",
+      "componentPath": "/src/components/ShadcnInputOtp.tsx",
+      "group": "Forms",
+      "exportName": "ShadcnInputOtp"
+    },
+    {
+      "title": "Label",
+      "componentPath": "/src/components/ShadcnLabel.tsx",
+      "group": "Forms"
+    },
+    {
+      "title": "Menubar",
+      "componentPath": "/src/components/ShadcnMenubar.tsx",
+      "group": "Overlays"
+    },
+    {
+      "title": "Navigation menu",
+      "componentPath": "/src/components/ShadcnNavigationMenu.tsx",
+      "group": "Navigation"
+    },
+    {
+      "title": "Pagination",
+      "componentPath": "/src/components/ShadcnPagination.tsx",
+      "group": "Navigation",
+      "exportName": "ShadcnPagination"
+    },
+    {
+      "title": "Popover",
+      "componentPath": "/src/components/ShadcnPopover.tsx",
+      "group": "Overlays"
+    },
+    {
+      "title": "Progress",
+      "componentPath": "/src/components/ShadcnProgress.tsx",
+      "group": "Feedback",
+      "exportName": "ShadcnProgress"
+    },
+    {
+      "title": "Radio group",
+      "componentPath": "/src/components/ShadcnRadioGroup.tsx",
+      "group": "Forms",
+      "exportName": "ShadcnRadioGroup"
+    },
+    {
+      "title": "Resizable",
+      "componentPath": "/src/components/ShadcnResizable.tsx",
+      "group": "Layout"
+    },
+    {
+      "title": "Scroll area",
+      "componentPath": "/src/components/ShadcnScrollArea.tsx",
+      "group": "Layout"
+    },
+    {
+      "title": "Select",
+      "componentPath": "/src/components/ShadcnSelect.tsx",
+      "group": "Forms",
+      "exportName": "ShadcnSelect"
+    },
+    {
+      "title": "Separator",
+      "componentPath": "/src/components/ShadcnSeparator.tsx",
+      "group": "Display"
+    },
+    {
+      "title": "Sheet",
+      "componentPath": "/src/components/ShadcnSheet.tsx",
+      "group": "Cards",
+      "exportName": "ShadcnSheet"
+    },
+    {
+      "title": "Sidebar",
+      "componentPath": "/src/components/ShadcnSidebar.tsx",
+      "group": "Navigation"
+    },
+    {
+      "title": "Skeleton",
+      "componentPath": "/src/components/ShadcnSkeleton.tsx",
+      "group": "Display",
+      "exportName": "ShadcnSkeleton"
+    },
+    {
+      "title": "Sonner",
+      "componentPath": "/src/components/ShadcnSonner.tsx",
+      "group": "Feedback"
+    },
+    {
+      "title": "Switch",
+      "componentPath": "/src/components/ShadcnSwitch.tsx",
+      "group": "Forms"
+    },
+    {
+      "title": "Table",
+      "componentPath": "/src/components/ShadcnTable.tsx",
+      "group": "Display",
+      "exportName": "ShadcnTable"
+    },
+    {
+      "title": "Tabs",
+      "componentPath": "/src/components/ShadcnTabs.tsx",
+      "group": "Navigation",
+      "exportName": "ShadcnTabs"
+    },
+    {
+      "title": "Textarea",
+      "componentPath": "/src/components/ShadcnTextarea.tsx",
+      "group": "Forms",
+      "exportName": "ShadcnTextarea"
+    },
+    {
+      "title": "Toggle",
+      "componentPath": "/src/components/ShadcnToggle.tsx",
+      "group": "Buttons",
+      "exportName": "ShadcnToggle"
+    },
+    {
+      "title": "Toggle group",
+      "componentPath": "/src/components/ShadcnToggleGroup.tsx",
+      "group": "Buttons",
+      "exportName": "ShadcnToggleGroup"
+    },
+    {
+      "title": "Tooltip",
+      "componentPath": "/src/components/ShadcnTooltip.tsx",
+      "group": "Overlays"
+    },
+    {
+      "title": "Theme card",
+      "componentPath": "/src/components/ThemeCard.tsx",
+      "group": "Cards"
+    }
   ]
 }

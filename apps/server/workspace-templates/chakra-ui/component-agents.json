@@ -1,6 +1,357 @@
 {
   "agents": [
-    { "title": "Chakra button", "componentPath": "/src/components/ChakraSolidButton.tsx" },
-    { "title": "Chakra badge row", "componentPath": "/src/components/ChakraBadgeRow.tsx" }
+    {
+      "title": "Accordion",
+      "componentPath": "/src/components/ChakraAccordion.tsx",
+      "group": "Navigation"
+    },
+    {
+      "title": "Alert",
+      "componentPath": "/src/components/ChakraAlert.tsx",
+      "group": "Feedback",
+      "exportName": "ChakraAlert"
+    },
+    {
+      "title": "Alert dialog",
+      "componentPath": "/src/components/ChakraAlertDialog.tsx",
+      "group": "Overlays",
+      "exportName": "ChakraAlertDialog"
+    },
+    {
+      "title": "Avatar",
+      "componentPath": "/src/components/ChakraAvatar.tsx",
+      "group": "Display",
+      "exportName": "ChakraAvatar"
+    },
+    {
+      "title": "Chakra badge row",
+      "componentPath": "/src/components/ChakraBadgeRow.tsx",
+      "group": "Display",
+      "exportName": "ChakraBadgeRow"
+    },
+    {
+      "title": "Box",
+      "componentPath": "/src/components/ChakraBox.tsx",
+      "group": "Layout",
+      "exportName": "ChakraBox"
+    },
+    {
+      "title": "Breadcrumb",
+      "componentPath": "/src/components/ChakraBreadcrumb.tsx",
+      "group": "Navigation"
+    },
+    {
+      "title": "Card",
+      "componentPath": "/src/components/ChakraCard.tsx",
+      "group": "Cards",
+      "exportName": "ChakraCard"
+    },
+    {
+      "title": "Center",
+      "componentPath": "/src/components/ChakraCenter.tsx",
+      "group": "Layout"
+    },
+    {
+      "title": "Checkbox",
+      "componentPath": "/src/components/ChakraCheckbox.tsx",
+      "group": "Forms",
+      "exportName": "ChakraCheckbox"
+    },
+    {
+      "title": "Circular progress",
+      "componentPath": "/src/components/ChakraCircularProgress.tsx",
+      "group": "Feedback",
+      "exportName": "ChakraCircularProgress"
+    },
+    {
+      "title": "Close button",
+      "componentPath": "/src/components/ChakraCloseButton.tsx",
+      "group": "Buttons",
+      "exportName": "ChakraCloseButton"
+    },
+    {
+      "title": "Code",
+      "componentPath": "/src/components/ChakraCode.tsx",
+      "group": "Display",
+      "exportName": "ChakraCode"
+    },
+    {
+      "title": "Collapse",
+      "componentPath": "/src/components/ChakraCollapse.tsx",
+      "group": "Layout"
+    },
+    {
+      "title": "Container",
+      "componentPath": "/src/components/ChakraContainer.tsx",
+      "group": "Layout",
+      "exportName": "ChakraContainer"
+    },
+    {
+      "title": "Drawer",
+      "componentPath": "/src/components/ChakraDrawer.tsx",
+      "group": "Overlays",
+      "exportName": "ChakraDrawer"
+    },
+    {
+      "title": "Editable",
+      "componentPath": "/src/components/ChakraEditable.tsx",
+      "group": "Forms"
+    },
+    {
+      "title": "Field",
+      "componentPath": "/src/components/ChakraField.tsx",
+      "group": "Forms",
+      "exportName": "ChakraField"
+    },
+    {
+      "title": "File upload",
+      "componentPath": "/src/components/ChakraFileUpload.tsx",
+      "group": "Forms"
+    },
+    {
+      "title": "Flex",
+      "componentPath": "/src/components/ChakraFlex.tsx",
+      "group": "Layout",
+      "exportName": "ChakraFlex"
+    },
+    {
+      "title": "Format number",
+      "componentPath": "/src/components/ChakraFormatNumber.tsx",
+      "group": "Data",
+      "exportName": "ChakraFormatNumber"
+    },
+    {
+      "title": "Grid",
+      "componentPath": "/src/components/ChakraGrid.tsx",
+      "group": "Layout",
+      "exportName": "ChakraGrid"
+    },
+    {
+      "title": "Heading",
+      "componentPath": "/src/components/ChakraHeading.tsx",
+      "group": "Display",
+      "exportName": "ChakraHeading"
+    },
+    {
+      "title": "HStack",
+      "componentPath": "/src/components/ChakraHStack.tsx",
+      "group": "Layout"
+    },
+    {
+      "title": "Icon",
+      "componentPath": "/src/components/ChakraIcon.tsx",
+      "group": "Display",
+      "exportName": "ChakraIcon"
+    },
+    {
+      "title": "Icon button",
+      "componentPath": "/src/components/ChakraIconButton.tsx",
+      "group": "Buttons",
+      "exportName": "ChakraIconButton"
+    },
+    {
+      "title": "Image",
+      "componentPath": "/src/components/ChakraImage.tsx",
+      "group": "Display",
+      "exportName": "ChakraImage"
+    },
+    {
+      "title": "Input",
+      "componentPath": "/src/components/ChakraInput.tsx",
+      "group": "Forms",
+      "exportName": "ChakraInput"
+    },
+    {
+      "title": "Kbd",
+      "componentPath": "/src/components/ChakraKbd.tsx",
+      "group": "Display"
+    },
+    {
+      "title": "Link",
+      "componentPath": "/src/components/ChakraLink.tsx",
+      "group": "Navigation",
+      "exportName": "ChakraLink"
+    },
+    {
+      "title": "List",
+      "componentPath": "/src/components/ChakraList.tsx",
+      "group": "Data",
+      "exportName": "ChakraList"
+    },
+    {
+      "title": "Menu",
+      "componentPath": "/src/components/ChakraMenu.tsx",
+      "group": "Overlays",
+      "exportName": "ChakraMenu"
+    },
+    {
+      "title": "Modal",
+      "componentPath": "/src/components/ChakraModal.tsx",
+      "group": "Overlays",
+      "exportName": "ChakraModal"
+    },
+    {
+      "title": "Native select",
+      "componentPath": "/src/components/ChakraNativeSelect.tsx",
+      "group": "Forms",
+      "exportName": "ChakraNativeSelect"
+    },
+    {
+      "title": "Number input",
+      "componentPath": "/src/components/ChakraNumberInput.tsx",
+      "group": "Forms",
+      "exportName": "ChakraNumberInput"
+    },
+    {
+      "title": "Pin input",
+      "componentPath": "/src/components/ChakraPinInput.tsx",
+      "group": "Forms",
+      "exportName": "ChakraPinInput"
+    },
+    {
+      "title": "Popover",
+      "componentPath": "/src/components/ChakraPopover.tsx",
+      "group": "Overlays"
+    },
+    {
+      "title": "Portal",
+      "componentPath": "/src/components/ChakraPortal.tsx",
+      "group": "Layout"
+    },
+    {
+      "title": "Progress",
+      "componentPath": "/src/components/ChakraProgress.tsx",
+      "group": "Feedback",
+      "exportName": "ChakraProgress"
+    },
+    {
+      "title": "Radio group",
+      "componentPath": "/src/components/ChakraRadioGroup.tsx",
+      "group": "Forms",
+      "exportName": "ChakraRadioGroup"
+    },
+    {
+      "title": "Rating group",
+      "componentPath": "/src/components/ChakraRatingGroup.tsx",
+      "group": "Forms",
+      "exportName": "ChakraRatingGroup"
+    },
+    {
+      "title": "Segment group",
+      "componentPath": "/src/components/ChakraSegmentGroup.tsx",
+      "group": "Navigation",
+      "exportName": "ChakraSegmentGroup"
+    },
+    {
+      "title": "Select",
+      "componentPath": "/src/components/ChakraSelect.tsx",
+      "group": "Forms",
+      "exportName": "ChakraSelect"
+    },
+    {
+      "title": "Separator",
+      "componentPath": "/src/components/ChakraSeparator.tsx",
+      "group": "Layout",
+      "exportName": "ChakraSeparator"
+    },
+    {
+      "title": "Skeleton",
+      "componentPath": "/src/components/ChakraSkeleton.tsx",
+      "group": "Feedback",
+      "exportName": "ChakraSkeleton"
+    },
+    {
+      "title": "Slider",
+      "componentPath": "/src/components/ChakraSlider.tsx",
+      "group": "Forms",
+      "exportName": "ChakraSlider"
+    },
+    {
+      "title": "Chakra button",
+      "componentPath": "/src/components/ChakraSolidButton.tsx",
+      "group": "Buttons",
+      "exportName": "ChakraSolidButton"
+    },
+    {
+      "title": "Spinner",
+      "componentPath": "/src/components/ChakraSpinner.tsx",
+      "group": "Feedback",
+      "exportName": "ChakraSpinner"
+    },
+    {
+      "title": "Stack",
+      "componentPath": "/src/components/ChakraStack.tsx",
+      "group": "Layout"
+    },
+    {
+      "title": "Stat",
+      "componentPath": "/src/components/ChakraStat.tsx",
+      "group": "Data",
+      "exportName": "ChakraStat"
+    },
+    {
+      "title": "Status",
+      "componentPath": "/src/components/ChakraStatus.tsx",
+      "group": "Display",
+      "exportName": "ChakraStatus"
+    },
+    {
+      "title": "Steps",
+      "componentPath": "/src/components/ChakraSteps.tsx",
+      "group": "Navigation",
+      "exportName": "ChakraSteps"
+    },
+    {
+      "title": "Switch",
+      "componentPath": "/src/components/ChakraSwitch.tsx",
+      "group": "Forms",
+      "exportName": "ChakraSwitch"
+    },
+    {
+      "title": "Table",
+      "componentPath": "/src/components/ChakraTable.tsx",
+      "group": "Data",
+      "exportName": "ChakraTable"
+    },
+    {
+      "title": "Tabs",
+      "componentPath": "/src/components/ChakraTabs.tsx",
+      "group": "Navigation",
+      "exportName": "ChakraTabs"
+    },
+    {
+      "title": "Tag",
+      "componentPath": "/src/components/ChakraTag.tsx",
+      "group": "Display",
+      "exportName": "ChakraTag"
+    },
+    {
+      "title": "Text",
+      "componentPath": "/src/components/ChakraText.tsx",
+      "group": "Display",
+      "exportName": "ChakraText"
+    },
+    {
+      "title": "Textarea",
+      "componentPath": "/src/components/ChakraTextarea.tsx",
+      "group": "Forms",
+      "exportName": "ChakraTextarea"
+    },
+    {
+      "title": "Toast",
+      "componentPath": "/src/components/ChakraToast.tsx",
+      "group": "Feedback"
+    },
+    {
+      "title": "Tooltip",
+      "componentPath": "/src/components/ChakraTooltip.tsx",
+      "group": "Overlays",
+      "exportName": "ChakraTooltip"
+    },
+    {
+      "title": "VStack",
+      "componentPath": "/src/components/ChakraVStack.tsx",
+      "group": "Layout"
+    }
   ]
 }

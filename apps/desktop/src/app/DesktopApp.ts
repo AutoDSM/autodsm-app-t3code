@@ -14,6 +14,11 @@ import * as DesktopAppIdentity from "./DesktopAppIdentity.ts";
 import * as DesktopApplicationMenu from "../window/DesktopApplicationMenu.ts";
 import * as DesktopBackendManager from "../backend/DesktopBackendManager.ts";
 import { detachAllPreviewViews } from "../componentPreview/componentPreviewViews.ts";
+import {
+  handleAutodsmAuthDeepLinkArgv,
+  autodsmAuthDeepLinkRevealEffect,
+} from "../oauth/autodsmAuthDeepLink.ts";
+import { registerAutodsmAuthProtocolClient } from "../oauth/autodsmAuthProtocol.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 import * as DesktopLifecycle from "./DesktopLifecycle.ts";
 import * as DesktopObservability from "./DesktopObservability.ts";
@@ -59,6 +64,7 @@ const { logInfo: logStartupInfo, logError: logStartupError } =
 
 const resolveDesktopBackendPort = Effect.fn("resolveDesktopBackendPort")(function* (
   configuredPort: Option.Option<number>,
+  isDevelopment: boolean,
 ) {
   if (Option.isSome(configuredPort)) {
     return {
@@ -68,6 +74,24 @@ const resolveDesktopBackendPort = Effect.fn("resolveDesktopBackendPort")(functio
   }
 
   const net = yield* NetService.NetService;
+
+  if (!isDevelopment) {
+    for (const host of DESKTOP_BACKEND_PORT_PROBE_HOSTS) {
+      if (!(yield* net.canListenOnHost(DEFAULT_DESKTOP_BACKEND_PORT, host))) {
+        return yield* new DesktopBackendPortUnavailableError({
+          startPort: DEFAULT_DESKTOP_BACKEND_PORT,
+          maxPort: DEFAULT_DESKTOP_BACKEND_PORT,
+          hosts: DESKTOP_BACKEND_PORT_PROBE_HOSTS,
+        });
+      }
+    }
+
+    return {
+      port: DEFAULT_DESKTOP_BACKEND_PORT,
+      selectedByScan: false,
+    } as const;
+  }
+
   for (let port = DEFAULT_DESKTOP_BACKEND_PORT; port <= MAX_TCP_PORT; port += 1) {
     let availableOnEveryHost = true;
 
@@ -119,7 +143,7 @@ const handleFatalStartupError = Effect.fn("desktop.startup.handleFatalStartupErr
   const wasQuitting = yield* Ref.getAndSet(state.quitting, true);
   if (!wasQuitting) {
     yield* electronDialog.showErrorBox(
-      "T3 Code failed to start",
+      "AutoDSM failed to start",
       `Stage: ${stage}\n${message}${detail}`,
     );
   }
@@ -142,7 +166,10 @@ const bootstrap = Effect.gen(function* () {
     return yield* new DesktopDevelopmentBackendPortRequiredError();
   }
 
-  const backendPortSelection = yield* resolveDesktopBackendPort(environment.configuredBackendPort);
+  const backendPortSelection = yield* resolveDesktopBackendPort(
+    environment.configuredBackendPort,
+    environment.isDevelopment,
+  );
   const backendPort = backendPortSelection.port;
   yield* logBootstrapInfo(
     backendPortSelection.selectedByScan
@@ -226,6 +253,9 @@ const startup = Effect.gen(function* () {
     Effect.catchCause((cause) => fatalStartupCause("whenReady", cause)),
   );
   yield* logStartupInfo("app ready");
+  registerAutodsmAuthProtocolClient();
+  handleAutodsmAuthDeepLinkArgv(process.argv);
+  yield* autodsmAuthDeepLinkRevealEffect;
   yield* appIdentity.configure;
   yield* applicationMenu.configure;
   yield* electronProtocol.registerDesktopFileProtocol;

@@ -109,7 +109,10 @@ export function deriveChangeSetOpsAndHunks(diff: string): DerivedChangeSet {
         kind: changeTypeToOpKind(file.type),
         path: relPath,
         ...(file.prevName
-          ? { renameTo: relPath, path: AutoDsmWorkspaceRelativePath.make(stripDiffPathPrefix(file.prevName)) }
+          ? {
+              renameTo: relPath,
+              path: AutoDsmWorkspaceRelativePath.make(stripDiffPathPrefix(file.prevName)),
+            }
           : {}),
       };
       ops.push(op);

@@ -12,9 +12,16 @@ import * as DesktopEnvironment from "./DesktopEnvironment.ts";
 import * as DesktopObservability from "./DesktopObservability.ts";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import * as ElectronTheme from "../electron/ElectronTheme.ts";
+import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import * as DesktopState from "./DesktopState.ts";
 import * as DesktopWindow from "../window/DesktopWindow.ts";
 import { detachAllPreviewViews } from "../componentPreview/componentPreviewViews.ts";
+import { closeSupabaseOAuthShell } from "../oauth/supabaseOAuthWindow.ts";
+import {
+  handleAutodsmAuthDeepLink,
+  handleAutodsmAuthDeepLinkArgv,
+  autodsmAuthDeepLinkRevealEffect,
+} from "../oauth/autodsmAuthDeepLink.ts";
 
 export interface DesktopShutdownShape {
   readonly request: Effect.Effect<void>;
@@ -53,7 +60,8 @@ export type DesktopLifecycleRuntimeServices =
   | DesktopState.DesktopState
   | DesktopWindow.DesktopWindow
   | ElectronApp.ElectronApp
-  | ElectronTheme.ElectronTheme;
+  | ElectronTheme.ElectronTheme
+  | ElectronWindow.ElectronWindow;
 
 export interface DesktopLifecycleShape {
   readonly relaunch: (
@@ -106,6 +114,7 @@ function handleBeforeQuit(
 ): void {
   if (allowQuit()) {
     detachAllPreviewViews();
+    closeSupabaseOAuthShell();
     void runEffect(
       Effect.gen(function* () {
         const state = yield* DesktopState.DesktopState;
@@ -213,9 +222,29 @@ export const layer = Layer.succeed(
       yield* electronApp.on("activate", () => {
         void runEffect(desktopWindow.activate.pipe(Effect.withSpan("desktop.lifecycle.activate")));
       });
-      yield* electronApp.on("second-instance", () => {
+      if (environment.platform === "darwin") {
+        yield* electronApp.on("open-url", (event: Electron.Event, url: string) => {
+          event.preventDefault();
+          handleAutodsmAuthDeepLink(url);
+          void runEffect(
+            autodsmAuthDeepLinkRevealEffect.pipe(
+              Effect.catchCause((cause) =>
+                logLifecycleError("open-url auth success reveal failed", {
+                  cause: Cause.pretty(cause),
+                }),
+              ),
+              Effect.withSpan("desktop.lifecycle.openUrlAuthSuccess"),
+            ),
+          );
+        });
+      }
+      yield* electronApp.on("second-instance", (_event: Electron.Event, argv: string[]) => {
+        handleAutodsmAuthDeepLinkArgv(argv);
         void runEffect(
-          desktopWindow.activate.pipe(
+          Effect.gen(function* () {
+            yield* desktopWindow.activate;
+            yield* autodsmAuthDeepLinkRevealEffect;
+          }).pipe(
             Effect.catchCause((cause) =>
               logLifecycleError("second-instance activation failed", {
                 cause: Cause.pretty(cause),

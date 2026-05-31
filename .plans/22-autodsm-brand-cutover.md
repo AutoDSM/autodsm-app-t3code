@@ -1,5 +1,9 @@
 # AutoDSM Brand Cutover Plan
 
+## Progress
+
+**2026-05-27:** User-visible text rebrand complete (Phases 1–2, 4–6 of this plan). Product UI, server messages, release notifications, marketing, and user-facing docs now say AutoDSM. Internal identifiers (`@t3tools/*`, `T3CODE_*`, `t3code:` keys, `com.t3tools.t3code`, legacy user-data dirs) remain unchanged. Guardrail: `bun run brand:audit`.
+
 ## Goal
 
 Make the built application present itself as AutoDSM everywhere a user, beta tester, release

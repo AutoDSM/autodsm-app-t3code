@@ -1,9 +1,23 @@
-import { EnvironmentId, AutoDsmSessionId, AutoDsmChangeSetId } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  AutoDsmSessionId,
+  AutoDsmChangeSetId,
+  type AutoDsmChangeHunkDecision,
+  type AutoDsmChangeSetMutationResult,
+  type AutoDsmComponentAgentResyncMode,
+  type AutoDsmComponentAgentResyncResult,
+  type AutoDsmIconLibraryId,
+  type ThreadId,
+} from "@t3tools/contracts";
 import type {
   AutoDsmBrandProfile,
   AutoDsmBrandTokenDraft,
   AutoDsmBrandTokenPatch,
   AutoDsmComponentRegistry,
+  AutoDsmDesignBriefApplyResult,
+  AutoDsmDesignBriefDoc,
+  AutoDsmDesignBriefGetResult,
+  AutoDsmDesignBriefProposal,
   AutoDsmProjectProfile,
   AutoDsmRenderEnvironmentProfile,
   AutoDsmSidecarStatusResult,
@@ -11,6 +25,7 @@ import type {
   AutoDsmPullRequest,
   AutoDsmPullRequestListResult,
   AutoDsmPublishedExport,
+  ModelSelection,
 } from "@t3tools/contracts";
 import { queryOptions } from "@tanstack/react-query";
 
@@ -141,6 +156,95 @@ export async function autodsmResyncBrandTokens(input: {
     cwd: input.cwd,
     forceReseed: input.forceReseed,
   });
+}
+
+/**
+ * Upload a fresh `design.md` brief for the workspace. The server persists it
+ * to `.autodsm/design-brief.md` along with a metadata sidecar.
+ */
+export async function autodsmUploadDesignBrief(input: {
+  readonly environmentId: EnvironmentId;
+  readonly cwd: string;
+  readonly markdown: string;
+}): Promise<{ doc: AutoDsmDesignBriefDoc }> {
+  return requireApi(input.environmentId).autodsm.uploadDesignBrief({
+    cwd: input.cwd,
+    markdown: input.markdown,
+  });
+}
+
+/**
+ * Generate a token-operation proposal from the persisted brief. Throws when
+ * no brief has been uploaded yet.
+ */
+export async function autodsmProposeDesignBrief(input: {
+  readonly environmentId: EnvironmentId;
+  readonly cwd: string;
+  /** Active provider/model the user has selected for text generation. */
+  readonly modelSelection: ModelSelection;
+}): Promise<{ proposal: AutoDsmDesignBriefProposal }> {
+  return requireApi(input.environmentId).autodsm.proposeDesignBrief({
+    cwd: input.cwd,
+    modelSelection: input.modelSelection,
+  });
+}
+
+/**
+ * Apply the accepted subset of operations from a previously generated
+ * proposal. The server returns the new brand profile alongside the per-op
+ * skip reasons (`name-not-found` / `schema-invalid` / `stale-base`).
+ */
+export async function autodsmApplyDesignBriefProposal(input: {
+  readonly environmentId: EnvironmentId;
+  readonly cwd: string;
+  readonly proposalId: string;
+  readonly acceptedOpIds: ReadonlyArray<string>;
+}): Promise<AutoDsmDesignBriefApplyResult> {
+  return requireApi(input.environmentId).autodsm.applyDesignBriefProposal({
+    cwd: input.cwd,
+    proposalId: input.proposalId,
+    acceptedOpIds: input.acceptedOpIds,
+  });
+}
+
+/** Read the persisted brief (markdown + metadata) for re-display. */
+export async function autodsmGetDesignBrief(input: {
+  readonly environmentId: EnvironmentId;
+  readonly cwd: string;
+}): Promise<AutoDsmDesignBriefGetResult> {
+  return requireApi(input.environmentId).autodsm.getDesignBrief({
+    cwd: input.cwd,
+  });
+}
+
+/**
+ * Re-seed the workspace's component-agents manifest from its starter
+ * template — picks up new components that landed in the template after
+ * the workspace was originally materialized. Defaults to `preserve-user`
+ * mode so any user-registered agents survive.
+ */
+export async function autodsmResyncComponentAgents(input: {
+  readonly environmentId: EnvironmentId;
+  readonly cwd: string;
+  readonly mode?: AutoDsmComponentAgentResyncMode;
+}): Promise<AutoDsmComponentAgentResyncResult> {
+  return requireApi(input.environmentId).autodsm.resyncComponentAgents({
+    cwd: input.cwd,
+    ...(input.mode ? { mode: input.mode } : {}),
+  });
+}
+
+/** Install an icon library package in the workspace and refresh brand tokens. */
+export async function autodsmInstallIconLibrary(input: {
+  readonly environmentId: EnvironmentId;
+  readonly cwd: string;
+  readonly library: AutoDsmIconLibraryId;
+}): Promise<AutoDsmBrandProfile> {
+  const result = await requireApi(input.environmentId).autodsm.installIconLibrary({
+    cwd: input.cwd,
+    library: input.library,
+  });
+  return result.profile;
 }
 
 export function autodsmComponentRegistryQueryOptions(input: {
@@ -324,4 +428,63 @@ export async function autodsmExportPublishedExport(input: {
     authToken: input.authToken,
   });
   return result.publishedExport;
+}
+
+// --- Hunk-level diff review (Phase 9) -------------------------------------
+
+/**
+ * Capture a completed turn's diff as a reviewable ChangeSet (ops + pending
+ * hunks). `diff` is the unified-diff string already fetched for display via
+ * `orchestration.getTurnDiff`.
+ */
+export async function autodsmCreateChangeSetFromTurnDiff(input: {
+  readonly environmentId: EnvironmentId;
+  readonly cwd: string;
+  readonly threadId: ThreadId;
+  readonly diff: string;
+}): Promise<AutoDsmChangeSet> {
+  const result = await requireApi(input.environmentId).autodsm.changeSetCreateFromTurnDiff({
+    cwd: input.cwd,
+    threadId: input.threadId,
+    diff: input.diff,
+  });
+  return result.changeSet;
+}
+
+/** Record approve/reject/discard decisions for individual hunks of a ChangeSet. */
+export async function autodsmSetHunkDecisions(input: {
+  readonly environmentId: EnvironmentId;
+  readonly cwd: string;
+  readonly changeSetId: AutoDsmChangeSetId;
+  readonly threadId?: ThreadId;
+  readonly decisions: ReadonlyArray<{
+    readonly hunkId: string;
+    readonly decision: AutoDsmChangeHunkDecision;
+  }>;
+}): Promise<AutoDsmChangeSet> {
+  const result = await requireApi(input.environmentId).autodsm.changeSetSetHunkDecisions({
+    cwd: input.cwd,
+    changeSetId: input.changeSetId,
+    ...(input.threadId !== undefined ? { threadId: input.threadId } : {}),
+    decisions: input.decisions.map((d) => ({ hunkId: d.hunkId, decision: d.decision })),
+  });
+  return result.changeSet;
+}
+
+/**
+ * Apply a ChangeSet honouring per-hunk decisions: rejected/discarded hunks are
+ * reverted on disk, approved/pending hunks are kept. Resolves with the recorded
+ * outcome disposition (accepted / partial / reverted).
+ */
+export async function autodsmApplyChangeSetDecisions(input: {
+  readonly environmentId: EnvironmentId;
+  readonly cwd: string;
+  readonly changeSetId: AutoDsmChangeSetId;
+  readonly threadId?: ThreadId;
+}): Promise<AutoDsmChangeSetMutationResult> {
+  return requireApi(input.environmentId).autodsm.changeSetApplyDecisions({
+    cwd: input.cwd,
+    changeSetId: input.changeSetId,
+    ...(input.threadId !== undefined ? { threadId: input.threadId } : {}),
+  });
 }

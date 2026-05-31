@@ -44,7 +44,7 @@ describe("autoDsmTokenStore", () => {
 
   it("seeds structured color tokens from :root and .dark CSS", () => {
     const cwd = tmpWorkspace({
-      "src/index.css": `:root { --primary: #8a38f5; --space-4: 16px; }
+      "src/index.css": `:root { --primary: #8a38f5; --space-4: 16px; --radius: 0.5rem; }
 .dark { --primary: #a366ff; }`,
     });
     const tokens = loadBrandTokens(cwd);
@@ -53,6 +53,32 @@ describe("autoDsmTokenStore", () => {
     expect(primary?.color).toEqual({ light: "#8a38f5", dark: "#a366ff" });
     const space = tokens.find((t) => t.id === "css-var:space-4");
     expect(space?.category).toBe("spacing");
+    const radius = tokens.find((t) => t.id === "css-var:radius");
+    expect(radius?.category).toBe("radius");
+  });
+
+  it("migrates persisted radius tokens from spacing to radius on load", () => {
+    const cwd = tmpWorkspace();
+    fs.mkdirSync(path.join(cwd, ".autodsm"), { recursive: true });
+    fs.writeFileSync(
+      path.join(cwd, ".autodsm", "brand-tokens.json"),
+      `${JSON.stringify({
+        schemaVersion: 2,
+        tokens: [
+          {
+            id: "css-var:radius",
+            category: "spacing",
+            name: "radius",
+            value: "0.5rem",
+            origin: "scanned",
+            sources: ["/src/index.css"],
+          },
+        ],
+      })}\n`,
+      "utf8",
+    );
+    const tokens = loadBrandTokens(cwd);
+    expect(tokens.find((t) => t.name === "radius")?.category).toBe("radius");
   });
 
   it("adds a user token and persists it across reads", () => {
@@ -111,5 +137,36 @@ describe("autoDsmTokenStore", () => {
     expect(resynced.tokens.some((t) => t.name === "brand")).toBe(true);
     expect(resynced.tokens.some((t) => t.name === "new-token")).toBe(true);
     expect(resynced.tokens.find((t) => t.name === "primary")?.value).toBe("#999");
+  });
+
+  it("writes brand-profile.meta.json alongside tokens", () => {
+    const cwd = tmpWorkspace();
+    addBrandToken(cwd, { category: "color", name: "brand", value: "#fff" });
+    expect(fs.existsSync(path.join(cwd, ".autodsm", "brand-profile.meta.json"))).toBe(true);
+  });
+
+  it("migrates legacy system/tokens.json into brand-tokens.json", () => {
+    const cwd = tmpWorkspace();
+    fs.writeFileSync(
+      path.join(cwd, "tokens.json"),
+      `${JSON.stringify({
+        schemaVersion: 2,
+        tokens: [
+          {
+            id: "css-var:primary",
+            category: "color",
+            name: "primary",
+            value: "#111",
+            origin: "scanned",
+            sources: ["/src/index.css"],
+          },
+        ],
+      })}\n`,
+      "utf8",
+    );
+    const tokens = loadBrandTokens(cwd);
+    expect(tokens).toHaveLength(1);
+    expect(fs.existsSync(path.join(cwd, ".autodsm", "brand-tokens.json"))).toBe(true);
+    expect(fs.existsSync(path.join(cwd, "tokens.json"))).toBe(false);
   });
 });

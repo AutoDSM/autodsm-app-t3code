@@ -23,7 +23,7 @@ export function BrandTokenPreviewGlyph(props: {
       <span
         aria-hidden
         className={cn(
-          "inline-block shrink-0 rounded-full border border-[#8a38f5]/45",
+          "inline-block shrink-0 rounded-full border border-brand/45",
           sizeClass,
           props.className,
         )}
@@ -37,7 +37,7 @@ export function BrandTokenPreviewGlyph(props: {
       <span
         aria-hidden
         className={cn(
-          "inline-flex shrink-0 items-center justify-center rounded border border-[#8a38f5]/45 font-semibold leading-none text-[#8a38f5] dark:text-[#c084fc]",
+          "inline-flex shrink-0 items-center justify-center rounded border border-brand/45 font-semibold leading-none text-brand",
           sizeClass,
           props.className,
         )}
@@ -47,11 +47,56 @@ export function BrandTokenPreviewGlyph(props: {
     );
   }
 
+  if (props.token.category === "radius") {
+    return (
+      <span
+        aria-hidden
+        className={cn(
+          "inline-block shrink-0 border border-brand/45 bg-brand/10",
+          sizeClass,
+          props.className,
+        )}
+        style={{ borderRadius: props.token.value || "0.25rem" }}
+      />
+    );
+  }
+
+  if (props.token.category === "shadow") {
+    return (
+      <span
+        aria-hidden
+        className={cn(
+          "inline-block shrink-0 rounded-sm border border-brand/30 bg-background",
+          sizeClass,
+          props.className,
+        )}
+        style={{ boxShadow: props.token.value || "0 1px 2px rgb(0 0 0 / 0.1)" }}
+      />
+    );
+  }
+
+  if (props.token.category === "icon") {
+    return (
+      <span
+        aria-hidden
+        className={cn(
+          "inline-flex shrink-0 items-center justify-center rounded border border-brand/45 text-brand",
+          sizeClass,
+          props.className,
+        )}
+      >
+        <svg viewBox="0 0 16 16" className="size-[70%]" fill="currentColor" aria-hidden>
+          <path d="M2 2h4v4H2V2zm8 0h4v4h-4V2zM2 10h4v4H2v-4zm8 0h4v4h-4v-4z" />
+        </svg>
+      </span>
+    );
+  }
+
   return (
     <span
       aria-hidden
       className={cn(
-        "inline-block shrink-0 rounded-full border border-[#8a38f5]/45",
+        "inline-block shrink-0 rounded-full border border-brand/45",
         sizeClass,
         props.className,
       )}
@@ -72,6 +117,15 @@ export function brandTokenPreviewFromCategory(
   }
   if (category === "typography") {
     return { category: "typography", value: "" };
+  }
+  if (category === "radius") {
+    return { category: "radius", value: "0.375rem" };
+  }
+  if (category === "shadow") {
+    return { category: "shadow", value: "0 1px 2px rgb(0 0 0 / 0.1)" };
+  }
+  if (category === "icon") {
+    return { category: "icon", value: "lucide" };
   }
   return { category: category ?? "spacing", value: "" };
 }

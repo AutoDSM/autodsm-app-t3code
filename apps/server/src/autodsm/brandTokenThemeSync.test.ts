@@ -43,4 +43,31 @@ describe("brandTokenThemeSync", () => {
     expect(css).toContain(".dark");
     expect(css).toContain("--primary: #def");
   });
+
+  it("patches iconLibrary in components.json for icon-library token", () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "autodsm-theme-sync-icon-"));
+    createdDirs.push(cwd);
+    fs.mkdirSync(path.join(cwd, "src"), { recursive: true });
+    fs.writeFileSync(
+      path.join(cwd, "components.json"),
+      `${JSON.stringify({ iconLibrary: "lucide" }, null, 2)}\n`,
+      "utf8",
+    );
+
+    syncBrandTokensToThemeFiles(cwd, [
+      {
+        id: "config:icon-library",
+        category: "icon",
+        name: "icon-library",
+        value: "heroicons",
+        origin: "scanned",
+        sources: ["/components.json"],
+      },
+    ]);
+
+    const parsed = JSON.parse(fs.readFileSync(path.join(cwd, "components.json"), "utf8")) as {
+      iconLibrary?: string;
+    };
+    expect(parsed.iconLibrary).toBe("heroicons");
+  });
 });

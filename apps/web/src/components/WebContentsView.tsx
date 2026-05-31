@@ -1,5 +1,6 @@
 import type {
   AutoDsmRenderManifest,
+  ComponentPreviewExportKind,
   ComponentPreviewManifest,
   ComponentPreviewPropSpec,
   EnvironmentId,
@@ -11,7 +12,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { COMPONENT_PREVIEW_RUNTIME_PATH } from "~/components/appSidebarLauncherChrome";
 import { Button } from "~/components/ui/button";
 import { Label } from "~/components/ui/label";
-import { ComponentPreviewLoadingSkeleton } from "~/components/ComponentPreviewLoadingSkeleton";
+import {
+  ComponentPreviewLoadingSkeleton,
+  type ComponentPreviewLoadingStage,
+} from "~/components/ComponentPreviewLoadingSkeleton";
 import { cn } from "~/lib/utils";
 import { ensureEnvironmentApi } from "~/environmentApi";
 import {
@@ -20,6 +24,8 @@ import {
   COMPONENT_PREVIEW_INTERACTION,
   COMPONENT_PREVIEW_RENDERED,
   COMPONENT_PREVIEW_RUNTIME_ERROR,
+  COMPONENT_PREVIEW_STATUS,
+  type ComponentPreviewStatusPayload,
 } from "~/lib/componentPreviewMessages";
 import { randomUUID } from "~/lib/utils";
 import { autodsmWorkspaceQueryKeys } from "~/lib/autodsmWorkspaceReactQuery";
@@ -39,6 +45,13 @@ import {
   unregisterComponentPreviewView,
 } from "~/lib/componentPreviewViewRegistry";
 import { normalizeSidebarComponentCatalogPath } from "~/lib/srcComponentsWorkspacePaths";
+import {
+  buildDefaultProps,
+  ComponentPreviewPropControl,
+  propsForExport,
+  summarizePropSpecsForAppendix,
+} from "~/lib/componentPreviewProps";
+import { useStaleStagingCwdRecovery } from "~/hooks/useStaleStagingCwdRecovery";
 
 const MAX_RELATIVE_PREVIEW_PATH_CHARS = 512;
 
@@ -71,78 +84,38 @@ export interface WebContentsViewProps {
   readonly onInjectComposerText?: (text: string) => void;
   /** Product mode hides dev-only preview chrome (export picker, prop editor, quick prompts). */
   readonly variant?: "dev" | "product";
+  /** When set, props are controlled by the parent (product Demo tab). */
+  readonly controlledProps?: Record<string, unknown>;
+  /**
+   * Optional initial named export to render. When provided, used in place
+   * of {@link pickInitialExport}'s default selection. Passed in by the
+   * per-component thread page so a click on "Floating Action Button —
+   * Extended" actually renders `MuiFabExtended` and not `MuiFab`.
+   * Must match a name in the analyzed component's `manifest.exports`;
+   * silently falls back to `pickInitialExport` otherwise.
+   */
+  readonly initialExportName?: string;
 }
 
-function pickInitialExport(manifest: ComponentPreviewManifest): string {
+const RENDERABLE_EXPORT_KINDS: ReadonlySet<ComponentPreviewExportKind> = new Set([
+  "function",
+  "forwardRef",
+  "memo",
+  "class",
+]);
+
+export function pickInitialExport(manifest: ComponentPreviewManifest): string {
   const def = manifest.exports.find((ex) => ex.isDefault);
   if (def) return "default";
-  const first = manifest.exports.find((ex) => ex.name !== "default");
-  return first?.name ?? "default";
-}
-
-function propsForExport(
-  manifest: ComponentPreviewManifest,
-  exportNameValue: string,
-): readonly ComponentPreviewPropSpec[] {
-  return manifest.propsByExport.find((entry) => entry.exportName === exportNameValue)?.props ?? [];
-}
-
-function summarizePropSpecsForAppendix(specs: readonly ComponentPreviewPropSpec[]): string {
-  if (specs.length === 0) {
-    return "none";
-  }
-  return specs.map((spec) => `${spec.name}:${spec.kind}${spec.optional ? "?" : ""}`).join(", ");
-}
-
-function buildDefaultProps(specs: readonly ComponentPreviewPropSpec[]): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const spec of specs) {
-    if (spec.defaultJson !== undefined) {
-      try {
-        out[spec.name] = JSON.parse(spec.defaultJson) as unknown;
-        continue;
-      } catch {
-        /* fall through */
-      }
-    }
-    if (spec.optional) {
-      if (spec.kind === "enum" || spec.kind === "literalUnion") {
-        const values = spec.enumValues ?? [];
-        const preferred =
-          values.find((value) => value === "default") ??
-          values.find((value) => value === "contained") ??
-          values[0];
-        if (preferred !== undefined) {
-          out[spec.name] = preferred;
-        }
-      }
-      continue;
-    }
-    switch (spec.kind) {
-      case "string":
-        out[spec.name] = "";
-        break;
-      case "number":
-        out[spec.name] = 0;
-        break;
-      case "boolean":
-        out[spec.name] = false;
-        break;
-      case "enum":
-      case "literalUnion":
-        out[spec.name] = spec.enumValues?.[0] ?? "";
-        break;
-      case "reactNode":
-        out[spec.name] = null;
-        break;
-      case "function":
-        out[spec.name] = () => undefined;
-        break;
-      default:
-        break;
-    }
-  }
-  return out;
+  // Prefer exports the analyzer recognised as actual components. Without this
+  // the picker can select a non-renderable value (e.g. an exported const, a
+  // re-exported icon) that bundles to nothing.
+  const firstRenderable = manifest.exports.find(
+    (ex) => ex.name !== "default" && RENDERABLE_EXPORT_KINDS.has(ex.kind),
+  );
+  if (firstRenderable) return firstRenderable.name;
+  const firstAny = manifest.exports.find((ex) => ex.name !== "default");
+  return firstAny?.name ?? "default";
 }
 
 function previewRuntimeHref(): string {
@@ -178,9 +151,12 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
     registerPromptAppendix,
     onInjectComposerText,
     variant = "dev",
+    initialExportName,
+    controlledProps,
   } = props;
 
   const isProductVariant = variant === "product";
+  const isControlledProps = controlledProps !== undefined;
 
   const trimmed = relativePath?.trim();
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -189,7 +165,13 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
   const [interactionLog, setInteractionLog] = useState<string[]>([]);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [propsRecord, setPropsRecord] = useState<Record<string, unknown>>({});
-  const [exportName, setExportName] = useState<string>("default");
+  // Initialize from the caller-supplied export so the first render of bundleDepsReady
+  // already sees the right name; otherwise the queries are briefly disabled and
+  // can race their enabled flag against the manifest-load effect below.
+  const [exportName, setExportName] = useState<string>(() => {
+    const initial = initialExportName?.trim();
+    return initial !== undefined && initial.length > 0 ? initial : "default";
+  });
   const [nativeViewId] = useState(() => randomUUID());
   const childReadyRef = useRef(false);
   const [iframeRendered, setIframeRendered] = useState(false);
@@ -206,6 +188,12 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
   overlaySuppressedRef.current = overlaySuppressed;
   const isIntersectingRef = useRef(true);
 
+  // Track how long the current bundle/analyze has been in flight. Turns the
+  // perceived "infinite spinner" into a visible elapsed counter so users (and
+  // we) know whether the RPC is actually progressing.
+  const [bundleStartedAtMs, setBundleStartedAtMs] = useState<number | null>(null);
+  const [bundleElapsedMs, setBundleElapsedMs] = useState<number>(0);
+
   const [previewScreenshot, setPreviewScreenshot] = useState<string | null>(null);
 
   const [previewCrash, setPreviewCrash] = useState<{
@@ -213,6 +201,7 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
     readonly exitCode?: number;
   } | null>(null);
   const [previewUnresponsive, setPreviewUnresponsive] = useState(false);
+  const [nativePrimeTimedOut, setNativePrimeTimedOut] = useState(false);
 
   const bridgeNative =
     typeof window !== "undefined" &&
@@ -241,6 +230,9 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
           void window.desktopBridge?.detachComponentPreview?.(nativeViewId);
         } else if (payload.status === "unresponsive") {
           setPreviewUnresponsive(true);
+        } else if (payload.status === "prime-failed") {
+          setRuntimeError(payload.message ?? "Native preview failed to receive INIT payload.");
+          setNativePrimeTimedOut(true);
         }
       }
     });
@@ -310,16 +302,31 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
     );
   }, [normalizedCatalogPath, registryQuery.data]);
 
-  const stablePropsJson = useMemo(() => JSON.stringify(propsRecord), [propsRecord]);
+  const effectivePropsRecord = isControlledProps ? controlledProps : propsRecord;
+  const stablePropsJson = useMemo(
+    () => JSON.stringify(effectivePropsRecord),
+    [effectivePropsRecord],
+  );
 
   useEffect(() => {
     if (!manifest || !manifestMatchesPath(manifest, trimmed)) {
       return;
     }
-    const nextExport = pickInitialExport(manifest);
+    // Prefer the caller-supplied export (per-component thread routes pass
+    // the agent's `exportName` so variant-specific agents render the right
+    // variant). Fall back to pickInitialExport when the requested export
+    // isn't analyzable (file's export surface drifted from the manifest).
+    const requested = initialExportName?.trim();
+    const requestedIsAvailable =
+      requested !== undefined &&
+      requested.length > 0 &&
+      manifest.exports.some((ex) => ex.name === requested);
+    const nextExport = requestedIsAvailable ? requested! : pickInitialExport(manifest);
     setExportName(nextExport);
-    setPropsRecord(buildDefaultProps(propsForExport(manifest, nextExport)));
-  }, [manifest, trimmed]);
+    if (!isControlledProps) {
+      setPropsRecord(buildDefaultProps(propsForExport(manifest, nextExport)));
+    }
+  }, [manifest, trimmed, initialExportName, isControlledProps]);
 
   const legacyBundleQuery = useQuery({
     queryKey: ["component-preview-bundle", environmentId, workspaceCwd, trimmed, exportName],
@@ -371,6 +378,39 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
   const renderManifest: AutoDsmRenderManifest | undefined = executePreviewQuery.data?.manifest;
   const legacyBundle = legacyBundleQuery.data;
 
+  // Auto-recover when the server rejects the cwd because it lives in the
+  // staging directory. The frontend's project store may be holding a stale
+  // staging path from a crashed workspace-creation flow; the hook detects
+  // the rejection, refetches workspace history, and patches the store with
+  // the FINAL systemPath so the queries below re-fire against the right cwd.
+  // Identifies the project to heal via the failing `workspaceCwd` itself
+  // rather than a separate persisted ref — the ref isn't populated on
+  // direct thread-URL navigation, but the cwd is always in scope here.
+  const firstStagingError = useMemo(() => {
+    const candidates = [
+      manifestQuery.error,
+      registryQuery.error,
+      legacyBundleQuery.error,
+      executePreviewQuery.error,
+    ];
+    for (const candidate of candidates) {
+      if (candidate instanceof Error && candidate.message.includes("staging directory")) {
+        return candidate;
+      }
+    }
+    return null;
+  }, [
+    manifestQuery.error,
+    registryQuery.error,
+    legacyBundleQuery.error,
+    executePreviewQuery.error,
+  ]);
+  const staleStagingRecovery = useStaleStagingCwdRecovery({
+    environmentId,
+    workspaceCwd,
+    error: firstStagingError,
+  });
+
   const compileErrors = useMemo(() => {
     if (matchedRegistryEntry !== undefined) {
       if (executePreviewQuery.isError) {
@@ -409,17 +449,56 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
     return legacyBundle?.warnings ?? [];
   }, [legacyBundle, matchedRegistryEntry, renderManifest]);
 
+  // Use fetchStatus rather than isPending. In TanStack Query v5 a disabled query
+  // reports isPending: true forever (no data, no error). That made the skeleton
+  // hang whenever matchedRegistryEntry was undefined or bundleDepsReady false.
+  // fetchStatus === "fetching" only when a request is genuinely in flight.
   const bundlePending =
     matchedRegistryEntry !== undefined
-      ? executePreviewQuery.isPending ||
-        (isProductVariant && executePreviewQuery.isFetching && !resolvedPreviewJavascript)
-      : legacyBundleQuery.isPending ||
-        (isProductVariant && legacyBundleQuery.isFetching && !resolvedPreviewJavascript);
+      ? executePreviewQuery.fetchStatus === "fetching" && !resolvedPreviewJavascript
+      : legacyBundleQuery.fetchStatus === "fetching" && !resolvedPreviewJavascript;
 
   const analyzePending =
-    analyzeEnabled &&
-    !manifestReady &&
-    (manifestQuery.isPending || (isProductVariant && manifestQuery.isFetching));
+    analyzeEnabled && !manifestReady && manifestQuery.fetchStatus === "fetching";
+
+  // While the registry RPC is in flight we don't yet know whether this component
+  // will resolve to a design-system entry (executePreviewQuery) or a legacy bundle
+  // (legacyBundleQuery). Treat that interval as "loading" so we keep showing the
+  // skeleton instead of falling through to "Preview unavailable" prematurely.
+  const registryPending =
+    analyzeEnabled && registryQuery.fetchStatus === "fetching" && registryQuery.data === undefined;
+
+  // Surface registry build gates. A skipped build (no scripts.build) is fine for
+  // shadcn-style starters that don't need a pre-build step. Anything else means
+  // we cannot reliably render and should tell the user instead of spinning.
+  const registryGate = registryQuery.data?.gate ?? null;
+  const registryStatus = registryQuery.data?.status;
+  const registryHardFailed =
+    registryStatus === "failed" ||
+    (registryGate !== null && registryGate.code !== "workspace_build_skipped");
+
+  // Drive the elapsed-time counter: start ticking when bundling begins, stop
+  // when it ends. Without this users see an unmoving "Bundling preview…"
+  // spinner and can't tell if the RPC is hung or just slow.
+  useEffect(() => {
+    if (bundlePending || analyzePending || registryPending) {
+      if (bundleStartedAtMs === null) {
+        setBundleStartedAtMs(Date.now());
+        setBundleElapsedMs(0);
+      }
+      const id = window.setInterval(() => {
+        if (bundleStartedAtMs !== null) {
+          setBundleElapsedMs(Date.now() - bundleStartedAtMs);
+        }
+      }, 250);
+      return () => window.clearInterval(id);
+    }
+    if (bundleStartedAtMs !== null) {
+      setBundleStartedAtMs(null);
+      setBundleElapsedMs(0);
+    }
+    return undefined;
+  }, [bundlePending, analyzePending, registryPending, bundleStartedAtMs]);
 
   const bundleReady =
     manifestReady &&
@@ -437,6 +516,27 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
   const bundleRpcFailed =
     matchedRegistryEntry !== undefined ? executePreviewQuery.isError : legacyBundleQuery.isError;
 
+  // When ANY HTML diagnostic banner needs to be visible (compile error,
+  // runtime error, "export not found" amber, registry-still-indexing
+  // fallback), the parent must temporarily collapse the native Electron
+  // WebContentsView so the banner isn't covered by the OS-level composited
+  // layer. Without this, users in Electron see only the native view's
+  // "Waiting for component bundle…" placeholder while real errors hide
+  // behind it. Compute the boolean here; the effect at the next step
+  // toggles bounds when it flips.
+  const exportMissingInManifest = manifest !== undefined && !bundleDepsReady(manifest, exportName);
+  const shouldHideNativeView =
+    bridgeNative &&
+    !previewJavascript &&
+    !bundlePending &&
+    !analyzePending &&
+    (compileErrors.length > 0 ||
+      bundleRpcFailed ||
+      runtimeError !== null ||
+      nativePrimeTimedOut ||
+      exportMissingInManifest ||
+      manifestQuery.isError);
+
   useEffect(() => {
     childReadyRef.current = false;
     setIframeRendered(false);
@@ -448,12 +548,74 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
     renderedPathRef.current = null;
     setRuntimeError(null);
     setPreviewScreenshot(null);
+    setNativePrimeTimedOut(false);
   }, [trimmed, exportName, stablePropsJson]);
+
+  useEffect(() => {
+    if (!bridgeNative || !nativeAttached) {
+      return;
+    }
+    if (!analyzeEnabled || !manifestReady || manifestQuery.isError || previewCrash) {
+      return;
+    }
+    if (!previewJavascript || previewJavascript.length === 0) {
+      return;
+    }
+    if (nativeRenderedPath === trimmed) {
+      return;
+    }
+    if (nativePrimeTimedOut) {
+      return;
+    }
+
+    const timeoutMs = 15_000;
+    const id = window.setTimeout(() => {
+      setNativePrimeTimedOut(true);
+      setRuntimeError("Native preview did not acknowledge INIT (prime timeout).");
+    }, timeoutMs);
+    return () => window.clearTimeout(id);
+  }, [
+    analyzeEnabled,
+    bridgeNative,
+    manifestQuery.isError,
+    manifestReady,
+    nativeAttached,
+    nativePrimeTimedOut,
+    nativeRenderedPath,
+    previewCrash,
+    previewJavascript,
+    trimmed,
+  ]);
+
+  // Toggle the native preview's screen bounds based on whether an HTML
+  // diagnostic banner needs to be visible. Setting bounds to (0,0,0,0)
+  // collapses the OS-composited native view, exposing the renderer DOM
+  // underneath. When the banner clears, the native view re-attaches at
+  // measured bounds via the existing syncBounds path.
+  useEffect(() => {
+    if (!bridgeNative || !nativeAttachedRef.current) return;
+    if (shouldHideNativeView) {
+      void window.desktopBridge?.setComponentPreviewBounds?.({
+        viewId: nativeViewId,
+        bounds: { x: 0, y: 0, width: 0, height: 0 },
+      });
+    }
+    // When shouldHideNativeView flips back to false, the next render's
+    // `syncBounds` (from the layout observer / scroll listener) restores
+    // the real bounds — no explicit restore here.
+  }, [bridgeNative, nativeViewId, shouldHideNativeView]);
 
   const pushPreviewToChild = useCallback(() => {
     const iframe = iframeRef.current;
     const js = previewJavascript;
-    if (!iframe?.contentWindow || !js || js.length === 0) return;
+    if (!iframe?.contentWindow || !js || js.length === 0) {
+      // eslint-disable-next-line no-console
+      console.info("[component-preview] push skipped", {
+        hasIframe: Boolean(iframe?.contentWindow),
+        hasJs: Boolean(js && js.length > 0),
+      });
+      return;
+    }
     try {
       iframe.contentWindow.postMessage(
         {
@@ -468,10 +630,59 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
         },
         window.location.origin,
       );
-    } catch {
+      // eslint-disable-next-line no-console
+      console.info("[component-preview] push success", { bytes: js.length });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[component-preview] push failed", err);
       setRuntimeError("Failed to post preview payload to iframe.");
     }
   }, [previewJavascript, stablePropsJson, workspaceStyleCss]);
+
+  const pushStatusToChild = useCallback((payload: ComponentPreviewStatusPayload) => {
+    const iframe = iframeRef.current;
+    if (!iframe?.contentWindow) return;
+    try {
+      iframe.contentWindow.postMessage(
+        { type: COMPONENT_PREVIEW_STATUS, payload },
+        window.location.origin,
+      );
+    } catch {
+      // Iframe may be navigating away; status messages are advisory.
+    }
+  }, []);
+
+  // Surface bundle failures and the "exports unanalyzed" gap to the iframe so it
+  // can replace the indefinite "Waiting for component bundle…" spinner with a
+  // useful message. The parent already renders banner overlays for these states,
+  // but the iframe runs in a separate document and otherwise has no signal.
+  useEffect(() => {
+    if (!childReadyRef.current) return;
+    if (previewJavascript && previewJavascript.length > 0) return;
+    if (compileErrors.length > 0) {
+      pushStatusToChild({ phase: "bundle-error", message: compileErrors.join("\n") });
+      return;
+    }
+    if (manifest && !bundleDepsReady(manifest, exportName)) {
+      pushStatusToChild({ phase: "analyzing" });
+      return;
+    }
+    // On the registry-matched path, executeRenderPlan boots a Vite sidecar
+    // alongside the bundle. The sidecar's listen() takes seconds on a fresh
+    // shadcn workspace; show specific copy once we've been waiting >2s so the
+    // user knows what's actually slow.
+    if (matchedRegistryEntry !== undefined && bundleElapsedMs > 2000) {
+      pushStatusToChild({ phase: "sidecar-warmup" });
+    }
+  }, [
+    compileErrors,
+    manifest,
+    exportName,
+    previewJavascript,
+    pushStatusToChild,
+    matchedRegistryEntry,
+    bundleElapsedMs,
+  ]);
 
   useEffect(() => {
     if (!previewJavascript || previewJavascript.length === 0) return;
@@ -486,6 +697,8 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
       const data = event.data as { type?: string; payload?: { message?: string } };
       if (!data?.type) return;
       if (data.type === COMPONENT_PREVIEW_CHILD_READY) {
+        // eslint-disable-next-line no-console
+        console.info("[component-preview] child-ready received");
         childReadyRef.current = true;
         setIframeRendered(false);
         pushPreviewToChild();
@@ -798,6 +1011,7 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
   const showProductLoading =
     isProductVariant &&
     (analyzePending ||
+      registryPending ||
       bundleLoading ||
       nativePriming ||
       (bridgeNative &&
@@ -807,6 +1021,26 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
         Boolean(previewJavascript && previewJavascript.length > 0) &&
         renderedPathRef.current !== trimmed &&
         !iframeRendered));
+
+  // Resolved-then-down to the "narrowest" stage so the skeleton label and
+  // diagnostics reflect what the user is actually waiting on right now.
+  const loadingStage: ComponentPreviewLoadingStage = analyzePending
+    ? "analyze"
+    : registryPending
+      ? "registry"
+      : bundleLoading
+        ? "bundle"
+        : "native-attach";
+
+  const handlePreviewRetry = useCallback(() => {
+    void manifestQuery.refetch();
+    void registryQuery.refetch();
+    if (matchedRegistryEntry !== undefined) {
+      void executePreviewQuery.refetch();
+    } else {
+      void legacyBundleQuery.refetch();
+    }
+  }, [manifestQuery, registryQuery, executePreviewQuery, legacyBundleQuery, matchedRegistryEntry]);
 
   return (
     <div
@@ -825,22 +1059,102 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
       role="region"
     >
       {!analyzeEnabled ? (
-        <div className="border-border border-dashed p-3 text-muted-foreground text-xs">
-          Connect a project workspace to preview components (cwd required).
+        <div className="border-border border-dashed p-3 text-muted-foreground text-xs space-y-1">
+          <p>Preview unavailable — one of the required inputs is missing:</p>
+          <ul className="font-mono text-[10px] space-y-0.5 opacity-80">
+            <li>
+              relativePath: <code>{trimmed && trimmed.length > 0 ? trimmed : "(empty)"}</code>
+            </li>
+            <li>
+              workspaceCwd:{" "}
+              <code>{workspaceCwd && workspaceCwd.length > 0 ? workspaceCwd : "(null)"}</code>
+            </li>
+            <li>
+              environmentId: <code>{environmentId ?? "(null)"}</code>
+            </li>
+          </ul>
         </div>
       ) : isProductVariant && analyzePending ? (
-        <ComponentPreviewLoadingSkeleton className="min-h-0 flex-1" />
+        <ComponentPreviewLoadingSkeleton
+          className="min-h-0 flex-1"
+          elapsedMs={bundleElapsedMs}
+          stage="analyze"
+          diagnosticText={appendixGetter() ?? undefined}
+          onRetry={handlePreviewRetry}
+        />
       ) : manifestQuery.isPending ? (
         <div className="p-3 text-muted-foreground text-xs">Analyzing component…</div>
       ) : manifestQuery.isError ? (
-        <div className="space-y-2 border-b border-destructive/25 bg-destructive/5 p-3">
-          <div className="font-medium text-destructive text-xs">Analyze failed</div>
-          <div className="text-destructive text-xs">
-            {(manifestQuery.error as Error)?.message ?? "Failed to analyze component."}
+        firstStagingError !== null && staleStagingRecovery.status === "healing" ? (
+          <div className="space-y-2 border-b border-amber-500/25 bg-amber-500/5 p-3">
+            <div className="font-medium text-amber-700 text-xs dark:text-amber-300">
+              Recovering workspace path…
+            </div>
+            <div className="text-muted-foreground text-[10px] leading-snug">
+              The workspace store was pointing at the staging directory. Refreshing from
+              workspace history.
+            </div>
           </div>
-          <div className="text-muted-foreground text-[10px] leading-snug">
-            Fix syntax or export issues in this file, or confirm the path is inside the connected
-            workspace. Preview bundling runs only after analysis succeeds.
+        ) : firstStagingError !== null &&
+          staleStagingRecovery.status === "no-matching-workspace" ? (
+          <div className="space-y-2 border-b border-destructive/25 bg-destructive/5 p-3">
+            <div className="font-medium text-destructive text-xs">Workspace not found</div>
+            <div className="text-destructive text-xs">
+              The active workspace isn&apos;t in your history anymore. Pick a workspace from the
+              sidebar.
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-2 border-b border-destructive/25 bg-destructive/5 p-3">
+            <div className="font-medium text-destructive text-xs">Analyze failed</div>
+            <div className="text-destructive text-xs">
+              {(manifestQuery.error as Error)?.message ?? "Failed to analyze component."}
+            </div>
+            <div className="text-muted-foreground text-[10px] leading-snug">
+              Fix syntax or export issues in this file, or confirm the path is inside the
+              connected workspace. Preview bundling runs only after analysis succeeds.
+            </div>
+          </div>
+        )
+      ) : isProductVariant && registryHardFailed ? (
+        <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+          <div className="max-w-lg space-y-3 rounded-lg border border-destructive/30 bg-destructive/5 p-5 text-xs">
+            <div className="space-y-1">
+              <div className="font-semibold text-destructive text-sm">
+                {registryGate?.code === "workspace_not_initialized"
+                  ? "Workspace not initialized"
+                  : registryGate?.code === "workspace_build_timed_out"
+                    ? "Workspace build timed out"
+                    : "Workspace build failed"}
+              </div>
+              <div className="text-destructive/90">
+                {registryGate?.summary ??
+                  "The design-system workspace could not be built; component previews are unavailable until it succeeds."}
+              </div>
+            </div>
+            {registryGate?.commandDisplay ? (
+              <div className="font-mono text-[10px] text-muted-foreground">
+                $ {registryGate.commandDisplay}
+                {registryGate.exitCode !== null ? ` → exit ${registryGate.exitCode}` : ""}
+              </div>
+            ) : null}
+            {registryGate?.stderrTail ? (
+              <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-background/60 p-2 font-mono text-[10px] text-muted-foreground">
+                {registryGate.stderrTail}
+              </pre>
+            ) : null}
+            <div className="flex items-center gap-2 pt-1">
+              <Button
+                size="sm"
+                onClick={() => void registryQuery.refetch()}
+                disabled={registryQuery.fetchStatus === "fetching"}
+              >
+                {registryQuery.fetchStatus === "fetching" ? "Retrying…" : "Retry build"}
+              </Button>
+              <span className="text-[10px] text-muted-foreground">
+                Status: <code>{registryStatus ?? "unknown"}</code>
+              </span>
+            </div>
           </div>
         </div>
       ) : (
@@ -921,7 +1235,7 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
               <div className="mb-1 font-medium text-[10px] text-muted-foreground">Props</div>
               <div className="flex flex-col gap-2">
                 {propSpecs.map((spec) => (
-                  <PropControl
+                  <ComponentPreviewPropControl
                     key={spec.name}
                     spec={spec}
                     value={propsRecord[spec.name]}
@@ -1001,13 +1315,153 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
               "relative min-h-0 min-w-0 flex-1",
               isProductVariant ? "h-full min-h-0 w-full" : undefined,
             )}
+            data-debug-preview={JSON.stringify({
+              // Surfaced as an attribute so blank-preview symptoms can be
+              // diagnosed via DevTools — read the JSON to see exactly
+              // which branch of the bundle pipeline produced undefined JS.
+              matchedRegistryEntry: matchedRegistryEntry?.componentId ?? null,
+              executePending: executePreviewQuery.isPending,
+              executeError: (executePreviewQuery.error as Error | undefined)?.message ?? null,
+              manifestOk: renderManifest?.ok ?? null,
+              manifestErrorCount: renderManifest?.errors?.length ?? 0,
+              legacyOk: legacyBundle?.ok ?? null,
+              legacyErrorCount: legacyBundle?.errors?.length ?? 0,
+              previewJsLength: previewJavascript?.length ?? 0,
+              compileErrorCount: compileErrors.length,
+              runtimeError,
+              manifestReady,
+              exportName,
+            })}
           >
+            {/*
+              Always-on overlay banner — visible in BOTH dev and product
+              variants. Renders ONLY when the iframe can't show a working
+              preview, so the user is never left looking at a silent blank
+              pane. Covers four states:
+                1. Bundle is still pending → "Bundling preview…"
+                2. Bundle returned compile/manifest errors → first 3 errors
+                3. Runtime error from inside the iframe (e.g. emotion crash)
+                4. Bundle is empty AND not pending AND no errors → registry
+                   is still indexing or a silent edge case
+              The existing per-variant error chrome above stays for the
+              richer dev-only experience.
+            */}
+            {!previewJavascript ? (
+              bundlePending ? (
+                <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 text-xs text-muted-foreground">
+                  <div
+                    className="size-5 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-foreground/70"
+                    aria-hidden
+                  />
+                  <span>Bundling preview… {(bundleElapsedMs / 1000).toFixed(1)}s</span>
+                  <span className="font-mono text-[10px] opacity-70">
+                    {trimmed} · {exportName} ·{" "}
+                    {matchedRegistryEntry ? "executeRenderPlan" : "buildComponentPreview"}
+                  </span>
+                  {bundleElapsedMs >= 8000 ? (
+                    <span className="text-[10px] opacity-70 text-center px-4">
+                      First bundle is slow; subsequent loads will be cached.
+                    </span>
+                  ) : null}
+                  {bundleElapsedMs >= 20000 ? (
+                    <span className="text-[10px] opacity-70 text-center px-4">
+                      If this never finishes, run the smoke test from Settings → General.
+                    </span>
+                  ) : null}
+                </div>
+              ) : compileErrors.length > 0 || executePreviewQuery.isError ? (
+                <div className="pointer-events-none absolute inset-x-3 top-3 z-10 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive shadow">
+                  <p className="font-semibold">Preview failed to render</p>
+                  <ul className="mt-1 space-y-0.5">
+                    {compileErrors.slice(0, 3).map((err, i) => (
+                      <li key={i} className="line-clamp-2 break-words">
+                        {err}
+                      </li>
+                    ))}
+                    {compileErrors.length === 0 && executePreviewQuery.isError ? (
+                      <li className="line-clamp-2 break-words">
+                        {(executePreviewQuery.error as Error)?.message ??
+                          "executeRenderPlan failed"}
+                      </li>
+                    ) : null}
+                  </ul>
+                  {compileErrors.length > 3 ? (
+                    <p className="mt-1 text-[0.65rem] opacity-70">
+                      +{compileErrors.length - 3} more
+                    </p>
+                  ) : null}
+                  <p className="mt-2 font-mono text-[10px] opacity-70">
+                    {trimmed} · {exportName} ·{" "}
+                    {matchedRegistryEntry ? "executeRenderPlan" : "buildComponentPreview"}
+                  </p>
+                </div>
+              ) : runtimeError ? (
+                <div className="pointer-events-auto absolute inset-x-3 top-3 z-10 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive shadow">
+                  <p className="font-semibold">
+                    {nativePrimeTimedOut ? "Preview timed out" : "Preview runtime error"}
+                  </p>
+                  <p className="mt-1 line-clamp-3 break-words">{runtimeError}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <Button size="xs" variant="outline" onClick={handlePreviewRetry}>
+                      Retry preview
+                    </Button>
+                    <p className="font-mono text-[10px] opacity-70">
+                      {trimmed} · {exportName}
+                    </p>
+                  </div>
+                </div>
+              ) : manifest && !bundleDepsReady(manifest, exportName) ? (
+                // Failure mode A from the plan: scanner-emitted exportName doesn't
+                // match anything analyzeReactComponent reported. Surface the
+                // mismatch explicitly so the silent-blank case becomes obvious.
+                <div className="pointer-events-none absolute inset-x-3 top-3 z-10 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 shadow dark:text-amber-300">
+                  <p className="font-semibold">
+                    Export <code>{exportName}</code> not found in this file
+                  </p>
+                  <p className="mt-1 break-words">
+                    Available exports:{" "}
+                    {manifest.exports.length === 0
+                      ? "(none)"
+                      : manifest.exports.map((ex) => ex.name).join(", ")}
+                  </p>
+                  {manifest.exports.length === 0 && manifest.diagnostics.length > 0 ? (
+                    <ul className="mt-1 list-disc space-y-0.5 break-words pl-4 text-[11px] opacity-90">
+                      {manifest.diagnostics.slice(0, 3).map((diagnostic, idx) => (
+                        <li key={`${idx}-${diagnostic.slice(0, 16)}`}>
+                          {diagnostic.length > 200 ? `${diagnostic.slice(0, 200)}…` : diagnostic}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <p className="mt-2 font-mono text-[10px] opacity-70">
+                    {trimmed} · {matchedRegistryEntry?.componentId ?? "(no registry match)"}
+                  </p>
+                </div>
+              ) : manifestQuery.isPending || analyzePending ? null : (
+                <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-1 text-xs text-muted-foreground">
+                  <span>Preview unavailable — registry may still be indexing.</span>
+                  <span className="font-mono text-[10px] opacity-70">
+                    {trimmed} · {exportName} ·{" "}
+                    {matchedRegistryEntry?.componentId ?? "(no registry match)"}
+                  </span>
+                </div>
+              )
+            ) : null}
             {!bridgeNative ? (
               <iframe
                 ref={iframeRef}
                 title="Component preview"
                 className="h-full min-h-[240px] w-full border-0"
-                sandbox="allow-scripts"
+                // `allow-same-origin` is required because the parent/child use
+                // strict `event.origin === window.location.origin` filters on
+                // every postMessage. Without it, sandbox forces the iframe into
+                // a unique opaque origin ("null") even though the src resolves
+                // to the same origin as the parent — and the CHILD_READY
+                // handshake gets dropped, leaving the iframe stuck on
+                // "Waiting for component bundle…". Safe here: the iframe loads
+                // its own runtime from the same origin and the bundled JS is
+                // the user's own design-system code.
+                sandbox="allow-scripts allow-same-origin"
                 src={previewRuntimeHref()}
               />
             ) : isProductVariant ? (
@@ -1023,7 +1477,15 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
                 data-testid="component-preview-native-host"
               />
             )}
-            {showProductLoading ? <ComponentPreviewLoadingSkeleton overlay /> : null}
+            {showProductLoading ? (
+              <ComponentPreviewLoadingSkeleton
+                overlay
+                elapsedMs={bundleElapsedMs}
+                stage={loadingStage}
+                diagnosticText={appendixGetter() ?? undefined}
+                onRetry={handlePreviewRetry}
+              />
+            ) : null}
 
             {previewCrash ? (
               <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-card border rounded-lg m-4 shadow-sm z-50">
@@ -1087,101 +1549,5 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
         </>
       )}
     </div>
-  );
-}
-
-function PropControl(input: {
-  readonly spec: ComponentPreviewPropSpec;
-  readonly value: unknown;
-  readonly onChange: (next: unknown) => void;
-}): JSX.Element {
-  const { spec, value, onChange } = input;
-  const label = `${spec.name}${spec.optional ? "" : "*"}`;
-
-  if (spec.kind === "boolean") {
-    return (
-      <label className="flex items-center gap-2 text-[11px]">
-        <input
-          type="checkbox"
-          checked={Boolean(value)}
-          onChange={(event) => onChange(event.target.checked)}
-        />
-        <span>{label}</span>
-      </label>
-    );
-  }
-
-  if (spec.kind === "number") {
-    return (
-      <label className="flex flex-col gap-0.5 text-[11px]">
-        <span className="text-muted-foreground">{label}</span>
-        <input
-          type="number"
-          className="rounded border border-border bg-background px-1 py-0.5 font-mono"
-          value={typeof value === "number" ? value : Number(value ?? 0)}
-          onChange={(event) => onChange(Number(event.target.value))}
-        />
-      </label>
-    );
-  }
-
-  if (spec.kind === "enum" || spec.kind === "literalUnion") {
-    const opts = spec.enumValues ?? [];
-    return (
-      <label className="flex flex-col gap-0.5 text-[11px]">
-        <span className="text-muted-foreground">{label}</span>
-        <select
-          className="rounded border border-border bg-background px-1 py-0.5 font-mono"
-          value={typeof value === "string" ? value : String(opts[0] ?? "")}
-          onChange={(event) => onChange(event.target.value)}
-        >
-          {opts.map((opt) => (
-            <option key={opt} value={opt}>
-              {opt}
-            </option>
-          ))}
-        </select>
-      </label>
-    );
-  }
-
-  if (
-    spec.kind === "object" ||
-    spec.kind === "array" ||
-    spec.kind === "unsupported" ||
-    spec.kind === "unknown"
-  ) {
-    const text =
-      typeof value === "string"
-        ? value
-        : JSON.stringify(value ?? (spec.kind === "array" ? [] : {}), null, 2);
-    return (
-      <label className="flex flex-col gap-0.5 text-[11px]">
-        <span className="text-muted-foreground">{label}</span>
-        <textarea
-          className="min-h-[48px] rounded border border-border bg-background px-1 py-0.5 font-mono"
-          value={text}
-          onChange={(event) => {
-            try {
-              onChange(JSON.parse(event.target.value) as unknown);
-            } catch {
-              onChange(event.target.value);
-            }
-          }}
-        />
-      </label>
-    );
-  }
-
-  return (
-    <label className="flex flex-col gap-0.5 text-[11px]">
-      <span className="text-muted-foreground">{label}</span>
-      <input
-        type="text"
-        className="rounded border border-border bg-background px-1 py-0.5 font-mono"
-        value={typeof value === "string" ? value : String(value ?? "")}
-        onChange={(event) => onChange(event.target.value)}
-      />
-    </label>
   );
 }

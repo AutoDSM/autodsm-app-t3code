@@ -34,17 +34,18 @@ create/open isolated workspace
 
 ## Canonical Artifacts
 
-| Artifact                | Purpose                                          | v1 location                                                   |
-| ----------------------- | ------------------------------------------------ | ------------------------------------------------------------- |
-| `WorkspaceMetadata`     | Workspace identity, source, version, preferences | `~/.autodsm/systems/<id>/meta.json`                           |
-| `BrandProfile`          | Tokens and brand foundation                      | `~/.autodsm/systems/<id>/system/tokens.json`                  |
-| `ComponentRegistry`     | Indexed components, props, stories, health       | rebuilt from `system/components/`                             |
-| `ComponentConversation` | Per-component AI history                         | `~/.autodsm/systems/<id>/conversations/<slug>.json`           |
-| `Session`               | Active edit session state                        | `~/.autodsm/systems/<id>/sessions/<session-id>/manifest.json` |
-| `ChangeSet`             | Reviewable file/hunk diff                        | `~/.autodsm/systems/<id>/sessions/<session-id>/`              |
-| `PullRequest`           | Local PR record                                  | `~/.autodsm/systems/<id>/prs/<pr-id>.json`                    |
-| `ActivityEntry`         | Workspace timeline event                         | `~/.autodsm/systems/<id>/activity-log.jsonl`                  |
-| `PublishedExport`       | Installable npm package                          | `~/.autodsm/exports/<system-id>-<version>/`                   |
+| Artifact                  | Purpose                                          | v1 location                                                   |
+| ------------------------- | ------------------------------------------------ | ------------------------------------------------------------- |
+| `WorkspaceMetadata`       | Workspace identity, source, version, preferences | `~/.autodsm/systems/<id>/meta.json`                           |
+| `BrandProfile`            | Tokens and brand foundation                      | `~/.autodsm/systems/<id>/system/.autodsm/brand-tokens.json`   |
+| `ComponentRegistry`       | Indexed components, props, stories, health       | rebuilt from `system/src/components/`                         |
+| `ComponentAgentsManifest` | Sidebar + AI thread binding                      | `~/.autodsm/systems/<id>/component-agents.json`               |
+| `ComponentConversation`   | Per-component AI history                         | `~/.autodsm/systems/<id>/conversations/<slug>.json`           |
+| `Session`                 | Active edit session state                        | `~/.autodsm/systems/<id>/sessions/<session-id>/manifest.json` |
+| `ChangeSet`               | Reviewable file/hunk diff                        | `~/.autodsm/systems/<id>/sessions/<session-id>/`              |
+| `PullRequest`             | Local PR record                                  | `~/.autodsm/systems/<id>/prs/<pr-id>.json`                    |
+| `ActivityEntry`           | Workspace timeline event                         | `~/.autodsm/systems/<id>/activity-log.jsonl`                  |
+| `PublishedExport`         | Installable npm package                          | `~/.autodsm/exports/<system-id>-<version>/`                   |
 
 ## Principles
 

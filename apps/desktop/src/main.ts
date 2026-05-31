@@ -44,6 +44,9 @@ import * as DesktopSshRemoteApi from "./ssh/DesktopSshRemoteApi.ts";
 import * as DesktopState from "./app/DesktopState.ts";
 import * as DesktopUpdates from "./updates/DesktopUpdates.ts";
 import * as DesktopWindow from "./window/DesktopWindow.ts";
+import { registerAutodsmAuthSchemePrivileges } from "./oauth/autodsmAuthProtocol.ts";
+
+registerAutodsmAuthSchemePrivileges();
 
 /** Must match DEV_ELECTRON_SINGLE_INSTANCE_LOCK_EXIT_CODE in dev-electron-supervisor-utils.mjs */
 const DEV_SINGLE_INSTANCE_LOCK_EXIT_CODE = 76;
@@ -160,7 +163,7 @@ if (!singleInstanceLock) {
   const devRootArg = process.argv.find((arg) => arg.startsWith("--t3code-dev-root="));
   const devRootHint = devRootArg?.slice("--t3code-dev-root=".length) ?? "apps/desktop";
   process.stderr.write(
-    "[desktop-main] Another T3 Code (Dev) instance is already running (single-instance lock). " +
+    "[desktop-main] Another AutoDSM (Dev) instance is already running (single-instance lock). " +
       `Quit the existing app or run: pkill -f -- --t3code-dev-root=${devRootHint}\n`,
   );
   if (devRootArg) {

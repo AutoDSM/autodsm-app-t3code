@@ -6,6 +6,7 @@ import {
   extractActivityTag,
   formatDateHeader,
   friendlyActivityKind,
+  isPublishActivityKind,
   pickSystemStatusLabel,
 } from "./homeMetrics";
 
@@ -111,6 +112,26 @@ describe("homeMetrics", () => {
       // Locale-dependent, but should contain at least the weekday and day number.
       expect(out.length).toBeGreaterThan(0);
       expect(out).toMatch(/\d/);
+    });
+  });
+
+  describe("isPublishActivityKind", () => {
+    it("matches publish, release, and merged-PR kinds", () => {
+      expect(isPublishActivityKind("publish.exported")).toBe(true);
+      expect(isPublishActivityKind("publish.started")).toBe(true);
+      expect(isPublishActivityKind("release.created")).toBe(true);
+      expect(isPublishActivityKind("release.published")).toBe(true);
+      expect(isPublishActivityKind("pullrequest.merged")).toBe(true);
+    });
+
+    it("does not match day-to-day activity kinds", () => {
+      expect(isPublishActivityKind("component.rendered")).toBe(false);
+      expect(isPublishActivityKind("component.created")).toBe(false);
+      expect(isPublishActivityKind("session.started")).toBe(false);
+      expect(isPublishActivityKind("changeset.applied")).toBe(false);
+      expect(isPublishActivityKind("token.updated")).toBe(false);
+      expect(isPublishActivityKind("pullrequest.created")).toBe(false);
+      expect(isPublishActivityKind("pullrequest.closed")).toBe(false);
     });
   });
 

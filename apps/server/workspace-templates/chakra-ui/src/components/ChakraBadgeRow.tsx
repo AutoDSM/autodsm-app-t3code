@@ -38,3 +38,41 @@ export function ChakraBadgeRow(props: ChakraBadgeRowProps): JSX.Element {
     </ChakraPreviewShell>
   );
 }
+
+export interface ChakraBadgeVariantProps {
+  readonly label?: string;
+  readonly colorScheme?: string;
+}
+
+export function ChakraBadgeSolid(props: ChakraBadgeVariantProps): JSX.Element {
+  const { label = "Solid", colorScheme = "purple" } = props;
+  return (
+    <ChakraPreviewShell>
+      <Badge variant="solid" colorScheme={colorScheme}>
+        {label}
+      </Badge>
+    </ChakraPreviewShell>
+  );
+}
+
+export function ChakraBadgeSubtle(props: ChakraBadgeVariantProps): JSX.Element {
+  const { label = "Subtle", colorScheme = "purple" } = props;
+  return (
+    <ChakraPreviewShell>
+      <Badge variant="subtle" colorScheme={colorScheme}>
+        {label}
+      </Badge>
+    </ChakraPreviewShell>
+  );
+}
+
+export function ChakraBadgeOutline(props: ChakraBadgeVariantProps): JSX.Element {
+  const { label = "Outline", colorScheme = "purple" } = props;
+  return (
+    <ChakraPreviewShell>
+      <Badge variant="outline" colorScheme={colorScheme}>
+        {label}
+      </Badge>
+    </ChakraPreviewShell>
+  );
+}

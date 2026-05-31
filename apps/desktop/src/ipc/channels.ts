@@ -41,4 +41,6 @@ export const COMPONENT_PREVIEW_SET_BOUNDS_CHANNEL = "desktop:component-preview:s
 export const COMPONENT_PREVIEW_PRIME_CHANNEL = "desktop:component-preview:prime";
 export const COMPONENT_PREVIEW_CAPTURE_CHANNEL = "desktop:component-preview:capture";
 export const COMPONENT_PREVIEW_STATUS_CHANNEL = "desktop:component-preview:status";
+export const SUPABASE_OAUTH_START_CHANNEL = "desktop:supabase-oauth:start";
+export const SUPABASE_OAUTH_CANCEL_CHANNEL = "desktop:supabase-oauth:cancel";
 export const SSH_PASSWORD_PROMPT_CANCELLED_RESULT = "ssh-password-prompt-cancelled";

@@ -8,6 +8,7 @@ import * as path from "node:path";
 
 import type { AutoDsmBrandToken } from "@t3tools/contracts";
 
+import { ICON_LIBRARY_TOKEN_NAME } from "./autoDsmHelpers.ts";
 import { CHAKRA_THEME_TS, MUI_THEME_TS } from "./designSystemThemeContent.ts";
 
 const CSS_CANDIDATES = [
@@ -81,6 +82,43 @@ function tokenDarkValue(token: AutoDsmBrandToken): string | null {
   return null;
 }
 
+function isIconLibraryToken(token: AutoDsmBrandToken): boolean {
+  const name = (token.name ?? "").trim().toLowerCase();
+  return name === ICON_LIBRARY_TOKEN_NAME || token.id === "config:icon-library";
+}
+
+function patchComponentsJsonIconLibrary(cwd: string, value: string): void {
+  const abs = path.join(cwd, "components.json");
+  let parsed: Record<string, unknown> = {};
+  try {
+    parsed = JSON.parse(fs.readFileSync(abs, "utf8")) as Record<string, unknown>;
+  } catch {
+    parsed = {
+      $schema: "https://ui.shadcn.com/schema.json",
+      style: "default",
+      rsc: false,
+      tsx: true,
+      tailwind: {
+        config: "",
+        css: "src/index.css",
+        baseColor: "zinc",
+        cssVariables: true,
+        prefix: "",
+      },
+      aliases: {
+        components: "~/components",
+        utils: "~/lib/utils",
+        ui: "~/components/ui",
+        lib: "~/lib",
+        hooks: "~/hooks",
+      },
+    };
+  }
+  parsed.iconLibrary = value;
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  fs.writeFileSync(abs, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
+}
+
 /** Write token values into workspace CSS and regenerate library theme modules. */
 export function syncBrandTokensToThemeFiles(
   cwd: string,
@@ -100,6 +138,10 @@ export function syncBrandTokensToThemeFiles(
   }
 
   for (const token of tokens) {
+    if (isIconLibraryToken(token)) {
+      patchComponentsJsonIconLibrary(cwd, token.value);
+      continue;
+    }
     const varName = cssVarName(token);
     const light = tokenLightValue(token);
     css = patchCssScope(css, ":root", varName, light);

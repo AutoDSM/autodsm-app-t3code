@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  isElectronProductAuthPath,
   shouldSkipPairingRedirect,
   shouldSkipPairingRedirectForElectronProduct,
 } from "./electronProductAuth";
@@ -13,6 +14,7 @@ describe("electronProductAuth", () => {
       },
     });
 
+    expect(isElectronProductAuthPath()).toBe(true);
     expect(shouldSkipPairingRedirectForElectronProduct()).toBe(true);
     expect(shouldSkipPairingRedirect()).toBe(true);
   });
@@ -20,6 +22,7 @@ describe("electronProductAuth", () => {
   it("does not skip pairing redirect in a regular browser", () => {
     vi.stubGlobal("window", {});
 
+    expect(isElectronProductAuthPath()).toBe(false);
     expect(shouldSkipPairingRedirectForElectronProduct()).toBe(false);
     expect(shouldSkipPairingRedirect()).toBe(false);
   });

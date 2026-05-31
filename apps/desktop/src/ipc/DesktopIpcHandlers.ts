@@ -40,6 +40,8 @@ import {
   primeComponentPreview,
   setComponentPreviewBounds,
 } from "./methods/componentPreview.ts";
+import { startSupabaseOAuth } from "./methods/supabaseOAuth.ts";
+import { cancelSupabaseOAuth } from "./methods/supabaseOAuthCancel.ts";
 import { restartDesktopBackend } from "./methods/backend.ts";
 import {
   confirm,
@@ -93,6 +95,8 @@ export const installDesktopIpcHandlers = Effect.gen(function* () {
   yield* ipc.handleForever(setComponentPreviewBounds);
   yield* ipc.handleForever(primeComponentPreview);
   yield* ipc.handleForever(captureComponentPreview);
+  yield* ipc.handleForever(startSupabaseOAuth);
+  yield* ipc.handleForever(cancelSupabaseOAuth);
   yield* ipc.handleForever(restartDesktopBackend);
 
   yield* ipc.handleForever(getUpdateState);

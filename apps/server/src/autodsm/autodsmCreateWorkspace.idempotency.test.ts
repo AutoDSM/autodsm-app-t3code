@@ -15,6 +15,7 @@ import {
   autodsmMaterializeWorkspace,
   resetAutodsmCreateWorkspaceCachesForTests,
 } from "./autodsmCreateWorkspace.ts";
+import { isAutodsmStagingDirectoryName } from "./autodsmWorkspaceStaging.ts";
 
 describe("autodsmMaterializeWorkspace idempotency", () => {
   let previousHome: string | undefined;
@@ -84,7 +85,9 @@ describe("autodsmMaterializeWorkspace idempotency", () => {
     const [first, second] = await Promise.all([runCreate(), runCreate()]);
 
     const systemsRoot = path.join(process.env.AUTODSM_HOME!, "systems");
-    const workspaceCount = fs.readdirSync(systemsRoot).length;
+    const workspaceCount = fs
+      .readdirSync(systemsRoot)
+      .filter((entry) => !isAutodsmStagingDirectoryName(entry)).length;
 
     expect(projectCreateCount).toBe(1);
     expect(workspaceCount).toBe(1);

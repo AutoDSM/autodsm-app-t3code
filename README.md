@@ -1,11 +1,11 @@
-# T3 Code
+# AutoDSM
 
-T3 Code is a minimal web GUI for coding agents (currently Codex, Claude, and OpenCode, more coming soon).
+AutoDSM is a local-first desktop workspace for creating, customizing, reviewing, and shipping React design systems with scoped AI.
 
 ## Installation
 
 > [!WARNING]
-> T3 Code currently supports Codex, Claude, and OpenCode.
+> AutoDSM currently supports Codex, Claude, and OpenCode.
 > Install and authenticate at least one provider before use:
 >
 > - Codex: install [Codex CLI](https://developers.openai.com/codex/cli) and run `codex login`
@@ -48,16 +48,12 @@ We are not accepting contributions yet.
 
 Observability guide: [docs/observability.md](./docs/observability.md)
 
-## If you REALLY want to contribute still.... read this first
+Remote access guide: [REMOTE.md](./REMOTE.md)
 
-Before local development, prepare the environment and install dependencies:
+Keybindings guide: [KEYBINDINGS.md](./KEYBINDINGS.md)
 
-```bash
-# Optional: only needed if you use mise for dev tool management.
-mise install
-bun install .
-```
+Product docs: [AUTODSM.md](./AUTODSM.md)
 
-Read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening an issue or PR.
+## License
 
-Need support? Join the [Discord](https://discord.gg/jn4EGJjrvv).
+MIT

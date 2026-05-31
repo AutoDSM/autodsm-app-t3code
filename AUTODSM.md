@@ -87,8 +87,8 @@ AutoDSM is not a generic AI coding IDE, Figma replacement, greenfield design-to-
 - **Sandboxed Electron**: `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`, typed Zod-validated IPC, strict CSP, and locked preview navigation.
 - **Per-component agent context**: AI receives only the active component context plus safe workspace metadata.
 - **Atomic component model**: components are grouped by atoms, molecules, organisms, templates, and pages by default.
-- **v1 stack**: Modern Starter, shadcn/ui fork, React, Tailwind, Storybook, local package exports, local PR records.
-- **No v1 scope expansion**: MUI, Chakra, Mantine, hosted registry, remote GitHub PRs, team sync, DSM-1, and screenshot PR checks are v1.1+ unless explicitly promoted.
+- **v1 stack**: Modern Starter, shadcn/ui fork, MUI starter, Chakra UI starter, Tailwind starter, React, Tailwind, Storybook, local package exports, local PR records.
+- **No v1 scope expansion**: Mantine, Ant Design, hosted registry, remote GitHub PRs, team sync, DSM-1, and screenshot PR checks are v1.1+ unless explicitly promoted.
 
 ## Core Product Surfaces
 

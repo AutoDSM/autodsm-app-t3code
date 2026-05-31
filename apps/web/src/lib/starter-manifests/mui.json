@@ -1,6 +1,280 @@
 {
   "agents": [
-    { "title": "MUI Button", "componentPath": "/src/components/MuiPrimaryButton.tsx" },
-    { "title": "MUI Chip row", "componentPath": "/src/components/MuiChipRow.tsx" }
+    {
+      "title": "Accordion",
+      "componentPath": "/src/components/MuiAccordion.tsx",
+      "group": "Surfaces"
+    },
+    {
+      "title": "Alert",
+      "componentPath": "/src/components/MuiAlert.tsx",
+      "group": "Feedback",
+      "exportName": "MuiAlert"
+    },
+    {
+      "title": "App Bar",
+      "componentPath": "/src/components/MuiAppBar.tsx",
+      "group": "Surfaces",
+      "exportName": "MuiAppBar"
+    },
+    {
+      "title": "Avatar",
+      "componentPath": "/src/components/MuiAvatar.tsx",
+      "group": "Data Display",
+      "exportName": "MuiAvatar"
+    },
+    {
+      "title": "Backdrop",
+      "componentPath": "/src/components/MuiBackdrop.tsx",
+      "group": "Feedback"
+    },
+    {
+      "title": "Badge",
+      "componentPath": "/src/components/MuiBadge.tsx",
+      "group": "Data Display",
+      "exportName": "MuiBadge"
+    },
+    {
+      "title": "Bottom navigation",
+      "componentPath": "/src/components/MuiBottomNavigation.tsx",
+      "group": "Navigation"
+    },
+    {
+      "title": "Box",
+      "componentPath": "/src/components/MuiBox.tsx",
+      "group": "Layout"
+    },
+    {
+      "title": "Breadcrumbs",
+      "componentPath": "/src/components/MuiBreadcrumbs.tsx",
+      "group": "Navigation",
+      "exportName": "MuiBreadcrumbs"
+    },
+    {
+      "title": "Button Group",
+      "componentPath": "/src/components/MuiButtonGroup.tsx",
+      "group": "Inputs",
+      "exportName": "MuiButtonGroup"
+    },
+    {
+      "title": "Card",
+      "componentPath": "/src/components/MuiCard.tsx",
+      "group": "Surfaces",
+      "exportName": "MuiCard"
+    },
+    {
+      "title": "Checkbox",
+      "componentPath": "/src/components/MuiCheckbox.tsx",
+      "group": "Inputs",
+      "exportName": "MuiCheckbox"
+    },
+    {
+      "title": "Chip row",
+      "componentPath": "/src/components/MuiChipRow.tsx",
+      "group": "Data Display",
+      "exportName": "MuiChipRow"
+    },
+    {
+      "title": "Circular progress",
+      "componentPath": "/src/components/MuiCircularProgress.tsx",
+      "group": "Feedback",
+      "exportName": "MuiCircularProgress"
+    },
+    {
+      "title": "Click Away Listener",
+      "componentPath": "/src/components/MuiClickAwayListener.tsx",
+      "group": "Utils"
+    },
+    {
+      "title": "Container",
+      "componentPath": "/src/components/MuiContainer.tsx",
+      "group": "Layout",
+      "exportName": "MuiContainer"
+    },
+    {
+      "title": "Dialog",
+      "componentPath": "/src/components/MuiDialog.tsx",
+      "group": "Feedback",
+      "exportName": "MuiDialog"
+    },
+    {
+      "title": "Divider",
+      "componentPath": "/src/components/MuiDivider.tsx",
+      "group": "Data Display",
+      "exportName": "MuiDivider"
+    },
+    {
+      "title": "Drawer",
+      "componentPath": "/src/components/MuiDrawer.tsx",
+      "group": "Navigation",
+      "exportName": "MuiDrawer"
+    },
+    {
+      "title": "Floating Action Button",
+      "componentPath": "/src/components/MuiFab.tsx",
+      "group": "Inputs",
+      "exportName": "MuiFab"
+    },
+    {
+      "title": "Grid",
+      "componentPath": "/src/components/MuiGrid.tsx",
+      "group": "Layout"
+    },
+    {
+      "title": "Image List",
+      "componentPath": "/src/components/MuiImageList.tsx",
+      "group": "Layout",
+      "exportName": "MuiImageList"
+    },
+    {
+      "title": "Linear progress",
+      "componentPath": "/src/components/MuiLinearProgress.tsx",
+      "group": "Feedback",
+      "exportName": "MuiLinearProgress"
+    },
+    {
+      "title": "Link",
+      "componentPath": "/src/components/MuiLink.tsx",
+      "group": "Navigation",
+      "exportName": "MuiLink"
+    },
+    {
+      "title": "List",
+      "componentPath": "/src/components/MuiList.tsx",
+      "group": "Data Display",
+      "exportName": "MuiList"
+    },
+    {
+      "title": "Menu",
+      "componentPath": "/src/components/MuiMenu.tsx",
+      "group": "Navigation",
+      "exportName": "MuiMenu"
+    },
+    {
+      "title": "Modal",
+      "componentPath": "/src/components/MuiModal.tsx",
+      "group": "Utils"
+    },
+    {
+      "title": "Pagination",
+      "componentPath": "/src/components/MuiPagination.tsx",
+      "group": "Navigation",
+      "exportName": "MuiPagination"
+    },
+    {
+      "title": "Paper",
+      "componentPath": "/src/components/MuiPaper.tsx",
+      "group": "Surfaces",
+      "exportName": "MuiPaper"
+    },
+    {
+      "title": "Popover",
+      "componentPath": "/src/components/MuiPopover.tsx",
+      "group": "Utils"
+    },
+    {
+      "title": "Popper",
+      "componentPath": "/src/components/MuiPopper.tsx",
+      "group": "Utils"
+    },
+    {
+      "title": "Button",
+      "componentPath": "/src/components/MuiPrimaryButton.tsx",
+      "group": "Inputs",
+      "exportName": "MuiPrimaryButton"
+    },
+    {
+      "title": "Radio",
+      "componentPath": "/src/components/MuiRadio.tsx",
+      "group": "Inputs",
+      "exportName": "MuiRadio"
+    },
+    {
+      "title": "Rating",
+      "componentPath": "/src/components/MuiRating.tsx",
+      "group": "Inputs",
+      "exportName": "MuiRating"
+    },
+    {
+      "title": "Select",
+      "componentPath": "/src/components/MuiSelect.tsx",
+      "group": "Inputs",
+      "exportName": "MuiSelect"
+    },
+    {
+      "title": "Skeleton",
+      "componentPath": "/src/components/MuiSkeleton.tsx",
+      "group": "Feedback",
+      "exportName": "MuiSkeleton"
+    },
+    {
+      "title": "Slider",
+      "componentPath": "/src/components/MuiSlider.tsx",
+      "group": "Inputs",
+      "exportName": "MuiSlider"
+    },
+    {
+      "title": "Snackbar",
+      "componentPath": "/src/components/MuiSnackbar.tsx",
+      "group": "Feedback",
+      "exportName": "MuiSnackbar"
+    },
+    {
+      "title": "Speed Dial",
+      "componentPath": "/src/components/MuiSpeedDial.tsx",
+      "group": "Navigation"
+    },
+    {
+      "title": "Stack",
+      "componentPath": "/src/components/MuiStack.tsx",
+      "group": "Layout",
+      "exportName": "MuiStack"
+    },
+    {
+      "title": "Stepper",
+      "componentPath": "/src/components/MuiStepper.tsx",
+      "group": "Navigation",
+      "exportName": "MuiStepper"
+    },
+    {
+      "title": "Switch",
+      "componentPath": "/src/components/MuiSwitch.tsx",
+      "group": "Inputs",
+      "exportName": "MuiSwitch"
+    },
+    {
+      "title": "Table",
+      "componentPath": "/src/components/MuiTable.tsx",
+      "group": "Data Display",
+      "exportName": "MuiTable"
+    },
+    {
+      "title": "Tabs",
+      "componentPath": "/src/components/MuiTabs.tsx",
+      "group": "Navigation",
+      "exportName": "MuiTabs"
+    },
+    {
+      "title": "Text Field",
+      "componentPath": "/src/components/MuiTextField.tsx",
+      "group": "Inputs",
+      "exportName": "MuiTextField"
+    },
+    {
+      "title": "Toggle Button",
+      "componentPath": "/src/components/MuiToggleButton.tsx",
+      "group": "Inputs",
+      "exportName": "MuiToggleButton"
+    },
+    {
+      "title": "Tooltip",
+      "componentPath": "/src/components/MuiTooltip.tsx",
+      "group": "Data Display"
+    },
+    {
+      "title": "Transfer List",
+      "componentPath": "/src/components/MuiTransferList.tsx",
+      "group": "Inputs"
+    }
   ]
 }

@@ -1,4 +1,9 @@
-import type { EnvironmentId, ProjectId, ScopedProjectRef } from "@t3tools/contracts";
+import type {
+  AutoDsmViewportSpec,
+  EnvironmentId,
+  ProjectId,
+  ScopedProjectRef,
+} from "@t3tools/contracts";
 import { Debouncer } from "@tanstack/react-pacer";
 import { create } from "zustand";
 
@@ -9,6 +14,13 @@ import {
   type AutoDsmOnboardingState,
 } from "./lib/autoDsmOnboarding";
 import { canonicalAutoDsmComponentPreviewPaths } from "./lib/autoDsmComponentPreviewPath";
+import {
+  AUTODSM_DEFAULT_CHAT_LAYOUT,
+  AUTODSM_DEFAULT_VIEWPORT,
+  sanitizeChatLayout,
+  sanitizeViewportSpec,
+  type AutoDsmChatLayoutSpec,
+} from "./lib/autoDsmViewportPresets";
 
 export const PERSISTED_STATE_KEY = "t3code:ui-state:v1";
 const LEGACY_PERSISTED_STATE_KEYS = [
@@ -44,6 +56,12 @@ export interface PersistedUiState {
   autoDsmThreadComponentPathById?: Record<string, string>;
   /** Collapsed component-agent sidebar folders keyed by workspace cwd. */
   autoDsmComponentAgentGroupCollapsedByWorkspaceKey?: Record<string, Record<string, true>>;
+  /** Per-workspace active viewport preset for the preview canvas. */
+  autoDsmActiveViewportByWorkspace?: Record<string, AutoDsmViewportSpec>;
+  /** Per-thread viewport override; falls back to workspace default when absent. */
+  autoDsmActiveViewportByThreadKey?: Record<string, AutoDsmViewportSpec>;
+  /** Per-workspace 3-column chat shell layout. */
+  autoDsmChatLayoutByWorkspace?: Record<string, AutoDsmChatLayoutSpec>;
 }
 
 export interface UiProjectState {
@@ -71,10 +89,23 @@ export interface UiAutoDsmWorkspaceState {
 export interface UiState
   extends UiProjectState, UiThreadState, UiEndpointState, UiAutoDsmWorkspaceState {
   autodsmOnboarding: AutoDsmOnboardingState;
+  /**
+   * Markdown captured during the optional `/onboarding/brief` step, held
+   * here because the workspace doesn't yet have a `cwd` at that point. When
+   * the user lands in the Design Tokens workspace post-onboarding, this is
+   * uploaded + proposed against the freshly created workspace, then cleared.
+   */
+  pendingDesignBriefMarkdown: string | null;
   /** Maps scoped thread key → `src/components/...` path for AutoDSM preview search params. */
   autoDsmThreadComponentPathById: Record<string, string>;
   /** Workspace cwd → group id → expanded (default true when missing). */
   autoDsmComponentAgentGroupExpandedByWorkspaceKey: Record<string, Record<string, boolean>>;
+  /** Workspace key (scoped project) → active viewport preset for the preview canvas. */
+  autoDsmActiveViewportByWorkspace: Record<string, AutoDsmViewportSpec>;
+  /** Scoped thread key → viewport override; takes precedence over workspace default. */
+  autoDsmActiveViewportByThreadKey: Record<string, AutoDsmViewportSpec>;
+  /** Workspace key → 3-column chat shell layout. */
+  autoDsmChatLayoutByWorkspace: Record<string, AutoDsmChatLayoutSpec>;
 }
 
 export interface SyncProjectInput {
@@ -100,8 +131,12 @@ const initialState: UiState = {
   defaultAdvertisedEndpointKey: null,
   autoDsmWorkspaceProjectRef: null,
   autodsmOnboarding: defaultAutodsmOnboardingState,
+  pendingDesignBriefMarkdown: null,
   autoDsmThreadComponentPathById: {},
   autoDsmComponentAgentGroupExpandedByWorkspaceKey: {},
+  autoDsmActiveViewportByWorkspace: {},
+  autoDsmActiveViewportByThreadKey: {},
+  autoDsmChatLayoutByWorkspace: {},
 };
 
 const persistedCollapsedProjectCwds = new Set<string>();
@@ -169,10 +204,39 @@ function readPersistedState(): UiState {
       autodsmOnboarding: persistedOnboarding,
       autoDsmThreadComponentPathById: persistedPreviewPaths,
       autoDsmComponentAgentGroupExpandedByWorkspaceKey: persistedGroupExpanded,
+      autoDsmActiveViewportByWorkspace: sanitizeViewportRecord(
+        parsed.autoDsmActiveViewportByWorkspace,
+      ),
+      autoDsmActiveViewportByThreadKey: sanitizeViewportRecord(
+        parsed.autoDsmActiveViewportByThreadKey,
+      ),
+      autoDsmChatLayoutByWorkspace: sanitizeChatLayoutRecord(parsed.autoDsmChatLayoutByWorkspace),
     };
   } catch {
     return initialState;
   }
+}
+
+function sanitizeViewportRecord(value: unknown): Record<string, AutoDsmViewportSpec> {
+  if (!value || typeof value !== "object") return {};
+  const next: Record<string, AutoDsmViewportSpec> = {};
+  for (const [key, spec] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof key !== "string" || key.length === 0) continue;
+    const sanitized = sanitizeViewportSpec(spec);
+    if (sanitized) next[key] = sanitized;
+  }
+  return next;
+}
+
+function sanitizeChatLayoutRecord(value: unknown): Record<string, AutoDsmChatLayoutSpec> {
+  if (!value || typeof value !== "object") return {};
+  const next: Record<string, AutoDsmChatLayoutSpec> = {};
+  for (const [key, layout] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof key !== "string" || key.length === 0) continue;
+    const sanitized = sanitizeChatLayout(layout);
+    if (sanitized) next[key] = sanitized;
+  }
+  return next;
 }
 
 function sanitizeAutoDsmThreadComponentPathById(
@@ -328,6 +392,9 @@ export function persistState(state: UiState): void {
           serializeAutoDsmComponentAgentGroupCollapsedByWorkspaceKey(
             state.autoDsmComponentAgentGroupExpandedByWorkspaceKey,
           ),
+        autoDsmActiveViewportByWorkspace: state.autoDsmActiveViewportByWorkspace,
+        autoDsmActiveViewportByThreadKey: state.autoDsmActiveViewportByThreadKey,
+        autoDsmChatLayoutByWorkspace: state.autoDsmChatLayoutByWorkspace,
       } satisfies PersistedUiState),
     );
     if (!legacyKeysCleanedUp) {
@@ -817,18 +884,56 @@ interface UiStateStore extends UiState {
   setAutoDsmWorkspaceProjectRef: (ref: ScopedProjectRef | null) => void;
   patchAutodsmOnboarding: (patch: Partial<AutoDsmOnboardingState>) => void;
   completeAutodsmOnboarding: () => void;
+  setPendingDesignBriefMarkdown: (markdown: string | null) => void;
   mergeAutoDsmThreadComponentPaths: (paths: Record<string, string>) => void;
   setAutoDsmComponentAgentGroupExpanded: (
     workspaceKey: string,
     groupId: string,
     expanded: boolean,
   ) => void;
+  setAutoDsmActiveViewport: (input: {
+    readonly workspaceKey?: string | null;
+    readonly threadKey?: string | null;
+    readonly viewport: AutoDsmViewportSpec;
+  }) => void;
+  setAutoDsmChatLayout: (input: {
+    readonly workspaceKey: string;
+    readonly layout: AutoDsmChatLayoutSpec;
+  }) => void;
   toggleProject: (projectId: string) => void;
   setProjectExpanded: (projectId: string, expanded: boolean) => void;
   reorderProjects: (
     draggedProjectIds: readonly string[],
     targetProjectIds: readonly string[],
   ) => void;
+}
+
+/** Look up the active viewport for a (workspace, thread) pair with defaults. */
+export function selectAutoDsmActiveViewport(
+  state: UiState,
+  args: { readonly workspaceKey?: string | null; readonly threadKey?: string | null },
+): AutoDsmViewportSpec {
+  if (args.threadKey) {
+    const override = state.autoDsmActiveViewportByThreadKey[args.threadKey];
+    if (override) return override;
+  }
+  if (args.workspaceKey) {
+    const workspaceDefault = state.autoDsmActiveViewportByWorkspace[args.workspaceKey];
+    if (workspaceDefault) return workspaceDefault;
+  }
+  return AUTODSM_DEFAULT_VIEWPORT;
+}
+
+/** Look up the chat 3-column layout for a workspace with defaults. */
+export function selectAutoDsmChatLayout(
+  state: UiState,
+  args: { readonly workspaceKey?: string | null },
+): AutoDsmChatLayoutSpec {
+  if (args.workspaceKey) {
+    const layout = state.autoDsmChatLayoutByWorkspace[args.workspaceKey];
+    if (layout) return layout;
+  }
+  return AUTODSM_DEFAULT_CHAT_LAYOUT;
 }
 
 export const useUiStateStore = create<UiStateStore>((set) => ({
@@ -857,6 +962,11 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
       autodsmOnboarding: mergeAutodsmOnboarding(state.autodsmOnboarding, {
         completed: true,
       }),
+    })),
+  setPendingDesignBriefMarkdown: (markdown) =>
+    set((state) => ({
+      ...state,
+      pendingDesignBriefMarkdown: markdown && markdown.trim().length > 0 ? markdown : null,
     })),
   mergeAutoDsmThreadComponentPaths: (paths) =>
     set((state) => {
@@ -888,6 +998,71 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
             ...currentWorkspace,
             [groupId]: expanded,
           },
+        },
+      };
+    }),
+  setAutoDsmActiveViewport: ({ workspaceKey, threadKey, viewport }) =>
+    set((state) => {
+      const sanitized = sanitizeViewportSpec(viewport);
+      if (!sanitized) return state;
+      let nextState = state;
+      if (workspaceKey) {
+        const current = state.autoDsmActiveViewportByWorkspace[workspaceKey];
+        if (
+          !current ||
+          current.label !== sanitized.label ||
+          current.width !== sanitized.width ||
+          current.height !== sanitized.height ||
+          current.devicePixelRatio !== sanitized.devicePixelRatio
+        ) {
+          nextState = {
+            ...nextState,
+            autoDsmActiveViewportByWorkspace: {
+              ...nextState.autoDsmActiveViewportByWorkspace,
+              [workspaceKey]: sanitized,
+            },
+          };
+        }
+      }
+      if (threadKey) {
+        const current = state.autoDsmActiveViewportByThreadKey[threadKey];
+        if (
+          !current ||
+          current.label !== sanitized.label ||
+          current.width !== sanitized.width ||
+          current.height !== sanitized.height ||
+          current.devicePixelRatio !== sanitized.devicePixelRatio
+        ) {
+          nextState = {
+            ...nextState,
+            autoDsmActiveViewportByThreadKey: {
+              ...nextState.autoDsmActiveViewportByThreadKey,
+              [threadKey]: sanitized,
+            },
+          };
+        }
+      }
+      return nextState;
+    }),
+  setAutoDsmChatLayout: ({ workspaceKey, layout }) =>
+    set((state) => {
+      if (!workspaceKey) return state;
+      const sanitized = sanitizeChatLayout(layout);
+      if (!sanitized) return state;
+      const current = state.autoDsmChatLayoutByWorkspace[workspaceKey];
+      if (
+        current &&
+        current.navWidth === sanitized.navWidth &&
+        current.agentWidth === sanitized.agentWidth &&
+        current.sidebarCollapsed === sanitized.sidebarCollapsed
+      ) {
+        return state;
+      }
+      return {
+        ...state,
+        autoDsmChatLayoutByWorkspace: {
+          ...state.autoDsmChatLayoutByWorkspace,
+          [workspaceKey]: sanitized,
         },
       };
     }),

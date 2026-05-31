@@ -1,6 +1,6 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 
-import { ElectronWorkspaceBootstrapLoading } from "~/components/autodsm/ElectronWorkspaceBootstrapLoading";
+import { isElectron } from "~/env";
 import {
   HostedPairingRouteSurface,
   PairingPendingSurface,
@@ -10,6 +10,10 @@ import { shouldSkipPairingRedirect } from "../lib/devPairingBypass";
 
 export const Route = createFileRoute("/pair")({
   beforeLoad: async ({ context }) => {
+    if (isElectron) {
+      throw redirect({ to: "/", replace: true });
+    }
+
     const { authGateState } = context;
     if (authGateState.status === "hosted-pairing") {
       return {
@@ -46,14 +50,6 @@ function PairRouteView() {
 
   if (authGateState.status === "hosted-pairing") {
     return <HostedPairingRouteSurface />;
-  }
-
-  if (
-    shouldSkipPairingRedirect(
-      authGateState.status === "requires-auth" ? authGateState.auth : undefined,
-    )
-  ) {
-    return <ElectronWorkspaceBootstrapLoading authPending />;
   }
 
   return (

@@ -16,7 +16,7 @@ export interface ElectronWorkspaceBootstrapLoadingProps {
 
 /**
  * Shown on Electron while workspace shell snapshot or auth bootstrap is in flight.
- * Avoids flashing launch tiles or the browser pairing form before the desktop shell is ready.
+ * Avoids flashing launch tiles before the desktop shell is ready.
  */
 export function ElectronWorkspaceBootstrapLoading(
   props: ElectronWorkspaceBootstrapLoadingProps,

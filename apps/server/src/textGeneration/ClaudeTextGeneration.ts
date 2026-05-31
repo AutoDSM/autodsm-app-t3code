@@ -21,6 +21,7 @@ import { type TextGenerationShape } from "./TextGeneration.ts";
 import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
+  buildDesignBriefProposalPrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
@@ -83,7 +84,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle",
+      | "generateThreadTitle"
+      | "generateDesignBriefProposal",
     value: unknown,
     detail: string,
   ): Effect.Effect<string, TextGenerationError> =>
@@ -113,7 +115,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateDesignBriefProposal";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -352,10 +355,30 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     };
   });
 
+  const generateDesignBriefProposal: TextGenerationShape["generateDesignBriefProposal"] = Effect.fn(
+    "ClaudeTextGeneration.generateDesignBriefProposal",
+  )(function* (input) {
+    const { prompt, outputSchema } = buildDesignBriefProposalPrompt({
+      briefMarkdown: input.briefMarkdown,
+      currentTokens: input.currentTokens,
+    });
+
+    const generated = yield* runClaudeJson({
+      operation: "generateDesignBriefProposal",
+      cwd: input.cwd,
+      prompt,
+      outputSchemaJson: outputSchema,
+      modelSelection: input.modelSelection,
+    });
+
+    return generated;
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateDesignBriefProposal,
   } satisfies TextGenerationShape;
 });

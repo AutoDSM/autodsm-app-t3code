@@ -12,6 +12,12 @@ export interface AutoDsmComponentPageShellProps {
   readonly environmentId: EnvironmentId;
   readonly workspaceCwd: string | null;
   readonly componentTitle: string;
+  /**
+   * Named export within `relativePath` this page is centered on. Passed
+   * through to the preview canvas so variant agents render their actual
+   * variant. Omitted for single-export wrappers (file's first export).
+   */
+  readonly exportName?: string;
   readonly registerPromptAppendix?: (getter: () => string | null) => void;
   readonly onInjectComposerText?: (text: string) => void;
   readonly agentRail: ReactNode;
@@ -27,6 +33,7 @@ export function AutoDsmComponentPageShell(props: AutoDsmComponentPageShellProps)
     environmentId,
     workspaceCwd,
     componentTitle,
+    exportName,
     registerPromptAppendix,
     onInjectComposerText,
     agentRail,
@@ -43,6 +50,7 @@ export function AutoDsmComponentPageShell(props: AutoDsmComponentPageShellProps)
         relativePath={relativePath}
         environmentId={environmentId}
         workspaceCwd={workspaceCwd}
+        {...(exportName ? { exportName } : {})}
         {...(registerPromptAppendix ? { registerPromptAppendix } : {})}
         {...(onInjectComposerText ? { onInjectComposerText } : {})}
       />

@@ -21,6 +21,8 @@ import {
   autodsmPullRequestsQueryOptions,
   autodsmWorkspaceQueryKeys,
 } from "~/lib/autodsmWorkspaceReactQuery";
+import { recordAutoDsmPublishStats } from "~/lib/supabase/publishStats";
+import { recordAutoDsmTelemetry } from "~/lib/supabase/telemetry";
 import { cn } from "~/lib/utils";
 import { useComponentPreviewOverlaySuppression } from "~/hooks/useComponentPreviewOverlaySuppression";
 
@@ -93,6 +95,17 @@ export function AutoDsmPublishDialog({
     },
     onSuccess: (data) => {
       setPublishResult(data);
+      recordAutoDsmTelemetry("autodsm.publish.completed", {
+        version: data.version,
+        packageName: data.packageName,
+      });
+      void recordAutoDsmPublishStats({
+        workspaceId: data.workspaceId,
+        packageName: data.packageName,
+        version: data.version,
+        componentCount: data.componentCount,
+        tokenCount: data.tokenCount,
+      });
       // Invalidate activity
       void queryClient.invalidateQueries({
         queryKey: autodsmWorkspaceQueryKeys.activity(environmentId, cwd),

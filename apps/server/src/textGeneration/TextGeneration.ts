@@ -9,6 +9,10 @@ import {
   type ProviderInstanceRegistryShape,
 } from "../provider/Services/ProviderInstanceRegistry.ts";
 import type { ProviderInstance } from "../provider/ProviderDriver.ts";
+import type {
+  DesignBriefProposalDraft,
+  DesignBriefProposalPromptToken,
+} from "./TextGenerationPrompts.ts";
 
 export type TextGenerationProvider = "codex" | "claudeAgent" | "cursor" | "opencode";
 
@@ -70,6 +74,28 @@ export interface ThreadTitleGenerationResult {
   title: string;
 }
 
+/**
+ * Input for the design-brief proposal generation method.
+ *
+ * `currentTokens` is the list of tokens already on the brand profile (so the
+ * model can prefer `update` over `add`). `briefMarkdown` is the user's
+ * `design.md` content (already persisted to `.autodsm/design-brief.md`).
+ */
+export interface DesignBriefProposalGenerationInput {
+  cwd: string;
+  briefMarkdown: string;
+  currentTokens: ReadonlyArray<DesignBriefProposalPromptToken>;
+  /** What model and provider to use for generation. */
+  modelSelection: ModelSelection;
+}
+
+/**
+ * Same shape as the prompt-level draft — re-exported as the result type so
+ * downstream code (`proposeFromBrief`) can keep its existing validation
+ * pipeline against `AutoDsmBrandTokenDraft` / `AutoDsmBrandTokenPatch`.
+ */
+export type DesignBriefProposalGenerationResult = DesignBriefProposalDraft;
+
 export interface TextGenerationService {
   generateCommitMessage(
     input: CommitMessageGenerationInput,
@@ -110,6 +136,19 @@ export interface TextGenerationShape {
   readonly generateThreadTitle: (
     input: ThreadTitleGenerationInput,
   ) => Effect.Effect<ThreadTitleGenerationResult, TextGenerationError>;
+
+  /**
+   * Generate a structured AutoDSM design-brief proposal from a freeform
+   * `design.md` plus the current brand-token table. Returns a draft of
+   * add/update/remove operations the caller can validate and apply.
+   *
+   * Wired in {@link makeTextGenerationFromRegistry} to route through the
+   * user's currently selected text-generation provider so the design-brief
+   * synthesis honours their model choice (previously hardcoded to `claude`).
+   */
+  readonly generateDesignBriefProposal: (
+    input: DesignBriefProposalGenerationInput,
+  ) => Effect.Effect<DesignBriefProposalGenerationResult, TextGenerationError>;
 }
 
 /**
@@ -123,7 +162,8 @@ type TextGenerationOp =
   | "generateCommitMessage"
   | "generatePrContent"
   | "generateBranchName"
-  | "generateThreadTitle";
+  | "generateThreadTitle"
+  | "generateDesignBriefProposal";
 
 const resolveInstance = (
   registry: ProviderInstanceRegistryShape,
@@ -161,6 +201,10 @@ export const makeTextGenerationFromRegistry = (
   generateThreadTitle: (input) =>
     resolveInstance(registry, "generateThreadTitle", input.modelSelection.instanceId).pipe(
       Effect.flatMap((textGeneration) => textGeneration.generateThreadTitle(input)),
+    ),
+  generateDesignBriefProposal: (input) =>
+    resolveInstance(registry, "generateDesignBriefProposal", input.modelSelection.instanceId).pipe(
+      Effect.flatMap((textGeneration) => textGeneration.generateDesignBriefProposal(input)),
     ),
 });
 

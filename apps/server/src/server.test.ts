@@ -56,6 +56,8 @@ const TEST_EPOCH = DateTime.makeUnsafe("1970-01-01T00:00:00.000Z");
 import type { ServerConfigShape } from "./config.ts";
 import { deriveServerPaths, ServerConfig } from "./config.ts";
 import { AutoDsmWorkspaceLive } from "./autodsm/AutoDsmWorkspaceService.ts";
+import { TextGeneration } from "./textGeneration/TextGeneration.ts";
+import { TextGenerationError } from "@t3tools/contracts";
 import { makeRoutesLayer } from "./server.ts";
 import { resolveAttachmentRelativePath } from "./attachmentPaths.ts";
 import {
@@ -499,6 +501,46 @@ const buildAppUnderTest = (options?: {
       streamDomainEvents: Stream.empty,
       ...options?.layers?.orchestrationEngine,
     });
+    // AutoDsmWorkspaceLive depends on TextGeneration for the design-brief
+    // proposer. No tests in this file exercise that path, so a fail-on-call
+    // stub is sufficient and surfaces accidental usage.
+    const textGenerationTestLayer = Layer.mock(TextGeneration)({
+      generateCommitMessage: () =>
+        Effect.fail(
+          new TextGenerationError({
+            operation: "generateCommitMessage",
+            detail: "TextGeneration not stubbed in test layer",
+          }),
+        ),
+      generatePrContent: () =>
+        Effect.fail(
+          new TextGenerationError({
+            operation: "generatePrContent",
+            detail: "TextGeneration not stubbed in test layer",
+          }),
+        ),
+      generateBranchName: () =>
+        Effect.fail(
+          new TextGenerationError({
+            operation: "generateBranchName",
+            detail: "TextGeneration not stubbed in test layer",
+          }),
+        ),
+      generateThreadTitle: () =>
+        Effect.fail(
+          new TextGenerationError({
+            operation: "generateThreadTitle",
+            detail: "TextGeneration not stubbed in test layer",
+          }),
+        ),
+      generateDesignBriefProposal: () =>
+        Effect.fail(
+          new TextGenerationError({
+            operation: "generateDesignBriefProposal",
+            detail: "TextGeneration not stubbed in test layer",
+          }),
+        ),
+    });
     const gitWorkflowLayer = GitWorkflowService.layer.pipe(
       Layer.provideMerge(vcsDriverRegistryLayer),
       Layer.provideMerge(gitVcsDriverLayer),
@@ -644,6 +686,7 @@ const buildAppUnderTest = (options?: {
         AutoDsmWorkspaceLive.pipe(
           Layer.provideMerge(workspaceFilesystemBundleLayer),
           Layer.provideMerge(orchestrationEngineTestLayer),
+          Layer.provideMerge(textGenerationTestLayer),
         ),
       ),
       Layer.provide(

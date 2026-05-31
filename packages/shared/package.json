@@ -90,6 +90,14 @@
     "./keybindings": {
       "types": "./src/keybindings.ts",
       "import": "./src/keybindings.ts"
+    },
+    "./componentVariantFamily": {
+      "types": "./src/componentVariantFamily.ts",
+      "import": "./src/componentVariantFamily.ts"
+    },
+    "./productBranding": {
+      "types": "./src/productBranding.ts",
+      "import": "./src/productBranding.ts"
     }
   },
   "scripts": {

@@ -104,10 +104,10 @@ export const Route = createRootRouteWithContext<{
       };
     }
 
-    const resolveAuthGateState = isPrimaryTargetLoopback()
-      ? resolveInitialServerAuthGateStateForLocalDev
-      : isElectron
-        ? resolveInitialServerAuthGateStateForDesktopProduct
+    const resolveAuthGateState = isElectron
+      ? resolveInitialServerAuthGateStateForDesktopProduct
+      : isPrimaryTargetLoopback()
+        ? resolveInitialServerAuthGateStateForLocalDev
         : resolveInitialServerAuthGateStateWithElectronRetry;
 
     const [, authGateState] = await Promise.all([
@@ -154,7 +154,7 @@ function RootRouteViewContent({
 }) {
   const primaryEnvironmentAuthenticated = authGateState.status === "authenticated";
 
-  if (pathname === "/pair") {
+  if (pathname === "/pair" || pathname.startsWith("/auth/")) {
     return <Outlet />;
   }
 

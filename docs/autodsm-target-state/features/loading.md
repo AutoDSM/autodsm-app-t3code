@@ -29,9 +29,7 @@ When a thread has `componentPath` set, the chat surface uses **nav | preview | a
 
 - **Preview loading:** switching component agent tabs shows a centered skeleton in the center pane while analyze/bundle/prime runs (`ComponentPreviewLoadingSkeleton` in product `WebContentsView`); dev/status strings (`Analyzing component…`, `Bundling preview…`, native host placeholder) are suppressed in product mode.
 
-Desktop Electron auth bootstraps via `desktopBridge.getLocalEnvironmentBootstrap()` — the browser **Pair with this environment** form is not part of the product shell. The renderer polls for the local backend handoff (up to ~20s) and keeps retrying in the background; no manual pairing token is required during local development.
-
-**Local dev pairing bypass (temporary):** `bun run dev`, `bun run dev:server`, and `bun run dev:desktop` set `T3CODE_DEV_DISABLE_PAIRING=1` via [`scripts/dev-runner.ts`](../../../scripts/dev-runner.ts). Loopback clients call `POST /api/auth/dev-auto-bootstrap` and receive an owner session cookie automatically — no `/pair` UI or pasted startup token. To re-enable pairing locally: `T3CODE_DEV_DISABLE_PAIRING=0 bun run dev:desktop`. Do not enable this flag in production builds.
+Desktop Electron auth bootstraps silently via `desktopBridge.getLocalEnvironmentBootstrap()` — the browser **Pair with this environment** form is not part of the product shell. The renderer polls for the local backend handoff (up to ~20s) and keeps retrying in the background via [`ElectronDesktopAuthRecovery`](../../../apps/web/src/components/autodsm/ElectronDesktopAuthRecovery.tsx); no manual pairing token is required.
 
 ### Create component flow (Phase 7)
 

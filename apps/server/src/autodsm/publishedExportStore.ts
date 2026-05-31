@@ -13,6 +13,7 @@ import {
 } from "@t3tools/contracts";
 
 import { resolveAutodsmUserRoot } from "./autodsmWorkspaceHistory.ts";
+import { brandTokensPath } from "./autodsmPersistencePaths.ts";
 import { resolveAutodsmWorkspaceLayout } from "./autodsmWorkspacePaths.ts";
 
 function readPackageName(systemDir: string): string {
@@ -155,7 +156,15 @@ export function exportPublishedExport(input: AutoDsmPublishedExportInput): AutoD
   const indexTempPath = path.join(layout.systemDir, "src", "index-export.ts");
   fs.writeFileSync(indexTempPath, indexLines.join("\n") + "\n", "utf8");
 
-  // 2. Compile with tsup
+  // 2. Compile with tsup. tsup's `--dts` does `require("typescript")`; run via
+  // `bunx`, that resolves from the bunx cache and misses the workspace's copy.
+  // Exported workspaces live outside the repo (no hoisting), so point NODE_PATH
+  // at the workspace's node_modules to make typescript (and any peer the build
+  // touches) resolvable.
+  const workspaceNodeModules = path.join(layout.systemDir, "node_modules");
+  const nodePath = [workspaceNodeModules, process.env.NODE_PATH]
+    .filter((entry): entry is string => Boolean(entry))
+    .join(path.delimiter);
   try {
     const tsupResult = spawnSync(
       "bunx",
@@ -175,6 +184,7 @@ export function exportPublishedExport(input: AutoDsmPublishedExportInput): AutoD
         cwd: layout.systemDir,
         encoding: "utf8",
         shell: true,
+        env: { ...process.env, NODE_PATH: nodePath },
       },
     );
 
@@ -190,9 +200,26 @@ export function exportPublishedExport(input: AutoDsmPublishedExportInput): AutoD
     } catch {}
   }
 
+  // 2b. Validate tsup actually emitted the entry points the package.json will
+  // point at. tsup can exit 0 yet skip outputs (e.g. an empty barrel), which
+  // would produce a package that installs but fails to import. Fail loudly here
+  // instead of shipping a broken export.
+  const distDir = path.join(exportDir, "dist");
+  const requiredDistFiles = ["index-export.js", "index-export.mjs", "index-export.d.ts"];
+  const missingDistFiles = requiredDistFiles.filter(
+    (name) => !fs.existsSync(path.join(distDir, name)),
+  );
+  if (missingDistFiles.length > 0) {
+    throw new Error(
+      `Publish failed: tsup did not emit ${missingDistFiles.join(", ")} under dist/. ` +
+        `Ensure the workspace has at least one exported component under src/components/.`,
+    );
+  }
+
   // 3. Copy index.css if it exists
   const cssSrc = path.join(layout.systemDir, "src", "index.css");
-  if (fs.existsSync(cssSrc)) {
+  const hasCss = fs.existsSync(cssSrc);
+  if (hasCss) {
     fs.copyFileSync(cssSrc, path.join(exportDir, "index.css"));
   }
 
@@ -204,14 +231,31 @@ export function exportPublishedExport(input: AutoDsmPublishedExportInput): AutoD
     systemDependencies = parsed.dependencies || {};
   } catch {}
 
+  // A conditional `exports` map gives modern bundlers (Vite, the v1 install
+  // target) deterministic ESM/CJS/types resolution and exposes the stylesheet
+  // as a subpath import. `main`/`module`/`types` stay for legacy resolvers.
+  const exportsMap: Record<string, unknown> = {
+    ".": {
+      types: "./dist/index-export.d.ts",
+      import: "./dist/index-export.mjs",
+      require: "./dist/index-export.js",
+    },
+  };
+  if (hasCss) {
+    exportsMap["./index.css"] = "./index.css";
+  }
+
   const pkgJson = {
     name: packageName,
     version,
     description: "AutoDSM generated design system component library",
+    type: "module",
     main: "./dist/index-export.js",
     module: "./dist/index-export.mjs",
     types: "./dist/index-export.d.ts",
-    files: ["dist", "index.css"],
+    exports: exportsMap,
+    files: hasCss ? ["dist", "index.css"] : ["dist"],
+    sideEffects: hasCss ? ["*.css"] : false,
     peerDependencies: {
       react: "^18.0.0 || ^19.0.0",
       "react-dom": "^18.0.0 || ^19.0.0",
@@ -241,8 +285,9 @@ npm install ${exportDir}
 Import components and styles in your React application:
 
 \`\`\`tsx
-import { ${Array.from(exportedNames).join(", ") || "Button"} } from '${packageName}';
-import '${packageName}/index.css';
+import { ${Array.from(exportedNames).join(", ") || "Button"} } from '${packageName}';${
+    hasCss ? `\nimport '${packageName}/index.css';` : ""
+  }
 \`\`\`
 
 ## Exported Components
@@ -333,7 +378,7 @@ ${componentFiles.map((f) => `- ${path.basename(f, path.extname(f))}`).join("\n")
     version,
     exportPath: exportDir,
     componentCount: componentFiles.length,
-    tokenCount: countTokenEntries(path.join(layout.systemDir, "tokens.json")),
+    tokenCount: countTokenEntries(brandTokensPath(layout.systemDir)),
     createdAt: manifest.exportedAt,
   };
 }

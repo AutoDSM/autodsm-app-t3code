@@ -26,6 +26,19 @@ export function isAutodsmStagingDirectoryName(dirName: string): boolean {
   return dirName === AUTODSM_STAGING_DIR_NAME;
 }
 
+/**
+ * Detects when a workspace cwd lives under the staging directory rather than
+ * the final committed location. The frontend should never send staging paths
+ * to RPCs that touch the analyzer/bundler — those paths can disappear at any
+ * moment when sweep runs, and treating them as real workspaces lets the
+ * server materialise phantom workspace artifacts inside them.
+ */
+export function isWorkspaceCwdInsideStagingDirectory(cwd: string): boolean {
+  const resolved = path.resolve(cwd);
+  const stagingSegment = `${path.sep}${AUTODSM_STAGING_DIR_NAME}${path.sep}`;
+  return resolved.includes(stagingSegment);
+}
+
 interface RawWorkspaceMeta {
   readonly status?: string;
 }

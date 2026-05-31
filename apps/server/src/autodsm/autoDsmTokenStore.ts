@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
+// @effect-diagnostics globalDate:off
 /**
  * Durable workspace brand-token store.
  *
@@ -18,25 +19,43 @@ import {
   type AutoDsmBrandProfile,
   type AutoDsmBrandTokenDraft,
   type AutoDsmBrandTokenPatch,
+  type AutoDsmIndexStatus,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
-import { extractBrandTokens, fingerprintWorkspaceRoot, sha256Hex } from "./autoDsmHelpers.ts";
+import {
+  autodsmDir,
+  brandProfileMetaPath,
+  brandTokensPath,
+  legacyBrandTokensPath,
+} from "./autodsmPersistencePaths.ts";
+import {
+  extractBrandTokens,
+  fingerprintWorkspaceRoot,
+  sha256Hex,
+  canonicalizeBrandTokenCategory,
+} from "./autoDsmHelpers.ts";
 import { syncBrandTokensToThemeFiles } from "./brandTokenThemeSync.ts";
 
 const BRAND_PROFILE_SCHEMA_VERSION = 2;
-const TOKENS_DIR = ".autodsm";
-const TOKENS_FILE = "brand-tokens.json";
+const BRAND_PROFILE_META_SCHEMA_VERSION = 1;
+const SUPPORTED_BRAND_TOKEN_FILE_VERSIONS = new Set([BRAND_PROFILE_SCHEMA_VERSION]);
 
 const decodeBrandTokens = Schema.decodeUnknownSync(Schema.Array(AutoDsmBrandToken));
 
-interface BrandTokensFile {
-  readonly schemaVersion: number;
-  readonly tokens: readonly AutoDsmBrandToken[];
-}
+const BrandTokensFileSchema = Schema.Struct({
+  schemaVersion: Schema.Int,
+  tokens: Schema.Array(AutoDsmBrandToken),
+});
 
-function tokensFilePath(cwd: string): string {
-  return path.join(cwd, TOKENS_DIR, TOKENS_FILE);
+const decodeBrandTokensFile = Schema.decodeUnknownSync(BrandTokensFileSchema);
+
+interface BrandProfileMetaFile {
+  readonly schemaVersion: number;
+  readonly invalidationKey: string;
+  readonly cssVariablePaths: readonly string[];
+  readonly lastResyncAt?: string;
+  readonly status: AutoDsmIndexStatus;
 }
 
 function buildProfileFromTokens(
@@ -60,27 +79,88 @@ function buildProfileFromTokens(
   };
 }
 
-/** Atomically persist the token list (temp file + rename). */
-function writeTokensFile(cwd: string, tokens: readonly AutoDsmBrandToken[]): void {
-  fs.mkdirSync(path.join(cwd, TOKENS_DIR), { recursive: true });
-  const file = tokensFilePath(cwd);
-  const payload: BrandTokensFile = { schemaVersion: BRAND_PROFILE_SCHEMA_VERSION, tokens };
+function readBrandProfileMeta(cwd: string): BrandProfileMetaFile | null {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(brandProfileMetaPath(cwd), "utf8");
+  } catch {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch (cause) {
+    throw new Error("brand-profile.meta.json is not valid JSON.", { cause });
+  }
+  if (parsed === null || typeof parsed !== "object") {
+    throw new Error("brand-profile.meta.json has an invalid shape.");
+  }
+  const record = parsed as Record<string, unknown>;
+  if (record.schemaVersion !== BRAND_PROFILE_META_SCHEMA_VERSION) {
+    throw new Error(
+      `Unsupported brand-profile.meta.json schemaVersion ${String(record.schemaVersion)}.`,
+    );
+  }
+  if (typeof record.invalidationKey !== "string" || record.invalidationKey.trim().length === 0) {
+    throw new Error("brand-profile.meta.json is missing invalidationKey.");
+  }
+  const status = record.status;
+  if (status !== "ready" && status !== "partial" && status !== "failed" && status !== "stale") {
+    throw new Error("brand-profile.meta.json has an invalid status.");
+  }
+  return {
+    schemaVersion: BRAND_PROFILE_META_SCHEMA_VERSION,
+    invalidationKey: record.invalidationKey,
+    cssVariablePaths: Array.isArray(record.cssVariablePaths)
+      ? record.cssVariablePaths.filter((value): value is string => typeof value === "string")
+      : [],
+    ...(typeof record.lastResyncAt === "string" ? { lastResyncAt: record.lastResyncAt } : {}),
+    status,
+  };
+}
+
+function writeBrandProfileMeta(cwd: string, profile: AutoDsmBrandProfile): void {
+  const payload: BrandProfileMetaFile = {
+    schemaVersion: BRAND_PROFILE_META_SCHEMA_VERSION,
+    invalidationKey: profile.meta.invalidationKey,
+    cssVariablePaths: profile.cssVariablePaths,
+    lastResyncAt: new Date().toISOString(),
+    status: profile.status,
+  };
+  fs.mkdirSync(autodsmDir(cwd), { recursive: true });
+  const file = brandProfileMetaPath(cwd);
   const tmp = `${file}.${crypto.randomUUID()}.tmp`;
   fs.writeFileSync(tmp, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
   fs.renameSync(tmp, file);
 }
 
-function persistTokens(cwd: string, tokens: readonly AutoDsmBrandToken[]): AutoDsmBrandProfile {
-  writeTokensFile(cwd, tokens);
-  syncBrandTokensToThemeFiles(cwd, tokens);
-  return buildProfileFromTokens(cwd, tokens);
+/** Atomically persist the token list (temp file + rename). */
+function writeTokensFile(cwd: string, tokens: readonly AutoDsmBrandToken[]): void {
+  fs.mkdirSync(autodsmDir(cwd), { recursive: true });
+  const file = brandTokensPath(cwd);
+  const payload = { schemaVersion: BRAND_PROFILE_SCHEMA_VERSION, tokens };
+  const tmp = `${file}.${crypto.randomUUID()}.tmp`;
+  fs.writeFileSync(tmp, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  fs.renameSync(tmp, file);
 }
 
-/** Read the persisted token list, or `null` when the file does not exist. */
-function readTokensFile(cwd: string): readonly AutoDsmBrandToken[] | null {
+function decodePersistedTokens(parsed: unknown, sourceLabel: string): readonly AutoDsmBrandToken[] {
+  if (parsed !== null && typeof parsed === "object" && "tokens" in parsed) {
+    const file = decodeBrandTokensFile(parsed);
+    if (!SUPPORTED_BRAND_TOKEN_FILE_VERSIONS.has(file.schemaVersion)) {
+      throw new Error(
+        `Unsupported ${sourceLabel} schemaVersion ${file.schemaVersion}. Expected ${BRAND_PROFILE_SCHEMA_VERSION}.`,
+      );
+    }
+    return file.tokens;
+  }
+  return decodeBrandTokens(parsed);
+}
+
+function readTokensPayload(cwd: string): readonly AutoDsmBrandToken[] | null {
   let raw: string;
   try {
-    raw = fs.readFileSync(tokensFilePath(cwd), "utf8");
+    raw = fs.readFileSync(brandTokensPath(cwd), "utf8");
   } catch {
     return null;
   }
@@ -90,27 +170,93 @@ function readTokensFile(cwd: string): readonly AutoDsmBrandToken[] | null {
   } catch (cause) {
     throw new Error("brand-tokens.json is not valid JSON.", { cause });
   }
-  const tokensRaw =
-    parsed !== null && typeof parsed === "object" && "tokens" in parsed
-      ? (parsed as { readonly tokens: unknown }).tokens
-      : parsed;
-  return decodeBrandTokens(tokensRaw);
+  return decodePersistedTokens(parsed, "brand-tokens.json");
+}
+
+function migrateLegacyTokensFile(cwd: string): readonly AutoDsmBrandToken[] | null {
+  const legacyPath = legacyBrandTokensPath(cwd);
+  let raw: string;
+  try {
+    raw = fs.readFileSync(legacyPath, "utf8");
+  } catch {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    return null;
+  }
+  const tokens = decodePersistedTokens(parsed, "tokens.json");
+  writeTokensFile(cwd, tokens);
+  writeBrandProfileMeta(cwd, buildProfileFromTokens(cwd, tokens));
+  try {
+    fs.unlinkSync(legacyPath);
+  } catch {
+    // Best-effort cleanup of legacy file.
+  }
+  return tokens;
+}
+
+/**
+ * Atomically persist the token list and re-sync derived theme files. Exposed
+ * so callers that compute the full next-state in memory (e.g. the design-brief
+ * applier batching N operations) can write + theme-sync ONCE instead of N
+ * times — the per-op `addBrandToken` / `updateBrandToken` helpers each invoke
+ * `syncBrandTokensToThemeFiles` and churn the brand-profile invalidation key
+ * on every call.
+ */
+export function persistTokens(
+  cwd: string,
+  tokens: readonly AutoDsmBrandToken[],
+): AutoDsmBrandProfile {
+  const previousMeta = readBrandProfileMeta(cwd);
+  const profile = buildProfileFromTokens(cwd, tokens);
+  writeTokensFile(cwd, tokens);
+  writeBrandProfileMeta(cwd, profile);
+  if (previousMeta?.invalidationKey !== profile.meta.invalidationKey) {
+    syncBrandTokensToThemeFiles(cwd, tokens);
+  }
+  return profile;
+}
+
+/** Read the persisted token list, or `null` when the file does not exist. */
+function readTokensFile(cwd: string): readonly AutoDsmBrandToken[] | null {
+  const existing = readTokensPayload(cwd);
+  if (existing !== null) {
+    return existing;
+  }
+  return migrateLegacyTokensFile(cwd);
+}
+
+function migrateTokenCategories(
+  tokens: readonly AutoDsmBrandToken[],
+): readonly AutoDsmBrandToken[] {
+  return tokens.map((token) => {
+    const category = canonicalizeBrandTokenCategory(token);
+    return category === token.category ? token : { ...token, category };
+  });
 }
 
 /** Load persisted tokens, seeding from CSS extraction on first access. */
 export function loadBrandTokens(cwd: string): readonly AutoDsmBrandToken[] {
   const existing = readTokensFile(cwd);
   if (existing !== null) {
-    return existing;
+    const migrated = migrateTokenCategories(existing);
+    if (migrated.some((token, index) => token.category !== existing[index]?.category)) {
+      writeTokensFile(cwd, migrated);
+      writeBrandProfileMeta(cwd, buildProfileFromTokens(cwd, migrated));
+    }
+    return migrated;
   }
   const seeded = extractBrandTokens(cwd);
-  writeTokensFile(cwd, seeded);
-  return seeded;
+  return persistTokens(cwd, seeded).tokens;
 }
 
 /** Load the workspace {@link AutoDsmBrandProfile}, seeding on first access. */
 export function loadBrandProfile(cwd: string): AutoDsmBrandProfile {
-  return buildProfileFromTokens(cwd, loadBrandTokens(cwd));
+  const tokens = loadBrandTokens(cwd);
+  return buildProfileFromTokens(cwd, tokens);
 }
 
 function normalizeName(name: string): string {
@@ -206,3 +352,6 @@ export function seedBrandTokensFromWorkspace(cwd: string): AutoDsmBrandProfile {
   const seeded = extractBrandTokens(cwd);
   return persistTokens(cwd, seeded);
 }
+
+/** Exported for publish/export token counts. */
+export { brandTokensPath };

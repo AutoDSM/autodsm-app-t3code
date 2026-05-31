@@ -20,3 +20,23 @@ export function MuiChipRow(props: MuiChipRowProps): JSX.Element {
     </MuiPreviewShell>
   );
 }
+
+export const MuiChipFilled = (): JSX.Element => (
+  <MuiPreviewShell>
+    <Stack direction="row" spacing={1}>
+      <Chip label="Default" variant="filled" />
+      <Chip label="Primary" variant="filled" color="primary" />
+      <Chip label="Success" variant="filled" color="success" />
+    </Stack>
+  </MuiPreviewShell>
+);
+
+export const MuiChipOutlined = (): JSX.Element => (
+  <MuiPreviewShell>
+    <Stack direction="row" spacing={1}>
+      <Chip label="Default" variant="outlined" />
+      <Chip label="Primary" variant="outlined" color="primary" />
+      <Chip label="Success" variant="outlined" color="success" />
+    </Stack>
+  </MuiPreviewShell>
+);

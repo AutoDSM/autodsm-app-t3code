@@ -57,8 +57,11 @@
     "dist:desktop:win:arm64": "node scripts/build-desktop-artifact.ts --platform win --target nsis --arch arm64",
     "dist:desktop:win:x64": "node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64",
     "release:smoke": "node scripts/release-smoke.ts",
+    "autodsm:publish-smoke": "bun apps/server/scripts/release-autodsm-publish-smoke.ts",
+    "verify:supabase-oauth": "bun scripts/verify-supabase-oauth.ts",
     "clean": "rm -rf node_modules apps/*/node_modules packages/*/node_modules apps/*/dist apps/*/dist-electron packages/*/dist .turbo apps/*/.turbo packages/*/.turbo",
-    "sync:vscode-icons": "node scripts/sync-vscode-icons.mjs"
+    "sync:vscode-icons": "node scripts/sync-vscode-icons.mjs",
+    "brand:audit": "node scripts/brand-audit.ts"
   },
   "devDependencies": {
     "@effect/language-service": "catalog:",

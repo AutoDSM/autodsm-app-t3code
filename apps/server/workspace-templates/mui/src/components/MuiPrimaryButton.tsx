@@ -21,3 +21,11 @@ export function MuiPrimaryButton(props: MuiPrimaryButtonProps): JSX.Element {
     </MuiPreviewShell>
   );
 }
+
+export const MuiButtonContained = (): JSX.Element => (
+  <MuiPrimaryButton variant="contained" label="Contained" />
+);
+export const MuiButtonOutlined = (): JSX.Element => (
+  <MuiPrimaryButton variant="outlined" label="Outlined" />
+);
+export const MuiButtonText = (): JSX.Element => <MuiPrimaryButton variant="text" label="Text" />;

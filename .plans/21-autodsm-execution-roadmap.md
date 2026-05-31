@@ -22,11 +22,11 @@ Acceptance: audit complete, substrate asks documented, dev environment runs, Aut
 ## Phase 1: Supabase auth and beta gate
 
 - Implement profiles, telemetry, feedback, and publish-log tables with RLS.
-- Wire magic-link auth through typed IPC.
+- Wire GitHub/Google OAuth through the web onboarding welcome + `/auth/callback`.
 - Build sign-in and beta-gate screens.
 - Add telemetry batching and feedback widget.
 
-Acceptance: magic-link auth works, beta status gates access, telemetry/feedback write to Supabase without design-system source content.
+Acceptance: OAuth sign-in works, beta status gates access, telemetry/feedback write to Supabase without design-system source content.
 
 ## Phase 2: Workspace and fork
 

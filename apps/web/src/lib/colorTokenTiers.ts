@@ -1,25 +1,11 @@
 import type { AutoDsmBrandToken } from "@t3tools/contracts";
 
-export type ColorTier = "global" | "semantic";
-
 const VAR_REFERENCE = /^\s*var\(\s*--([a-zA-Z0-9_-]+)\s*(?:,[^)]*)?\)\s*$/;
 
 /** Returns the bare variable name from `var(--name)`-style values, or null. */
 export function parseVarReference(value: string): string | null {
   const match = VAR_REFERENCE.exec(value);
   return match ? (match[1] ?? null) : null;
-}
-
-function primaryLightValue(token: AutoDsmBrandToken): string {
-  return token.color?.light ?? token.value;
-}
-
-/**
- * A color token is "semantic" when its Light value is a `var(--name)` reference
- * to another token; otherwise it's a primitive "global".
- */
-export function classifyColorTier(token: AutoDsmBrandToken): ColorTier {
-  return parseVarReference(primaryLightValue(token)) !== null ? "semantic" : "global";
 }
 
 /** `--color-brand-500` and `color-brand-500` should both map to the same token. */
@@ -107,21 +93,4 @@ export function resolveColorTokenValue(
   }
 
   return { value: currentValue, referenceName: firstHop };
-}
-
-export interface ColorTierPartition {
-  readonly globals: ReadonlyArray<AutoDsmBrandToken>;
-  readonly semantics: ReadonlyArray<AutoDsmBrandToken>;
-}
-
-export function partitionColorsByTier(
-  tokens: ReadonlyArray<AutoDsmBrandToken>,
-): ColorTierPartition {
-  const globals: AutoDsmBrandToken[] = [];
-  const semantics: AutoDsmBrandToken[] = [];
-  for (const token of tokens) {
-    if (classifyColorTier(token) === "semantic") semantics.push(token);
-    else globals.push(token);
-  }
-  return { globals, semantics };
 }

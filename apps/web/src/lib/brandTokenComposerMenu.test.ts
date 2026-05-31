@@ -48,4 +48,23 @@ describe("brandTokenComposerMenu", () => {
     expect(groups.map((group) => group.id)).toEqual(["color", "spacing"]);
     expect(groups[0]?.label).toBe("Colors");
   });
+
+  it("excludes tailwind palette colors from the menu", () => {
+    const withPalette: AutoDsmBrandToken[] = [
+      ...tokens,
+      {
+        id: "color:brand-500",
+        category: "color",
+        name: "color-brand-500",
+        value: "#8a38f5",
+        origin: "scanned",
+        sources: [],
+        color: { light: "#8a38f5" },
+      },
+    ];
+    const items = buildBrandTokenComposerMenuItems(withPalette, "");
+    expect(
+      items.some((item) => item.type === "brand-token" && item.tokenName === "color-brand-500"),
+    ).toBe(false);
+  });
 });

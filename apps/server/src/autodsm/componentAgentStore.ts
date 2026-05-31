@@ -11,15 +11,20 @@ import {
   AutoDsmSessionId,
   AutoDsmChangeSetId,
   type AutoDsmComponentAgentRegisterInput,
+  type AutoDsmComponentAgentResyncMode,
+  type AutoDsmComponentAgentResyncResult,
   type AutoDsmComponentAgentUpdateInput,
   type AutoDsmComponentAgentRemoveInput,
   type AutoDsmComponentAgentSource,
   type AutoDsmComponentId,
+  type AutoDsmWorkspaceStarterId,
   type ThreadId,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
+import { resolveBundledWorkspaceTemplatesDir } from "./autodsmCreateWorkspace.ts";
 import { resolveAutodsmWorkspaceLayout } from "./autodsmWorkspacePaths.ts";
+import { scanTemplateComponentAgents, type ScannerOverlay } from "./componentAgentScanner.ts";
 import { createSessionRecord, loadSessionByThreadId, writeSession } from "./sessionStore.ts";
 
 const MANIFEST_SCHEMA_VERSION = 1;
@@ -38,11 +43,52 @@ function normalizeComponentPath(rawPath: string): string {
   return normalized.startsWith("/") ? normalized : `/${normalized}`;
 }
 
+function fileStemFromComponentPath(componentPath: string): string {
+  const normalized = componentPath.replace(/\\/g, "/");
+  const fileName = normalized.split("/").pop() ?? normalized;
+  return fileName.replace(/\.(tsx|jsx)$/i, "");
+}
+
+function scoreAgentForDedupe(agent: AutoDsmComponentAgentRecord): number {
+  const stem = fileStemFromComponentPath(agent.componentPath);
+  if (agent.exportName === stem) {
+    return 0;
+  }
+  if (!agent.exportName?.trim()) {
+    return 1;
+  }
+  return 2 + agent.title.length;
+}
+
+export function dedupeComponentAgentsByPath(
+  agents: readonly AutoDsmComponentAgentRecord[],
+): AutoDsmComponentAgentRecord[] {
+  const byPath = new Map<string, AutoDsmComponentAgentRecord>();
+  for (const agent of agents) {
+    const key = normalizeComponentPath(agent.componentPath);
+    const existing = byPath.get(key);
+    if (!existing || scoreAgentForDedupe(agent) < scoreAgentForDedupe(existing)) {
+      byPath.set(key, agent);
+    }
+  }
+  return [...byPath.values()];
+}
+
 export function loadComponentAgentsManifest(cwd: string): AutoDsmComponentAgentsManifest {
   const layout = resolveAutodsmWorkspaceLayout(cwd);
   try {
     const raw = fs.readFileSync(layout.componentAgentsPath, "utf8");
-    return decodeManifest(JSON.parse(raw) as unknown);
+    const decoded = decodeManifest(JSON.parse(raw) as unknown);
+    const dedupedAgents = dedupeComponentAgentsByPath(decoded.agents);
+    if (dedupedAgents.length !== decoded.agents.length) {
+      const next = {
+        ...decoded,
+        agents: dedupedAgents,
+      };
+      writeJsonAtomic(layout.componentAgentsPath, next);
+      return next;
+    }
+    return decoded;
   } catch {
     return {
       schemaVersion: MANIFEST_SCHEMA_VERSION,
@@ -72,6 +118,11 @@ export function seedComponentAgentsManifest(input: {
     readonly threadId: ThreadId;
     readonly title: string;
     readonly componentPath: string;
+    /**
+     * Named export this seed agent represents (when the wrapper file exposes
+     * multiple variants). Omitted for single-export / default-export files.
+     */
+    readonly exportName?: string;
     readonly group?: string;
     readonly source: AutoDsmComponentAgentSource;
     readonly createdAt: string;
@@ -89,6 +140,7 @@ export function seedComponentAgentsManifest(input: {
       sessionId: session.sessionId,
       title: agent.title,
       componentPath: normalizeComponentPath(agent.componentPath),
+      ...(agent.exportName?.trim() ? { exportName: agent.exportName.trim() } : {}),
       ...(agent.group?.trim() ? { group: agent.group.trim() } : {}),
       status: "active",
       source: agent.source,
@@ -130,6 +182,7 @@ export function registerComponentAgent(input: AutoDsmComponentAgentRegisterInput
     sessionId: session.sessionId,
     title: input.title,
     componentPath,
+    ...(input.exportName?.trim() ? { exportName: input.exportName.trim() } : {}),
     ...(input.group?.trim() ? { group: input.group.trim() } : {}),
     status: input.status ?? "creating",
     source: input.source,
@@ -218,6 +271,190 @@ export function reconcileComponentIdsFromRegistry(
   if (changed) {
     writeComponentAgentsManifest(cwd, { ...manifest, agents });
   }
+}
+
+/** Workspace meta.json carries the `starterId` that materialized this workspace. */
+interface WorkspaceMetaLite {
+  readonly starterId?: string;
+}
+
+function readWorkspaceStarterId(systemDir: string): AutoDsmWorkspaceStarterId | null {
+  // meta.json lives at <workspaceRoot>/meta.json, one level above `system/`.
+  const metaPath = path.join(path.dirname(systemDir), "meta.json");
+  try {
+    const raw = fs.readFileSync(metaPath, "utf8");
+    const parsed = JSON.parse(raw) as WorkspaceMetaLite;
+    const candidate = parsed.starterId;
+    if (!candidate) return null;
+    if (
+      candidate === "modern-starter" ||
+      candidate === "shadcn-ui" ||
+      candidate === "mui" ||
+      candidate === "chakra-ui" ||
+      candidate === "tailwind-css"
+    ) {
+      return candidate;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function loadTemplateOverlay(templateDir: string): ScannerOverlay | null {
+  const overlayPath = path.join(templateDir, "component-agents.json");
+  try {
+    const raw = fs.readFileSync(overlayPath, "utf8");
+    return JSON.parse(raw) as ScannerOverlay;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Recursively copy any wrapper files present in the TEMPLATE's
+ * `src/components/` tree that aren't yet in the WORKSPACE's
+ * `src/components/`. Additive only — never overwrites a file the user may
+ * have customized. Returns the list of newly added relative paths.
+ */
+function copyMissingTemplateComponents(
+  templateDir: string,
+  workspaceSystemDir: string,
+): readonly string[] {
+  const templateComponentsRoot = path.join(templateDir, "src", "components");
+  const workspaceComponentsRoot = path.join(workspaceSystemDir, "src", "components");
+  if (!fs.existsSync(templateComponentsRoot)) {
+    return [];
+  }
+  fs.mkdirSync(workspaceComponentsRoot, { recursive: true });
+  const added: string[] = [];
+
+  const visit = (relSegments: readonly string[]): void => {
+    const absDir = path.join(templateComponentsRoot, ...relSegments);
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(absDir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const childRel = [...relSegments, entry.name];
+      const childTemplateAbs = path.join(templateComponentsRoot, ...childRel);
+      const childWorkspaceAbs = path.join(workspaceComponentsRoot, ...childRel);
+      if (entry.isDirectory()) {
+        fs.mkdirSync(childWorkspaceAbs, { recursive: true });
+        visit(childRel);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      if (fs.existsSync(childWorkspaceAbs)) continue; // preserve user mods
+      fs.copyFileSync(childTemplateAbs, childWorkspaceAbs);
+      added.push(`/src/components/${childRel.join("/")}`);
+    }
+  };
+  visit([]);
+  return added;
+}
+
+/**
+ * Re-seed a workspace's `component-agents.json` from its (possibly
+ * expanded) starter template. Copies any wrapper files the template has
+ * that the workspace lacks, then rescans + rebuilds the manifest.
+ *
+ * - `mode === "preserve-user"` (default): all `source === "user"` agents
+ *   survive; all `source === "starter"` agents are replaced with the
+ *   current template set.
+ * - `mode === "overwrite-all"`: full replacement; user agents are dropped.
+ *
+ * Does NOT touch the workspace's `package.json` — if a freshly-copied
+ * wrapper imports a dep the workspace hasn't installed, the user sees the
+ * import error in the preview iframe and can run their package manager.
+ */
+export function resyncComponentAgentsFromTemplate(input: {
+  readonly cwd: string;
+  readonly mode?: AutoDsmComponentAgentResyncMode;
+  /**
+   * Override for the bundled-templates location. Production omits this and
+   * the function probes the real templates root via
+   * {@link resolveBundledWorkspaceTemplatesDir}. Tests pass an explicit
+   * fake-template directory.
+   */
+  readonly templatesDir?: string;
+}): AutoDsmComponentAgentResyncResult {
+  const mode = input.mode ?? "preserve-user";
+  const starterId = readWorkspaceStarterId(input.cwd);
+  if (!starterId) {
+    throw new Error(
+      "Could not determine starter id for this workspace — meta.json is missing or malformed.",
+    );
+  }
+  const templatesRoot = input.templatesDir ?? resolveBundledWorkspaceTemplatesDir();
+  const templateDir = path.join(templatesRoot, starterId);
+  if (!fs.existsSync(templateDir)) {
+    throw new Error(
+      `Template directory not found for starter "${starterId}" under ${templatesRoot}.`,
+    );
+  }
+
+  // 1. Bring missing wrapper files over from the template (additive).
+  copyMissingTemplateComponents(templateDir, input.cwd);
+
+  // 2. Rescan the workspace's now-updated components tree with the
+  //    template's overlay so per-export agents (variant named exports)
+  //    surface correctly.
+  const overlay = loadTemplateOverlay(templateDir);
+  const scanned = scanTemplateComponentAgents({
+    systemDir: input.cwd,
+    starterId,
+    overlay,
+  });
+
+  // 3. Merge with the existing manifest per the requested mode.
+  const existing = loadComponentAgentsManifest(input.cwd);
+  const previousStarterCount = existing.agents.filter((a) => a.source === "starter").length;
+  const preservedUserAgents =
+    mode === "preserve-user" ? existing.agents.filter((a) => a.source === "user") : [];
+
+  // Build the seed input shape; createdAt stamps "now" for newly-seeded
+  // starter agents. The store's seed function will allocate fresh
+  // threadId/sessionId records for each.
+  const createdAt = new Date().toISOString();
+  const layout = resolveAutodsmWorkspaceLayout(input.cwd);
+
+  const starterRecords: AutoDsmComponentAgentRecord[] = [];
+  for (const agent of scanned) {
+    const threadId = `t-${crypto.randomUUID()}` as ThreadId;
+    const session = createSessionRecord({
+      cwd: input.cwd,
+      threadId,
+      componentPath: agent.componentPath,
+    });
+    starterRecords.push({
+      threadId,
+      sessionId: session.sessionId,
+      title: agent.title,
+      componentPath: normalizeComponentPath(agent.componentPath),
+      ...(agent.exportName?.trim() ? { exportName: agent.exportName.trim() } : {}),
+      ...(agent.group?.trim() ? { group: agent.group.trim() } : {}),
+      status: "active",
+      source: "starter",
+      createdAt,
+    });
+  }
+
+  const next: AutoDsmComponentAgentsManifest = {
+    schemaVersion: MANIFEST_SCHEMA_VERSION,
+    workspaceId: layout.workspaceId,
+    agents: [...starterRecords, ...preservedUserAgents],
+  };
+  writeComponentAgentsManifest(input.cwd, next);
+
+  return {
+    manifest: next,
+    starterAgentsAdded: starterRecords.length,
+    starterAgentsRemoved: previousStarterCount,
+    userAgentsPreserved: preservedUserAgents.length,
+  };
 }
 
 export function appendChangeSetToSessionManifest(

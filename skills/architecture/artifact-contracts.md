@@ -6,18 +6,19 @@ Every durable AutoDSM feature should read or write a named artifact. Artifacts m
 
 ## Canonical v1 Artifacts
 
-| Artifact                | Owner                                | Location                                       |
-| ----------------------- | ------------------------------------ | ---------------------------------------------- |
-| `WorkspaceMetadata`     | `WorkspaceService`                   | `~/.autodsm/systems/<id>/meta.json`            |
-| `BrandProfile`          | `TokenStore`                         | `system/tokens.json` plus derived CSS/Tailwind |
-| `ComponentRegistry`     | `Indexer`                            | rebuilt/cacheable from `system/components/`    |
-| `ComponentConversation` | `ConversationStore`                  | `conversations/<slug>.json`                    |
-| `Session`               | `ComponentAgentBridge`               | `sessions/<session-id>/manifest.json`          |
-| `GenerationPlan`        | agent bridge/context layer           | session directory                              |
-| `ChangeSet`             | `ChangeSetCollector` / `DiffService` | session directory                              |
-| `PullRequest`           | `PRService`                          | `prs/<pr-id>.json`                             |
-| `ActivityEntry`         | `ActivityLog`                        | `activity-log.jsonl`                           |
-| `PublishedExport`       | `PublishService`                     | `~/.autodsm/exports/<system-id>-<version>/`    |
+| Artifact                  | Owner                                | Location                                                      |
+| ------------------------- | ------------------------------------ | ------------------------------------------------------------- |
+| `WorkspaceMetadata`       | `WorkspaceService`                   | `~/.autodsm/systems/<id>/meta.json`                           |
+| `BrandProfile`            | `TokenStore`                         | `system/.autodsm/brand-tokens.json` plus derived CSS/Tailwind |
+| `ComponentRegistry`       | `Indexer`                            | rebuilt/cacheable from `system/src/components/`               |
+| `ComponentAgentsManifest` | `ComponentAgentStore`                | `~/.autodsm/systems/<id>/component-agents.json`               |
+| `ComponentConversation`   | `ConversationStore`                  | `conversations/<slug>.json`                                   |
+| `Session`                 | `ComponentAgentBridge`               | `sessions/<session-id>/manifest.json`                         |
+| `GenerationPlan`          | agent bridge/context layer           | session directory                                             |
+| `ChangeSet`               | `ChangeSetCollector` / `DiffService` | session directory                                             |
+| `PullRequest`             | `PRService`                          | `prs/<pr-id>.json`                                            |
+| `ActivityEntry`           | `ActivityLog`                        | `activity-log.jsonl`                                          |
+| `PublishedExport`         | `PublishService`                     | `~/.autodsm/exports/<system-id>-<version>/`                   |
 
 ## Deprecated or Future Terms
 

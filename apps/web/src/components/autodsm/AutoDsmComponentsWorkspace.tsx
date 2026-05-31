@@ -1,7 +1,7 @@
 "use client";
 
 import type { AutoDsmComponentRegistryEntry, AutoDsmViewportSpec } from "@t3tools/contracts";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type JSX } from "react";
 
 import { WebContentsView } from "~/components/WebContentsView";
@@ -10,19 +10,80 @@ import { ensureEnvironmentApi } from "~/environmentApi";
 import { useAutoDsmWorkspace } from "~/hooks/useAutoDsmWorkspace";
 import { useSrcComponentsCatalog } from "~/hooks/useSrcComponentsCatalog";
 import { normalizeSidebarComponentCatalogPath } from "~/lib/srcComponentsWorkspacePaths";
+import { getStarterComponentAgents } from "~/lib/autoDsmStarterComponentAgents";
+import { isAutoDsmStarterId } from "~/lib/autoDsmStarterCatalog";
+import { AUTODSM_VIEWPORT_PRESETS } from "~/lib/autoDsmViewportPresets";
+import {
+  autodsmComponentAgentsQueryOptions,
+  autodsmResyncComponentAgents,
+  autodsmWorkspaceQueryKeys,
+} from "~/lib/autodsmWorkspaceReactQuery";
+import { selectAutoDsmActiveViewport, useUiStateStore } from "~/uiStateStore";
 
-const VIEWPORT_PRESETS: readonly AutoDsmViewportSpec[] = [
-  { label: "desktop-hd", width: 1280, height: 720, devicePixelRatio: 1 },
-  { label: "mobile", width: 390, height: 844, devicePixelRatio: 3 },
-  { label: "tablet", width: 834, height: 1112, devicePixelRatio: 2 },
-];
+const VIEWPORT_PRESETS = AUTODSM_VIEWPORT_PRESETS;
 
 export function AutoDsmComponentsWorkspace(): JSX.Element {
   const { cwd, environmentId, projectName } = useAutoDsmWorkspace();
+  const queryClient = useQueryClient();
   const [selectedRelativePath, setSelectedRelativePath] = useState<string | null>(null);
   const [selectedExportName, setSelectedExportName] = useState<string>("default");
   const [buildLogOpen, setBuildLogOpen] = useState(false);
-  const [viewport, setViewport] = useState<AutoDsmViewportSpec>(VIEWPORT_PRESETS[0]!);
+
+  // Seeded component-agents manifest for the workspace — surfaces the agent
+  // count so users can spot template drift (their workspace was seeded
+  // before the template grew). Also enables the "Resync from template"
+  // action below to re-fetch when the manifest changes.
+  const componentAgentsQuery = useQuery(
+    autodsmComponentAgentsQueryOptions({
+      environmentId,
+      cwd,
+      enabled: Boolean(cwd && environmentId),
+    }),
+  );
+  const seededAgentCount = componentAgentsQuery.data?.manifest.agents.length ?? 0;
+
+  // Drift detection: compare seeded workspace manifest against the current
+  // starter manifest shipped with the app. When the template grew (e.g.
+  // after a template-version bump), surface a CTA so the user can
+  // resync without nuking their workspace.
+  const onboardingStarterId = useUiStateStore((s) => s.autodsmOnboarding.starterId);
+  const starterTemplateAgentCount =
+    onboardingStarterId && isAutoDsmStarterId(onboardingStarterId)
+      ? getStarterComponentAgents(onboardingStarterId).length
+      : 0;
+  const driftCount = Math.max(0, starterTemplateAgentCount - seededAgentCount);
+  const hasDrift =
+    componentAgentsQuery.isSuccess && starterTemplateAgentCount > 0 && driftCount > 0;
+
+  const resyncMutation = useMutation({
+    mutationFn: async () => {
+      if (!cwd || !environmentId) {
+        throw new Error("Workspace unavailable.");
+      }
+      return autodsmResyncComponentAgents({ environmentId, cwd });
+    },
+    onSuccess: () => {
+      // Refresh the seeded-manifest query AND the registry so newly-copied
+      // wrapper files surface in the catalog without a full page reload.
+      // Use refetchQueries (not invalidateQueries) for the registry so that
+      // *inactive* mounts — e.g. a per-component thread page the user
+      // navigates to next, with its own WebContentsView that didn't render
+      // during the resync — see the new entries on first display instead
+      // of relying on a stale cached payload.
+      void queryClient.invalidateQueries({
+        queryKey: autodsmWorkspaceQueryKeys.componentAgents(environmentId, cwd),
+      });
+      void queryClient.refetchQueries({
+        queryKey: autodsmWorkspaceQueryKeys.componentRegistry(environmentId, cwd),
+      });
+    },
+  });
+  const workspaceKey = cwd ?? null;
+  const viewport = useUiStateStore((s) => selectAutoDsmActiveViewport(s, { workspaceKey }));
+  const setActiveViewport = useUiStateStore((s) => s.setAutoDsmActiveViewport);
+  const setViewport = (next: AutoDsmViewportSpec): void => {
+    setActiveViewport({ workspaceKey, viewport: next });
+  };
 
   const workspaceCatalogEnabled = Boolean(cwd && environmentId);
 
@@ -103,19 +164,64 @@ export function AutoDsmComponentsWorkspace(): JSX.Element {
     <div className="flex min-h-[60vh] flex-col gap-6 lg:flex-row">
       <aside className="w-full shrink-0 lg:max-w-md">
         <div className="rounded-2xl border border-border/60 bg-card/20 p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Registry
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {projectName ? (
-              <>
-                <span className="font-semibold text-foreground">{projectName}</span>
-                <span className="block truncate font-mono text-xs">{cwd}</span>
-              </>
-            ) : (
-              <span className="font-mono text-xs">{cwd}</span>
-            )}
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Registry
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {projectName ? (
+                  <>
+                    <span className="font-semibold text-foreground">{projectName}</span>
+                    <span className="block truncate font-mono text-xs">{cwd}</span>
+                  </>
+                ) : (
+                  <span className="font-mono text-xs">{cwd}</span>
+                )}
+              </p>
+              {seededAgentCount > 0 || !componentAgentsQuery.isPending ? (
+                <p className="mt-1 text-[0.65rem] text-muted-foreground">
+                  {seededAgentCount} component{seededAgentCount === 1 ? "" : "s"} seeded from
+                  starter
+                </p>
+              ) : null}
+            </div>
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              disabled={resyncMutation.isPending || !cwd || !environmentId}
+              onClick={() => {
+                resyncMutation.mutate();
+              }}
+              title="Re-seed component-agents.json from the latest starter template (preserves user-added agents)"
+            >
+              {resyncMutation.isPending ? "Resyncing…" : "Resync from template"}
+            </Button>
+          </div>
+          {resyncMutation.data ? (
+            <p className="mt-2 text-[0.65rem] text-muted-foreground">
+              Added {resyncMutation.data.starterAgentsAdded}, removed{" "}
+              {resyncMutation.data.starterAgentsRemoved}, preserved{" "}
+              {resyncMutation.data.userAgentsPreserved} user agent
+              {resyncMutation.data.userAgentsPreserved === 1 ? "" : "s"}.
+            </p>
+          ) : null}
+          {resyncMutation.isError ? (
+            <p className="mt-2 text-[0.65rem] text-destructive">
+              {(resyncMutation.error as Error)?.message ?? "Resync failed"}
+            </p>
+          ) : null}
+          {hasDrift && !resyncMutation.isPending && !resyncMutation.data ? (
+            <div className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[0.65rem] text-amber-900 dark:text-amber-200">
+              The shipped starter has{" "}
+              <span className="font-semibold">
+                {driftCount} more component{driftCount === 1 ? "" : "s"}
+              </span>{" "}
+              than this workspace was seeded with. Click <em>Resync from template</em> to pull them
+              in — your own component agents are preserved.
+            </div>
+          ) : null}
 
           {registryPending ? (
             <p className="mt-4 text-xs text-muted-foreground">Loading registry…</p>

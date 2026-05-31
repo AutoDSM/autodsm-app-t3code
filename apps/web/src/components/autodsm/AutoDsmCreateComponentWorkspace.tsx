@@ -22,6 +22,7 @@ import { useBrandTokenComposerMenu } from "~/hooks/useBrandTokenComposerMenu";
 import { getCustomModelOptionsByInstance, resolveAppModelSelectionState } from "~/modelSelection";
 import { useSettings, useUpdateSettings } from "~/hooks/useSettings";
 import { autodsmBrandProfileQueryOptions } from "~/lib/autodsmWorkspaceReactQuery";
+import { filterComposerBrandTokens } from "~/lib/brandingColorTokens";
 import { cn } from "~/lib/utils";
 import type { ProviderDriverKind } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
@@ -34,7 +35,7 @@ const SUGGESTED_PROMPTS = [
   "Design a form input with validation and error states",
 ] as const;
 
-const CREATE_COMPONENT_PROJECT_ACCENT_CLASS = "text-[#8a38f5]";
+const CREATE_COMPONENT_PROJECT_ACCENT_CLASS = "text-brand";
 
 export function applyCreateComponentSuggestedPrompt(
   text: string,
@@ -65,7 +66,10 @@ export function AutoDsmCreateComponentWorkspace(): JSX.Element {
       enabled: Boolean(cwd && environmentId),
     }),
   );
-  const brandTokens = brandProfileQuery.data?.tokens ?? [];
+  const brandTokens = useMemo(
+    () => filterComposerBrandTokens(brandProfileQuery.data?.tokens ?? []),
+    [brandProfileQuery.data?.tokens],
+  );
   const expandedCursor = useMemo(
     () => expandCollapsedComposerCursor(prompt, cursor),
     [cursor, prompt],
@@ -293,7 +297,7 @@ export function AutoDsmCreateComponentWorkspace(): JSX.Element {
               className={cn(
                 "flex w-full items-center gap-4 rounded-xl px-4 py-3 text-left transition-colors",
                 "text-[#a1a1a6] hover:bg-white/3 hover:text-[#d1d1d6]",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8a38f5]/40",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
               )}
               disabled={isSubmitting}
               key={text}

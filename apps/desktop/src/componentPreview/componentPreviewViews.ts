@@ -1,3 +1,4 @@
+// @effect-diagnostics globalTimers:off
 import * as crypto from "node:crypto";
 
 import * as Electron from "electron";
@@ -260,11 +261,33 @@ export async function primePreviewView(
     payload,
   };
 
-  await entry.view.webContents.executeJavaScript(
-    `window.postMessage(${JSON.stringify(message)}, window.location.origin);`,
-    true,
-  );
-  return true;
+  const PRIME_TIMEOUT_MS = 5_000;
+  try {
+    await Promise.race([
+      entry.view.webContents.executeJavaScript(
+        `window.postMessage(${JSON.stringify(message)}, window.location.origin);`,
+        true,
+      ),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("primePreviewView timed out")), PRIME_TIMEOUT_MS),
+      ),
+    ]);
+    return true;
+  } catch (err) {
+    try {
+      const owner = registry.get(viewId)?.owner;
+      if (owner && isBrowserWindowAlive(owner)) {
+        owner.webContents.send(COMPONENT_PREVIEW_STATUS_CHANNEL, {
+          viewId,
+          status: "prime-failed",
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    } catch {
+      // ignore secondary failures
+    }
+    return false;
+  }
 }
 
 export async function capturePreviewView(viewId: string): Promise<string | null> {

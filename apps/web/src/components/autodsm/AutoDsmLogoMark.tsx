@@ -13,12 +13,12 @@ export function AutoDsmLogoMark(props: { readonly className?: string }): JSX.Ele
   return (
     <>
       <img
-        alt="autoDSM"
+        alt="AutoDSM"
         className={cn("h-10 w-auto object-contain object-left dark:hidden", className)}
         src={logoDefault}
       />
       <img
-        alt="autoDSM"
+        alt="AutoDSM"
         className={cn("hidden h-10 w-auto object-contain object-left dark:block", className)}
         src={logoDark}
       />

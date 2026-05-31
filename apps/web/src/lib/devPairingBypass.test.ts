@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ensureDevPairingBypassAuthenticated,
   isDevPairingBypassActive,
+  isElectronProductAuthPath,
   shouldSkipPairingRedirect,
 } from "./devPairingBypass";
 
@@ -56,6 +57,7 @@ describe("devPairingBypass", () => {
       },
     });
 
+    expect(isElectronProductAuthPath()).toBe(true);
     expect(shouldSkipPairingRedirect()).toBe(true);
   });
 

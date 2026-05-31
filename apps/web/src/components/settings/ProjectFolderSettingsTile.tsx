@@ -259,7 +259,7 @@ export function ProjectFolderSettingsTile(): JSX.Element {
       `Disconnect folder "${activeWorkspaceProject.name}"?`,
       `Path: ${activeWorkspaceProject.cwd}`,
       ...(environmentLabel ? [`Environment: ${environmentLabel}`] : []),
-      "This removes the project entry from T3 Code. Local design system files are not deleted.",
+      "This removes the project entry from AutoDSM. Local design system files are not deleted.",
       "Your design system will reopen automatically from Home.",
     ].join("\n");
 
@@ -270,7 +270,7 @@ export function ProjectFolderSettingsTile(): JSX.Element {
       `Path: ${activeWorkspaceProject.cwd}`,
       ...(environmentLabel ? [`Environment: ${environmentLabel}`] : []),
       "This permanently clears conversation history for those threads.",
-      "This removes only this project entry from T3 Code.",
+      "This removes only this project entry from AutoDSM.",
       "This action cannot be undone.",
     ].join("\n");
 

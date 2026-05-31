@@ -1,4 +1,11 @@
-import { ArchiveIcon, ArchiveX, LoaderIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
+import {
+  ArchiveIcon,
+  ArchiveX,
+  LoaderIcon,
+  PlusIcon,
+  RefreshCwIcon,
+  Trash2Icon,
+} from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -44,6 +51,19 @@ import {
   sortProviderInstanceEntries,
 } from "../../providerInstances";
 import { ensureLocalApi, readLocalApi } from "../../localApi";
+import { ensureEnvironmentApi } from "../../environmentApi";
+import { usePrimaryEnvironmentId } from "../../environments/primary";
+import { PERSISTED_STATE_KEY, useUiStateStore } from "../../uiStateStore";
+import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from "../ui/alert-dialog";
+import { Spinner } from "../ui/spinner";
 import { useShallow } from "zustand/react/shallow";
 import { selectProjectsAcrossEnvironments, useStore } from "../../store";
 import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
@@ -63,6 +83,7 @@ import {
   type ProviderUpdateCandidate,
 } from "../ProviderUpdateLaunchNotification.logic";
 import { ProjectFolderSettingsTile } from "./ProjectFolderSettingsTile";
+import { AutoDsmFeedbackSettings } from "./AutoDsmFeedbackSettings";
 import { DRIVER_OPTIONS, getDriverOption } from "./providerDriverMeta";
 import {
   buildProviderInstanceUpdatePatch,
@@ -517,10 +538,11 @@ export function GeneralSettingsPanel() {
   return (
     <SettingsPageContainer>
       <ProjectFolderSettingsTile />
+      <AutoDsmFeedbackSettings />
       <SettingsSection title="General">
         <SettingsRow
           title="Theme"
-          description="Choose how T3 Code looks across the app."
+          description="Choose how AutoDSM looks across the app."
           resetAction={
             theme !== "system" ? (
               <SettingResetButton label="theme" onClick={() => setTheme("system")} />
@@ -883,7 +905,117 @@ export function GeneralSettingsPanel() {
           }
         />
       </SettingsSection>
+
+      <DangerZoneSection />
     </SettingsPageContainer>
+  );
+}
+
+function DangerZoneSection() {
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const setAutoDsmWorkspaceProjectRef = useUiStateStore(
+    (state) => state.setAutoDsmWorkspaceProjectRef,
+  );
+  const [open, setOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleConfirm = useCallback(async () => {
+    if (!primaryEnvironmentId || isDeleting) return;
+    setIsDeleting(true);
+    try {
+      const api = ensureEnvironmentApi(primaryEnvironmentId);
+      const history = await api.autodsm.listWorkspaceHistory({});
+      for (const entry of history.entries) {
+        await api.autodsm.deleteWorkspace({ workspaceId: entry.workspaceId });
+      }
+      // Clear persisted renderer UI state so the next launch boots cleanly
+      // through onboarding instead of trying to rehydrate a workspace ref
+      // that no longer maps to anything on disk.
+      setAutoDsmWorkspaceProjectRef(null);
+      try {
+        window.localStorage.removeItem(PERSISTED_STATE_KEY);
+      } catch {
+        /* quota / private-mode — best-effort */
+      }
+      // Hard-navigate to the onboarding welcome screen so the app boots
+      // through the full flow from scratch, the way a first-time user would.
+      window.location.assign(new URL("/onboarding/welcome", window.location.href).toString());
+    } catch (error) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Failed to delete project",
+          description: error instanceof Error ? error.message : "Unknown error.",
+        }),
+      );
+      setIsDeleting(false);
+      setOpen(false);
+    }
+  }, [isDeleting, primaryEnvironmentId, setAutoDsmWorkspaceProjectRef]);
+
+  return (
+    <>
+      <SettingsSection title="Danger zone">
+        <SettingsRow
+          title="Delete project and restart"
+          description="Removes every AutoDSM workspace under ~/.autodsm/systems/, clears local UI state, and reloads the app. Useful for testing the onboarding flow from scratch."
+          control={
+            <Button
+              variant="destructive"
+              size="xs"
+              onClick={() => setOpen(true)}
+              disabled={!primaryEnvironmentId}
+            >
+              <Trash2Icon className="size-3.5" />
+              Delete &amp; restart
+            </Button>
+          }
+        />
+      </SettingsSection>
+      <AlertDialog
+        open={open}
+        onOpenChange={(next) => {
+          if (isDeleting) return;
+          setOpen(next);
+        }}
+      >
+        <AlertDialogPopup>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete project and restart?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes every AutoDSM workspace under{" "}
+              <code>~/.autodsm/systems/</code> and clears local UI state, then reloads the app. The
+              action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogClose
+              disabled={isDeleting}
+              render={<Button variant="outline" disabled={isDeleting} />}
+            >
+              Cancel
+            </AlertDialogClose>
+            <Button
+              variant="destructive"
+              onClick={() => void handleConfirm()}
+              disabled={isDeleting || !primaryEnvironmentId}
+            >
+              {isDeleting ? (
+                <>
+                  <Spinner className="size-3.5" />
+                  Deleting…
+                </>
+              ) : (
+                <>
+                  <Trash2Icon className="size-3.5" />
+                  Delete &amp; restart
+                </>
+              )}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
+    </>
   );
 }
 

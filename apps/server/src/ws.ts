@@ -1,3 +1,5 @@
+// @effect-diagnostics globalConsoleInEffect:off
+// @effect-diagnostics globalDateInEffect:off
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -26,6 +28,7 @@ import {
   ORCHESTRATION_WS_METHODS,
   ProjectAnalyzeReactComponentError,
   ProjectBuildComponentPreviewError,
+  ProjectBuildComponentVariantShowcaseError,
   ProjectReadFileError,
   ProjectSearchEntriesError,
   ProjectWriteFileError,
@@ -77,6 +80,7 @@ import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import { analyzeReactComponentFile } from "./componentPreview/analyzeReactComponent.ts";
 import { bundleComponentPreview } from "./componentPreview/bundleComponentPreview.ts";
+import { bundleComponentVariantShowcase } from "./componentPreview/bundleComponentVariantShowcase.ts";
 import { AutoDsmWorkspaceService } from "./autodsm/AutoDsmWorkspaceService.ts";
 import * as SourceControlDiscoveryLayer from "./sourceControl/SourceControlDiscovery.ts";
 import { SourceControlRepositoryService } from "./sourceControl/SourceControlRepositoryService.ts";
@@ -85,6 +89,7 @@ import * as BitbucketApi from "./sourceControl/BitbucketApi.ts";
 import * as GitHubCli from "./sourceControl/GitHubCli.ts";
 import * as GitLabCli from "./sourceControl/GitLabCli.ts";
 import * as SourceControlProviderRegistry from "./sourceControl/SourceControlProviderRegistry.ts";
+import { isWorkspaceCwdInsideStagingDirectory } from "./autodsm/autodsmWorkspaceStaging.ts";
 import { isWorkspaceSrcComponentsUiRelativePath } from "./workspace/componentPreviewPaths.ts";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "./vcs/VcsDriverRegistry.ts";
@@ -103,6 +108,9 @@ const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchComma
 const isWorkspacePathOutsideRootError = Schema.is(WorkspacePathOutsideRootError);
 const isProjectAnalyzeReactComponentError = Schema.is(ProjectAnalyzeReactComponentError);
 const isProjectBuildComponentPreviewError = Schema.is(ProjectBuildComponentPreviewError);
+const isProjectBuildComponentVariantShowcaseError = Schema.is(
+  ProjectBuildComponentVariantShowcaseError,
+);
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
@@ -1014,6 +1022,14 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           observeRpcEffect(
             WS_METHODS.projectsAnalyzeReactComponent,
             Effect.gen(function* () {
+              if (isWorkspaceCwdInsideStagingDirectory(input.cwd)) {
+                return yield* Effect.fail(
+                  new ProjectAnalyzeReactComponentError({
+                    message:
+                      "Workspace path lives in the staging directory; reload the app to refresh the workspace list.",
+                  }),
+                );
+              }
               if (!isWorkspaceSrcComponentsUiRelativePath(input.relativePath)) {
                 return yield* Effect.fail(
                   new ProjectAnalyzeReactComponentError({
@@ -1026,10 +1042,18 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                 workspaceRoot: input.cwd,
                 relativePath: input.relativePath,
               });
+              const startedAtMs = Date.now();
               const manifest = analyzeReactComponentFile({
                 absolutePath: target.absolutePath,
                 cwd: input.cwd,
                 relativePathPosix: target.relativePath,
+              });
+              // eslint-disable-next-line no-console
+              console.info("[component-preview] analyzed", {
+                relativePath: target.relativePath,
+                durationMs: Date.now() - startedAtMs,
+                exportCount: manifest.exports.length,
+                diagnosticCount: manifest.diagnostics.length,
               });
               return { manifest };
             }).pipe(
@@ -1059,6 +1083,14 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           observeRpcEffect(
             WS_METHODS.projectsBuildComponentPreview,
             Effect.gen(function* () {
+              if (isWorkspaceCwdInsideStagingDirectory(input.cwd)) {
+                return yield* Effect.fail(
+                  new ProjectBuildComponentPreviewError({
+                    message:
+                      "Workspace path lives in the staging directory; reload the app to refresh the workspace list.",
+                  }),
+                );
+              }
               if (!isWorkspaceSrcComponentsUiRelativePath(input.relativePath)) {
                 return yield* Effect.fail(
                   new ProjectBuildComponentPreviewError({
@@ -1087,7 +1119,17 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                         : "Failed to bundle component preview.",
                     cause,
                   }),
-              });
+              }).pipe(
+                Effect.timeout("30 seconds"),
+                Effect.catchCause((cause) =>
+                  Effect.fail(
+                    new ProjectBuildComponentPreviewError({
+                      message: `bundleComponentPreview timed out: ${Cause.pretty(cause)}`,
+                      cause,
+                    }),
+                  ),
+                ),
+              );
             }).pipe(
               Effect.catch((cause: unknown) => {
                 if (isProjectBuildComponentPreviewError(cause)) {
@@ -1104,6 +1146,62 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                 return Effect.fail(
                   new ProjectBuildComponentPreviewError({
                     message: "Failed to bundle component preview.",
+                    cause,
+                  }),
+                );
+              }),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsBuildComponentVariantShowcase]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsBuildComponentVariantShowcase,
+            Effect.gen(function* () {
+              if (!isWorkspaceSrcComponentsUiRelativePath(input.relativePath)) {
+                return yield* Effect.fail(
+                  new ProjectBuildComponentVariantShowcaseError({
+                    message:
+                      "Variant showcase bundling is limited to workspace .tsx/.jsx files under …/src/components/.",
+                  }),
+                );
+              }
+              const target = yield* workspacePaths.resolveRelativePathWithinRoot({
+                workspaceRoot: input.cwd,
+                relativePath: input.relativePath,
+              });
+              return yield* Effect.tryPromise({
+                try: () =>
+                  bundleComponentVariantShowcase({
+                    cwd: input.cwd,
+                    absoluteComponentPath: target.absolutePath,
+                    relativePathPosix: target.relativePath,
+                    exports: input.exports,
+                  }),
+                catch: (cause) =>
+                  new ProjectBuildComponentVariantShowcaseError({
+                    message:
+                      cause instanceof Error
+                        ? cause.message
+                        : "Failed to bundle component variant showcase.",
+                    cause,
+                  }),
+              });
+            }).pipe(
+              Effect.catch((cause: unknown) => {
+                if (isProjectBuildComponentVariantShowcaseError(cause)) {
+                  return Effect.fail(cause);
+                }
+                if (isWorkspacePathOutsideRootError(cause)) {
+                  return Effect.fail(
+                    new ProjectBuildComponentVariantShowcaseError({
+                      message: "Workspace file path must stay within the project root.",
+                      cause,
+                    }),
+                  );
+                }
+                return Effect.fail(
+                  new ProjectBuildComponentVariantShowcaseError({
+                    message: "Failed to bundle component variant showcase.",
                     cause,
                   }),
                 );
@@ -1135,6 +1233,38 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           observeRpcEffect(WS_METHODS.autodsmResyncBrandTokens, autoDsm.resyncBrandTokens(input), {
             "rpc.aggregate": "autodsm",
           }),
+        [WS_METHODS.autodsmUploadDesignBrief]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmUploadDesignBrief, autoDsm.uploadDesignBrief(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmProposeDesignBrief]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.autodsmProposeDesignBrief,
+            autoDsm.proposeDesignBrief(input),
+            {
+              "rpc.aggregate": "autodsm",
+            },
+          ),
+        [WS_METHODS.autodsmApplyDesignBriefProposal]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.autodsmApplyDesignBriefProposal,
+            autoDsm.applyDesignBriefProposal(input),
+            {
+              "rpc.aggregate": "autodsm",
+            },
+          ),
+        [WS_METHODS.autodsmGetDesignBrief]: (input) =>
+          observeRpcEffect(WS_METHODS.autodsmGetDesignBrief, autoDsm.getDesignBrief(input), {
+            "rpc.aggregate": "autodsm",
+          }),
+        [WS_METHODS.autodsmInstallIconLibrary]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.autodsmInstallIconLibrary,
+            autoDsm.installIconLibrary(input),
+            {
+              "rpc.aggregate": "autodsm",
+            },
+          ),
         [WS_METHODS.autodsmGetWorkspacePreviewCss]: (input) =>
           observeRpcEffect(
             WS_METHODS.autodsmGetWorkspacePreviewCss,
@@ -1225,6 +1355,24 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           observeRpcEffect(WS_METHODS.autodsmChangeSetRollback, autoDsm.changeSetRollback(input), {
             "rpc.aggregate": "autodsm",
           }),
+        [WS_METHODS.autodsmChangeSetCreateFromTurnDiff]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.autodsmChangeSetCreateFromTurnDiff,
+            autoDsm.changeSetCreateFromTurnDiff(input),
+            { "rpc.aggregate": "autodsm" },
+          ),
+        [WS_METHODS.autodsmChangeSetSetHunkDecisions]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.autodsmChangeSetSetHunkDecisions,
+            autoDsm.changeSetSetHunkDecisions(input),
+            { "rpc.aggregate": "autodsm" },
+          ),
+        [WS_METHODS.autodsmChangeSetApplyDecisions]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.autodsmChangeSetApplyDecisions,
+            autoDsm.changeSetApplyDecisions(input),
+            { "rpc.aggregate": "autodsm" },
+          ),
         [WS_METHODS.autodsmAssembleGenerationPlan]: (input) =>
           observeRpcEffect(
             WS_METHODS.autodsmAssembleGenerationPlan,
@@ -1281,6 +1429,12 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
           observeRpcEffect(
             WS_METHODS.autodsmRemoveComponentAgent,
             autoDsm.removeComponentAgent(input),
+            { "rpc.aggregate": "autodsm" },
+          ),
+        [WS_METHODS.autodsmResyncComponentAgents]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.autodsmResyncComponentAgents,
+            autoDsm.resyncComponentAgents(input),
             { "rpc.aggregate": "autodsm" },
           ),
         [WS_METHODS.autodsmGetComponentConversation]: (input) =>

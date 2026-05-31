@@ -115,7 +115,9 @@ describe("reconstructFileWithDecisions", () => {
 
 describe("summarizeDecisions", () => {
   it("classifies accepted / rejected / mixed", () => {
-    expect(summarizeDecisions([{ decision: "approved" }, { decision: "pending" }])).toBe("approved");
+    expect(summarizeDecisions([{ decision: "approved" }, { decision: "pending" }])).toBe(
+      "approved",
+    );
     expect(summarizeDecisions([{ decision: "rejected" }, { decision: "discarded" }])).toBe(
       "rejected",
     );

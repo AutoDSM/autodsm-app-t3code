@@ -109,6 +109,7 @@ const rpcClientMock = {
     removeBrandToken: vi.fn(),
     updateBrandToken: vi.fn(),
     resyncBrandTokens: vi.fn(),
+    installIconLibrary: vi.fn(),
     getWorkspacePreviewCss: vi.fn(),
     getComponentRegistry: vi.fn(),
     runWorkspaceBuild: vi.fn(),

@@ -37,6 +37,7 @@ import {
   ComponentPreviewManifest,
   ComponentPreviewPropSpec,
 } from "./project.ts";
+import { ModelSelection } from "./orchestration.ts";
 
 export const AutoDsmArtifactOwnerSchema = Schema.Literals([
   "project-profile-indexer",
@@ -50,6 +51,7 @@ export const AutoDsmArtifactOwnerSchema = Schema.Literals([
   "publish-service",
   "pr-service",
   "activity-log",
+  "design-brief-store",
 ]);
 export type AutoDsmArtifactOwner = typeof AutoDsmArtifactOwnerSchema.Type;
 
@@ -84,6 +86,13 @@ export const AutoDsmIndexingProgressEvent = Schema.Struct({
   processed: NonNegativeInt,
   total: Schema.optional(NonNegativeInt),
   message: Schema.optional(TrimmedString),
+  /**
+   * Optional client-supplied request id used to correlate events with an
+   * in-flight `autodsm.createWorkspace` invocation. Followers that attach
+   * after the workspace is partially materialized can filter by `requestId`
+   * to receive the replay buffer.
+   */
+  requestId: Schema.optional(TrimmedNonEmptyString),
 });
 export type AutoDsmIndexingProgressEvent = typeof AutoDsmIndexingProgressEvent.Type;
 
@@ -109,7 +118,10 @@ export const AutoDsmBrandTokenCategorySchema = Schema.Literals([
   "color",
   "typography",
   "spacing",
+  "radius",
+  "shadow",
   "motion",
+  "icon",
 ]);
 export type AutoDsmBrandTokenCategory = typeof AutoDsmBrandTokenCategorySchema.Type;
 
@@ -212,6 +224,7 @@ export const AutoDsmComponentRegistryGateReason = Schema.Struct({
     "workspace_build_skipped",
     "workspace_build_timed_out",
     "workspace_build_runner_error",
+    "workspace_not_initialized",
   ]),
   summary: TrimmedString,
   commandDisplay: Schema.NullOr(TrimmedString),
@@ -405,11 +418,37 @@ export const AutoDsmChangeOp = Schema.Struct({
 });
 export type AutoDsmChangeOp = typeof AutoDsmChangeOp.Type;
 
+export const AutoDsmChangeHunkDecisionSchema = Schema.Literals([
+  "pending",
+  "approved",
+  "rejected",
+  "discarded",
+]);
+export type AutoDsmChangeHunkDecision = typeof AutoDsmChangeHunkDecisionSchema.Type;
+
+export const AutoDsmChangeHunk = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  filePath: AutoDsmWorkspaceRelativePath,
+  oldStart: NonNegativeInt,
+  oldLines: NonNegativeInt,
+  newStart: NonNegativeInt,
+  newLines: NonNegativeInt,
+  patch: Schema.String,
+  decision: AutoDsmChangeHunkDecisionSchema,
+});
+export type AutoDsmChangeHunk = typeof AutoDsmChangeHunk.Type;
+
 export const AutoDsmChangeSet = Schema.Struct({
   id: AutoDsmChangeSetId,
   meta: AutoDsmArtifactMeta,
   cwd: TrimmedNonEmptyString,
   ops: Schema.Array(AutoDsmChangeOp),
+  /**
+   * Per-hunk review records derived from the turn diff. Optional so changesets
+   * persisted before hunk-level review remain decodable. Each hunk carries its
+   * own `decision` (pending/approved/rejected/discarded).
+   */
+  hunks: Schema.optional(Schema.Array(AutoDsmChangeHunk)),
   createdAt: IsoDateTime,
 });
 export type AutoDsmChangeSet = typeof AutoDsmChangeSet.Type;
@@ -460,26 +499,6 @@ export const AutoDsmEditOutcome = Schema.Struct({
   recordedAt: IsoDateTime,
 });
 export type AutoDsmEditOutcome = typeof AutoDsmEditOutcome.Type;
-
-export const AutoDsmChangeHunkDecisionSchema = Schema.Literals([
-  "pending",
-  "approved",
-  "rejected",
-  "discarded",
-]);
-export type AutoDsmChangeHunkDecision = typeof AutoDsmChangeHunkDecisionSchema.Type;
-
-export const AutoDsmChangeHunk = Schema.Struct({
-  id: TrimmedNonEmptyString,
-  filePath: AutoDsmWorkspaceRelativePath,
-  oldStart: NonNegativeInt,
-  oldLines: NonNegativeInt,
-  newStart: NonNegativeInt,
-  newLines: NonNegativeInt,
-  patch: Schema.String,
-  decision: AutoDsmChangeHunkDecisionSchema,
-});
-export type AutoDsmChangeHunk = typeof AutoDsmChangeHunk.Type;
 
 export const AutoDsmActivityEntry = Schema.Struct({
   id: AutoDsmActivityEntryId,
@@ -569,6 +588,10 @@ export const AutoDsmCreateWorkspaceInput = Schema.Struct({
   /** Client environment for orchestration projection (same WS session). */
   environmentId: EnvironmentId,
   displayName: Schema.optional(TrimmedString),
+  /** Supabase user id when cloud auth completed onboarding. */
+  ownerSubject: Schema.optional(TrimmedString),
+  /** OAuth provider label persisted in workspace meta (`github` / `google`). */
+  authProvider: Schema.optional(TrimmedString),
   /** Client idempotency key — duplicate concurrent requests return the same result. */
   requestId: Schema.optional(TrimmedNonEmptyString),
 });
@@ -579,6 +602,8 @@ export const AutoDsmCreateWorkspaceThreadSeed = Schema.Struct({
   title: TrimmedNonEmptyString,
   /** Registry-style path: `/src/components/…` for preview binding */
   componentPath: TrimmedNonEmptyString,
+  /** Named export within the file (multi-export variant wrappers). */
+  exportName: Schema.optional(TrimmedNonEmptyString),
   group: Schema.optional(TrimmedNonEmptyString),
 });
 export type AutoDsmCreateWorkspaceThreadSeed = typeof AutoDsmCreateWorkspaceThreadSeed.Type;
@@ -672,6 +697,140 @@ export const AutoDsmBrandTokenResyncInput = Schema.Struct({
 });
 export type AutoDsmBrandTokenResyncInput = typeof AutoDsmBrandTokenResyncInput.Type;
 
+/**
+ * Design-brief feature — `.autodsm/design-brief.md` upload that produces a
+ * reviewable diff of token operations.
+ *
+ * Flow: upload markdown → propose (LLM → operations) → user approves subset →
+ * apply (single batched persist). Proposals live in-memory server-side; the
+ * brief markdown + sidecar metadata are durable on disk.
+ */
+export const AutoDsmDesignBriefOpKindSchema = Schema.Literals(["add", "update", "remove"]);
+export type AutoDsmDesignBriefOpKind = typeof AutoDsmDesignBriefOpKindSchema.Type;
+
+export const AutoDsmDesignBriefOperation = Schema.Struct({
+  /** Stable id assigned by the proposer; clients reference it in approval payloads. */
+  opId: TrimmedNonEmptyString,
+  kind: AutoDsmDesignBriefOpKindSchema,
+  category: AutoDsmBrandTokenCategorySchema,
+  /** LLM-addressable identity — names are matched within `(category, name)` at apply time. */
+  tokenName: TrimmedNonEmptyString,
+  rationale: Schema.optional(TrimmedString),
+  /** Populated for `kind === "add"`. */
+  draft: Schema.optional(AutoDsmBrandTokenDraft),
+  /** Populated for `kind === "update"`. */
+  patch: Schema.optional(AutoDsmBrandTokenPatch),
+  /** Snapshot of current token value at proposal time (for diff UI). */
+  currentValue: Schema.optional(TrimmedString),
+  /** Proposed value (for diff UI). */
+  proposedValue: Schema.optional(TrimmedString),
+});
+export type AutoDsmDesignBriefOperation = typeof AutoDsmDesignBriefOperation.Type;
+
+export const AutoDsmDesignBriefProposal = Schema.Struct({
+  proposalId: TrimmedNonEmptyString,
+  createdAt: IsoDateTime,
+  /** sha256 of the brief markdown — lets clients dedupe re-proposals of the same text. */
+  briefDigest: TrimmedNonEmptyString,
+  /** `AutoDsmBrandProfile.meta.invalidationKey` captured at proposal time; apply rejects on mismatch. */
+  basedOnInvalidationKey: TrimmedNonEmptyString,
+  /** LLM 1–2 sentence overview shown above the diff table. */
+  summary: TrimmedString,
+  operations: Schema.Array(AutoDsmDesignBriefOperation),
+});
+export type AutoDsmDesignBriefProposal = typeof AutoDsmDesignBriefProposal.Type;
+
+/** Persisted metadata for the on-disk `.autodsm/design-brief.md`. */
+export const AutoDsmDesignBriefDoc = Schema.Struct({
+  meta: AutoDsmArtifactMeta,
+  contentSha256: TrimmedNonEmptyString,
+  byteLength: NonNegativeInt,
+  uploadedAt: IsoDateTime,
+  lastAppliedAt: Schema.optional(IsoDateTime),
+  lastProposalId: Schema.optional(TrimmedNonEmptyString),
+});
+export type AutoDsmDesignBriefDoc = typeof AutoDsmDesignBriefDoc.Type;
+
+/** Upload a fresh `design.md`. 128 KB cap mirrored client-side. */
+export const AutoDsmDesignBriefUploadInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  markdown: Schema.String.check(Schema.isMaxLength(131_072)),
+});
+export type AutoDsmDesignBriefUploadInput = typeof AutoDsmDesignBriefUploadInput.Type;
+
+export const AutoDsmDesignBriefUploadResult = Schema.Struct({
+  doc: AutoDsmDesignBriefDoc,
+});
+export type AutoDsmDesignBriefUploadResult = typeof AutoDsmDesignBriefUploadResult.Type;
+
+/**
+ * Generate a proposal from the persisted brief + current brand profile.
+ *
+ * `modelSelection` carries the user's currently active provider/model so the
+ * server routes the LLM call through `TextGenerationShape.generateDesignBriefProposal`
+ * for that selection (Claude / Codex / Cursor / OpenCode — whichever the user
+ * has set as their text-generation provider).
+ */
+export const AutoDsmDesignBriefProposeInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  modelSelection: ModelSelection,
+});
+export type AutoDsmDesignBriefProposeInput = typeof AutoDsmDesignBriefProposeInput.Type;
+
+export const AutoDsmDesignBriefProposeResult = Schema.Struct({
+  proposal: AutoDsmDesignBriefProposal,
+});
+export type AutoDsmDesignBriefProposeResult = typeof AutoDsmDesignBriefProposeResult.Type;
+
+/** Apply a subset of proposed operations. Empty `acceptedOpIds` is a no-op. */
+export const AutoDsmDesignBriefApplyInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  proposalId: TrimmedNonEmptyString,
+  acceptedOpIds: Schema.Array(TrimmedNonEmptyString),
+});
+export type AutoDsmDesignBriefApplyInput = typeof AutoDsmDesignBriefApplyInput.Type;
+
+export const AutoDsmDesignBriefApplySkipReasonSchema = Schema.Literals([
+  "name-not-found",
+  "schema-invalid",
+  "stale-base",
+]);
+export type AutoDsmDesignBriefApplySkipReason = typeof AutoDsmDesignBriefApplySkipReasonSchema.Type;
+
+export const AutoDsmDesignBriefApplySkipped = Schema.Struct({
+  opId: TrimmedNonEmptyString,
+  reason: AutoDsmDesignBriefApplySkipReasonSchema,
+});
+export type AutoDsmDesignBriefApplySkipped = typeof AutoDsmDesignBriefApplySkipped.Type;
+
+export const AutoDsmDesignBriefApplyResult = Schema.Struct({
+  profile: AutoDsmBrandProfile,
+  appliedCount: NonNegativeInt,
+  skipped: Schema.Array(AutoDsmDesignBriefApplySkipped),
+});
+export type AutoDsmDesignBriefApplyResult = typeof AutoDsmDesignBriefApplyResult.Type;
+
+/** Read the persisted brief (if any) for re-display / "Reuse saved brief". */
+export const AutoDsmDesignBriefGetResult = Schema.Struct({
+  doc: Schema.optional(AutoDsmDesignBriefDoc),
+  markdown: Schema.optional(TrimmedString),
+});
+export type AutoDsmDesignBriefGetResult = typeof AutoDsmDesignBriefGetResult.Type;
+
+export const AutoDsmIconLibraryId = Schema.Literals(["lucide", "heroicons", "phosphor", "radix"]);
+export type AutoDsmIconLibraryId = typeof AutoDsmIconLibraryId.Type;
+
+export const AutoDsmInstallIconLibraryInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  library: AutoDsmIconLibraryId,
+});
+export type AutoDsmInstallIconLibraryInput = typeof AutoDsmInstallIconLibraryInput.Type;
+
+export const AutoDsmInstallIconLibraryResult = Schema.Struct({
+  profile: AutoDsmBrandProfile,
+});
+export type AutoDsmInstallIconLibraryResult = typeof AutoDsmInstallIconLibraryResult.Type;
+
 export const AutoDsmWorkspacePreviewCssResult = Schema.Struct({
   css: TrimmedString,
 });
@@ -756,9 +915,38 @@ export type AutoDsmProviderCatalogResult = typeof AutoDsmProviderCatalogResult.T
 export const AutoDsmChangeSetCreateInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   ops: Schema.Array(AutoDsmChangeOp),
+  hunks: Schema.optional(Schema.Array(AutoDsmChangeHunk)),
   threadId: Schema.optional(ThreadId),
 });
 export type AutoDsmChangeSetCreateInput = typeof AutoDsmChangeSetCreateInput.Type;
+
+/**
+ * Derive a reviewable ChangeSet (ops + per-hunk records) from a completed turn's
+ * unified diff. The agent has already written the files to the worktree; this
+ * captures them as a `pending` review record. The `diff` is the unified-diff
+ * string the client already fetched via `orchestration.getTurnDiff`, so the
+ * server reuses it rather than recomputing the checkpoint diff.
+ */
+export const AutoDsmChangeSetFromTurnDiffInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  threadId: ThreadId,
+  diff: Schema.String,
+});
+export type AutoDsmChangeSetFromTurnDiffInput = typeof AutoDsmChangeSetFromTurnDiffInput.Type;
+
+/** Set approve/reject/discard decisions on individual hunks of a ChangeSet. */
+export const AutoDsmChangeSetHunkDecisionInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  changeSetId: AutoDsmChangeSetId,
+  threadId: Schema.optional(ThreadId),
+  decisions: Schema.Array(
+    Schema.Struct({
+      hunkId: TrimmedNonEmptyString,
+      decision: AutoDsmChangeHunkDecisionSchema,
+    }),
+  ),
+});
+export type AutoDsmChangeSetHunkDecisionInput = typeof AutoDsmChangeSetHunkDecisionInput.Type;
 
 export const AutoDsmChangeSetIdInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
@@ -862,6 +1050,14 @@ export const AutoDsmComponentAgentRecord = Schema.Struct({
   sessionId: AutoDsmSessionId,
   title: TrimmedNonEmptyString,
   componentPath: AutoDsmWorkspaceRelativePath,
+  /**
+   * Named export within `componentPath` this agent represents. Optional —
+   * when omitted the agent represents the file's default / sole PascalCase
+   * export (legacy behaviour). Required when a single wrapper file exposes
+   * multiple variants as named exports (e.g. `ShadcnButton`,
+   * `ShadcnButtonOutline`, `ShadcnButtonGhost`).
+   */
+  exportName: Schema.optional(TrimmedNonEmptyString),
   /** Semantic sidebar folder label (Buttons, Cards, …). */
   group: Schema.optional(TrimmedNonEmptyString),
   componentId: Schema.optional(AutoDsmComponentId),
@@ -922,11 +1118,49 @@ export const AutoDsmComponentAgentListResult = Schema.Struct({
 });
 export type AutoDsmComponentAgentListResult = typeof AutoDsmComponentAgentListResult.Type;
 
+/**
+ * Strategy for `autodsm.resyncComponentAgents` — how to reconcile a
+ * workspace's existing seeded `component-agents.json` with the (potentially
+ * grown) template overlay + scan.
+ *
+ * - `preserve-user`: drop all `source === "starter"` agents, re-seed starter
+ *   agents from the current template, and keep every `source === "user"`
+ *   agent untouched. This is the safe default — picks up new template
+ *   components without disturbing anything the user added themselves.
+ * - `overwrite-all`: full replace with the current template; user agents
+ *   are dropped. Useful when the user wants a clean slate matching the
+ *   shipped template exactly.
+ */
+export const AutoDsmComponentAgentResyncModeSchema = Schema.Literals([
+  "preserve-user",
+  "overwrite-all",
+]);
+export type AutoDsmComponentAgentResyncMode = typeof AutoDsmComponentAgentResyncModeSchema.Type;
+
+export const AutoDsmComponentAgentResyncInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  /** Defaults to `preserve-user` server-side when omitted. */
+  mode: Schema.optional(AutoDsmComponentAgentResyncModeSchema),
+});
+export type AutoDsmComponentAgentResyncInput = typeof AutoDsmComponentAgentResyncInput.Type;
+
+export const AutoDsmComponentAgentResyncResult = Schema.Struct({
+  manifest: AutoDsmComponentAgentsManifest,
+  /** How many starter agents were rewritten from the template. */
+  starterAgentsAdded: NonNegativeInt,
+  /** How many starter agents from the old manifest were dropped. */
+  starterAgentsRemoved: NonNegativeInt,
+  /** Always retained when `mode === "preserve-user"`; 0 when `overwrite-all`. */
+  userAgentsPreserved: NonNegativeInt,
+});
+export type AutoDsmComponentAgentResyncResult = typeof AutoDsmComponentAgentResyncResult.Type;
+
 export const AutoDsmComponentAgentRegisterInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   threadId: ThreadId,
   title: TrimmedNonEmptyString,
   componentPath: AutoDsmWorkspaceRelativePath,
+  exportName: Schema.optional(TrimmedNonEmptyString),
   group: Schema.optional(TrimmedNonEmptyString),
   source: AutoDsmComponentAgentSourceSchema,
   status: Schema.optional(AutoDsmComponentAgentStatusSchema),

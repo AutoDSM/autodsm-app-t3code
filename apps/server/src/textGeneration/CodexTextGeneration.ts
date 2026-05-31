@@ -23,6 +23,7 @@ import {
 import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
+  buildDesignBriefProposalPrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
@@ -105,7 +106,8 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle",
+      | "generateThreadTitle"
+      | "generateDesignBriefProposal",
     value: unknown,
   ): Effect.Effect<string, TextGenerationError> =>
     encodeJsonString(value).pipe(
@@ -168,7 +170,8 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateDesignBriefProposal";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -408,10 +411,30 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
     } satisfies ThreadTitleGenerationResult;
   });
 
+  const generateDesignBriefProposal: TextGenerationShape["generateDesignBriefProposal"] = Effect.fn(
+    "CodexTextGeneration.generateDesignBriefProposal",
+  )(function* (input) {
+    const { prompt, outputSchema } = buildDesignBriefProposalPrompt({
+      briefMarkdown: input.briefMarkdown,
+      currentTokens: input.currentTokens,
+    });
+
+    const generated = yield* runCodexJson({
+      operation: "generateDesignBriefProposal",
+      cwd: input.cwd,
+      prompt,
+      outputSchemaJson: outputSchema,
+      modelSelection: input.modelSelection,
+    });
+
+    return generated;
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateDesignBriefProposal,
   } satisfies TextGenerationShape;
 });

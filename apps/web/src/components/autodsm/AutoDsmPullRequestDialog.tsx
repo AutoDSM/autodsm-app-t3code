@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { GitPullRequestIcon, CheckIcon } from "lucide-react";
+import { GitPullRequestIcon, CheckIcon, SparklesIcon } from "lucide-react";
 
 import {
   Dialog,
@@ -26,6 +26,8 @@ import {
 } from "~/lib/autodsmWorkspaceReactQuery";
 import { cn } from "~/lib/utils";
 import { useComponentPreviewOverlaySuppression } from "~/hooks/useComponentPreviewOverlaySuppression";
+import { useAutoDsmCaptureChangeSet } from "~/hooks/useAutoDsmCaptureChangeSet";
+import { AutoDsmHunkReviewPanel } from "~/components/autodsm/AutoDsmHunkReviewPanel";
 
 interface AutoDsmPullRequestDialogProps {
   readonly open: boolean;
@@ -70,6 +72,42 @@ export function AutoDsmPullRequestDialog({
     }),
   );
   const changeSets = changeSetsQuery.data?.changeSets ?? [];
+
+  const selectedAgent = agents.find((agent) => agent.sessionId === selectedSessionId);
+  const selectedThreadId = selectedAgent?.threadId ?? null;
+
+  const [expandedReviewId, setExpandedReviewId] = useState<string | null>(null);
+
+  const { canCapture, capture } = useAutoDsmCaptureChangeSet({
+    environmentId,
+    cwd,
+    threadId: selectedThreadId,
+  });
+
+  const invalidateChangeSets = async () => {
+    if (selectedSessionId) {
+      await queryClient.invalidateQueries({
+        queryKey: autodsmWorkspaceQueryKeys.sessionChangeSets(
+          environmentId,
+          cwd,
+          selectedSessionId,
+        ),
+      });
+    }
+    await queryClient.invalidateQueries({
+      queryKey: autodsmWorkspaceQueryKeys.activity(environmentId, cwd),
+    });
+  };
+
+  const captureMutation = useMutation({
+    mutationFn: capture,
+    onSuccess: async (changeSet) => {
+      await invalidateChangeSets();
+      if (changeSet) {
+        setExpandedReviewId(changeSet.id);
+      }
+    },
+  });
 
   // Reset checkboxes when changesets load
   useEffect(() => {
@@ -174,7 +212,35 @@ export function AutoDsmPullRequestDialog({
           {/* List of changesets */}
           {selectedSessionId && (
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-foreground">Select Changesets</label>
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-xs font-medium text-foreground">Select Changesets</label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  disabled={!canCapture || captureMutation.isPending}
+                  onClick={() => captureMutation.mutate()}
+                  title={
+                    canCapture
+                      ? "Capture this component thread's edits as a reviewable changeset"
+                      : "No completed edits to capture yet"
+                  }
+                >
+                  {captureMutation.isPending ? (
+                    <Spinner className="size-3" />
+                  ) : (
+                    <SparklesIcon className="size-3" />
+                  )}
+                  Capture edits for review
+                </Button>
+              </div>
+              {captureMutation.isError && (
+                <p className="text-[11px] text-destructive">
+                  {captureMutation.error instanceof Error
+                    ? captureMutation.error.message
+                    : "Failed to capture edits."}
+                </p>
+              )}
               {changeSetsQuery.isPending ? (
                 <div className="flex h-20 items-center justify-center rounded-lg border border-border bg-muted/20">
                   <Spinner className="size-4" />
@@ -187,38 +253,68 @@ export function AutoDsmPullRequestDialog({
                 <div className="max-h-40 overflow-y-auto rounded-lg border border-border bg-muted/10 p-2 space-y-2">
                   {changeSets.map((cs) => {
                     const isChecked = !!selectedChangeSets[cs.id];
+                    const hunkCount = cs.hunks?.length ?? 0;
+                    const isReviewing = expandedReviewId === cs.id;
                     return (
-                      <div
-                        key={cs.id}
-                        onClick={() => toggleChangeSet(cs.id)}
-                        className={cn(
-                          "flex cursor-pointer items-start gap-2.5 rounded-md p-2 transition-colors hover:bg-muted/40",
-                          isChecked && "bg-muted/20",
-                        )}
-                      >
-                        <Checkbox
-                          checked={isChecked}
-                          onCheckedChange={() => toggleChangeSet(cs.id)}
-                        />
-                        <div className="min-w-0 flex-1 text-xs">
-                          <p className="font-semibold text-foreground truncate">
-                            ChangeSet {cs.id.substring(0, 8)}
-                          </p>
-                          <p className="text-[10px] text-muted-foreground">
-                            {cs.ops.length} file operation(s) ·{" "}
-                            {new Date(cs.createdAt).toLocaleString()}
-                          </p>
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {cs.ops.map((op, idx) => (
-                              <span
-                                key={idx}
-                                className="inline-block rounded bg-muted-foreground/10 px-1 py-0.5 text-[9px] text-muted-foreground"
-                              >
-                                {op.path}
-                              </span>
-                            ))}
+                      <div key={cs.id}>
+                        <div
+                          onClick={() => toggleChangeSet(cs.id)}
+                          className={cn(
+                            "flex cursor-pointer items-start gap-2.5 rounded-md p-2 transition-colors hover:bg-muted/40",
+                            isChecked && "bg-muted/20",
+                          )}
+                        >
+                          <Checkbox
+                            checked={isChecked}
+                            onCheckedChange={() => toggleChangeSet(cs.id)}
+                          />
+                          <div className="min-w-0 flex-1 text-xs">
+                            <p className="font-semibold text-foreground truncate">
+                              ChangeSet {cs.id.substring(0, 8)}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {cs.ops.length} file operation(s) ·{" "}
+                              {new Date(cs.createdAt).toLocaleString()}
+                            </p>
+                            <div className="mt-1 flex flex-wrap items-center gap-1">
+                              {cs.ops.map((op, idx) => (
+                                <span
+                                  key={idx}
+                                  className="inline-block rounded bg-muted-foreground/10 px-1 py-0.5 text-[9px] text-muted-foreground"
+                                >
+                                  {op.path}
+                                </span>
+                              ))}
+                              {hunkCount > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setExpandedReviewId(isReviewing ? null : cs.id);
+                                  }}
+                                  className="ml-auto rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary hover:bg-primary/20"
+                                >
+                                  {isReviewing
+                                    ? "Hide"
+                                    : `Review ${hunkCount} hunk${hunkCount === 1 ? "" : "s"}`}
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </div>
+                        {isReviewing && hunkCount > 0 && (
+                          <div className="mt-1 max-h-[50vh] overflow-y-auto rounded-md border border-border bg-background/40 p-2">
+                            <AutoDsmHunkReviewPanel
+                              environmentId={environmentId}
+                              cwd={cwd}
+                              changeSet={cs}
+                              onApplied={() => {
+                                void invalidateChangeSets();
+                                setExpandedReviewId(null);
+                              }}
+                            />
+                          </div>
+                        )}
                       </div>
                     );
                   })}

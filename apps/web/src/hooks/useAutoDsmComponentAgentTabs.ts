@@ -84,6 +84,22 @@ function buildPathsFromServerAgents(
   return paths;
 }
 
+function buildExportNamesFromServerAgents(
+  environmentId: EnvironmentId,
+  agents: readonly AutoDsmComponentAgentRecord[],
+): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const agent of agents) {
+    const exportName = agent.exportName?.trim();
+    if (!exportName) {
+      continue;
+    }
+    const threadRef = scopeThreadRef(environmentId, agent.threadId as ThreadId);
+    map[scopedThreadKey(threadRef)] = exportName;
+  }
+  return map;
+}
+
 export function useAutoDsmComponentAgentTabs(input: UseAutoDsmComponentAgentTabsInput): {
   readonly tabs: readonly AutoDsmComponentAgentTab[];
   readonly activeTab: AutoDsmComponentAgentTab | null;
@@ -131,6 +147,17 @@ export function useAutoDsmComponentAgentTabs(input: UseAutoDsmComponentAgentTabs
       componentAgentsQuery.data?.manifest.agents ?? [],
     );
     return Object.keys(paths).length > 0 ? paths : EMPTY_PATHS;
+  }, [componentAgentsQuery.data?.manifest.agents, environmentId]);
+
+  const exportNameByThreadKey = useMemo(() => {
+    if (!environmentId) {
+      return EMPTY_PATHS;
+    }
+    const map = buildExportNamesFromServerAgents(
+      environmentId,
+      componentAgentsQuery.data?.manifest.agents ?? [],
+    );
+    return Object.keys(map).length > 0 ? map : EMPTY_PATHS;
   }, [componentAgentsQuery.data?.manifest.agents, environmentId]);
 
   const manifestAgents = useMemo(
@@ -193,8 +220,13 @@ export function useAutoDsmComponentAgentTabs(input: UseAutoDsmComponentAgentTabs
     ]);
   }, [componentAgentsQuery.data?.manifest.agents, manifestAgents]);
 
+  const serverAgents = componentAgentsQuery.data?.manifest.agents;
+
   const tabs = useMemo(() => {
-    if (!isMaterialized || !environmentId || !projectId) {
+    // No projectId required here: when the server has agents, the manifest is
+    // authoritative and the orchestration store enriches tabs only where it
+    // already has the thread loaded.
+    if (!isMaterialized || !environmentId) {
       return [];
     }
     const built = buildAutoDsmComponentAgentTabs({
@@ -202,9 +234,20 @@ export function useAutoDsmComponentAgentTabs(input: UseAutoDsmComponentAgentTabs
       projectId,
       projectThreads,
       autoDsmThreadComponentPathById: effectivePaths,
+      exportNameByThreadKey,
+      ...(serverAgents && serverAgents.length > 0 ? { serverAgents } : {}),
     });
     return enrichAutoDsmComponentAgentTabsWithGroups(built, groupLookup);
-  }, [effectivePaths, environmentId, groupLookup, isMaterialized, projectId, projectThreads]);
+  }, [
+    effectivePaths,
+    environmentId,
+    exportNameByThreadKey,
+    groupLookup,
+    isMaterialized,
+    projectId,
+    projectThreads,
+    serverAgents,
+  ]);
 
   const activeTab = useMemo(
     () => resolveAutoDsmAgentTabForThread(activeThreadKey, tabs),

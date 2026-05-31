@@ -68,6 +68,10 @@ BaseWindow
 
 Notes:
 
+- The shipping desktop shell today uses a main `BrowserWindow` for product UI plus an
+  ephemeral **auth shell** `BrowserWindow` for Supabase OAuth (standalone, non-modal,
+  isolated session partition `persist:autodsm-oauth`). Auth never loads in the product
+  renderer.
 - Use `BaseWindow` + `WebContentsView` rather than `BrowserWindow` when you
   need more than one `webContents` in a window. `BrowserWindow` is a
   convenience wrapper around the single-`webContents` case.

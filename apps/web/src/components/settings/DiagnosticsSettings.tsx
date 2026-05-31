@@ -876,7 +876,7 @@ export function DiagnosticsSettingsPanel() {
                 type: "info",
                 title: "Process already exited",
                 description:
-                  "The process is not a child of the T3 Server. It might already have exited.",
+                  "The process is not a child of the AutoDSM Server. It might already have exited.",
               });
               return;
             }

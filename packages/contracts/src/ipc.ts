@@ -24,6 +24,8 @@ import type {
   ProjectAnalyzeReactComponentResult,
   ProjectBuildComponentPreviewInput,
   ProjectBuildComponentPreviewResult,
+  ProjectBuildComponentVariantShowcaseInput,
+  ProjectBuildComponentVariantShowcaseResult,
   ProjectReadFileInput,
   ProjectReadFileResult,
   ProjectSearchEntriesInput,
@@ -36,9 +38,20 @@ import type {
   AutoDsmBrandTokenAddInput,
   AutoDsmBrandTokenRemoveInput,
   AutoDsmBrandTokenResyncInput,
+  AutoDsmDesignBriefApplyInput,
+  AutoDsmDesignBriefApplyResult,
+  AutoDsmDesignBriefGetResult,
+  AutoDsmDesignBriefProposeInput,
+  AutoDsmDesignBriefProposeResult,
+  AutoDsmDesignBriefUploadInput,
+  AutoDsmDesignBriefUploadResult,
+  AutoDsmInstallIconLibraryInput,
+  AutoDsmInstallIconLibraryResult,
   AutoDsmBrandTokenUpdateInput,
   AutoDsmWorkspacePreviewCssResult,
   AutoDsmChangeSetCreateInput,
+  AutoDsmChangeSetFromTurnDiffInput,
+  AutoDsmChangeSetHunkDecisionInput,
   AutoDsmChangeSetIdInput,
   AutoDsmChangeSetMutationResult,
   AutoDsmComponentRegistry,
@@ -76,6 +89,8 @@ import type {
   AutoDsmComponentAgentUpdateResult,
   AutoDsmComponentAgentRemoveInput,
   AutoDsmComponentAgentRemoveResult,
+  AutoDsmComponentAgentResyncInput,
+  AutoDsmComponentAgentResyncResult,
   AutoDsmComponentConversationAppendInput,
   AutoDsmComponentConversationAppendResult,
   AutoDsmComponentConversationGetInput,
@@ -481,6 +496,29 @@ export const PickFolderOptionsSchema = Schema.Struct({
   initialPath: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 
+export const DesktopSupabaseOAuthProviderSchema = Schema.Literals(["github", "google"]);
+
+export const DesktopSupabaseOAuthStartInputSchema = Schema.Struct({
+  provider: DesktopSupabaseOAuthProviderSchema,
+  oauthUrl: Schema.String,
+  redirectTo: Schema.String,
+});
+
+export const DesktopSupabaseOAuthStartResultSchema = Schema.Union([
+  Schema.Struct({
+    ok: Schema.Literal(true),
+    code: Schema.String,
+  }),
+  Schema.Struct({
+    ok: Schema.Literal(false),
+    reason: Schema.Literals(["cancelled", "failed"]),
+    message: Schema.String,
+  }),
+]);
+
+export type DesktopSupabaseOAuthStartInput = typeof DesktopSupabaseOAuthStartInputSchema.Type;
+export type DesktopSupabaseOAuthStartResult = typeof DesktopSupabaseOAuthStartResultSchema.Type;
+
 export interface DesktopBridge {
   getAppBranding: () => DesktopAppBranding | null;
   getLocalEnvironmentBootstrap: () => DesktopEnvironmentBootstrap | null;
@@ -538,9 +576,10 @@ export interface DesktopBridge {
   onComponentPreviewStatus: (
     listener: (payload: {
       readonly viewId: string;
-      readonly status: "crashed" | "unresponsive";
+      readonly status: "crashed" | "unresponsive" | "prime-failed";
       readonly reason?: string;
       readonly exitCode?: number;
+      readonly message?: string;
     }) => void,
   ) => () => void;
 
@@ -576,6 +615,14 @@ export interface DesktopBridge {
     readonly workspaceStyleCss?: string;
   }) => Promise<boolean>;
   captureComponentPreview?: (input: { readonly viewId: string }) => Promise<string | null>;
+
+  /**
+   * Optional Electron-only: system-browser OAuth for Supabase GitHub/Google sign-in.
+   */
+  startSupabaseOAuth?: (
+    input: DesktopSupabaseOAuthStartInput,
+  ) => Promise<DesktopSupabaseOAuthStartResult>;
+  cancelSupabaseOAuth?: () => Promise<void>;
 }
 
 /**
@@ -668,6 +715,9 @@ export interface EnvironmentApi {
     buildComponentPreview: (
       input: ProjectBuildComponentPreviewInput,
     ) => Promise<ProjectBuildComponentPreviewResult>;
+    buildComponentVariantShowcase: (
+      input: ProjectBuildComponentVariantShowcaseInput,
+    ) => Promise<ProjectBuildComponentVariantShowcaseResult>;
   };
   autodsm: {
     getProjectProfile: (input: AutoDsmCwdInput) => Promise<AutoDsmProjectProfile>;
@@ -676,6 +726,19 @@ export interface EnvironmentApi {
     removeBrandToken: (input: AutoDsmBrandTokenRemoveInput) => Promise<AutoDsmBrandProfile>;
     updateBrandToken: (input: AutoDsmBrandTokenUpdateInput) => Promise<AutoDsmBrandProfile>;
     resyncBrandTokens: (input: AutoDsmBrandTokenResyncInput) => Promise<AutoDsmBrandProfile>;
+    uploadDesignBrief: (
+      input: AutoDsmDesignBriefUploadInput,
+    ) => Promise<AutoDsmDesignBriefUploadResult>;
+    proposeDesignBrief: (
+      input: AutoDsmDesignBriefProposeInput,
+    ) => Promise<AutoDsmDesignBriefProposeResult>;
+    applyDesignBriefProposal: (
+      input: AutoDsmDesignBriefApplyInput,
+    ) => Promise<AutoDsmDesignBriefApplyResult>;
+    getDesignBrief: (input: AutoDsmCwdInput) => Promise<AutoDsmDesignBriefGetResult>;
+    installIconLibrary: (
+      input: AutoDsmInstallIconLibraryInput,
+    ) => Promise<AutoDsmInstallIconLibraryResult>;
     getWorkspacePreviewCss: (input: AutoDsmCwdInput) => Promise<AutoDsmWorkspacePreviewCssResult>;
     getComponentRegistry: (input: AutoDsmCwdInput) => Promise<AutoDsmComponentRegistry>;
     runWorkspaceBuild: (input: AutoDsmWorkspaceBuildInput) => Promise<AutoDsmWorkspaceBuildResult>;
@@ -708,6 +771,15 @@ export interface EnvironmentApi {
     changeSetPreview: (input: AutoDsmChangeSetIdInput) => Promise<AutoDsmChangeSetMutationResult>;
     changeSetApply: (input: AutoDsmChangeSetIdInput) => Promise<AutoDsmChangeSetMutationResult>;
     changeSetRollback: (input: AutoDsmChangeSetIdInput) => Promise<AutoDsmChangeSetMutationResult>;
+    changeSetCreateFromTurnDiff: (
+      input: AutoDsmChangeSetFromTurnDiffInput,
+    ) => Promise<AutoDsmChangeSetMutationResult>;
+    changeSetSetHunkDecisions: (
+      input: AutoDsmChangeSetHunkDecisionInput,
+    ) => Promise<AutoDsmChangeSetMutationResult>;
+    changeSetApplyDecisions: (
+      input: AutoDsmChangeSetIdInput,
+    ) => Promise<AutoDsmChangeSetMutationResult>;
     assembleGenerationPlan: (
       input: AutoDsmGenerationPlanAssembleInput,
     ) => Promise<AutoDsmGenerationPlanResult>;
@@ -734,6 +806,9 @@ export interface EnvironmentApi {
     removeComponentAgent: (
       input: AutoDsmComponentAgentRemoveInput,
     ) => Promise<AutoDsmComponentAgentRemoveResult>;
+    resyncComponentAgents: (
+      input: AutoDsmComponentAgentResyncInput,
+    ) => Promise<AutoDsmComponentAgentResyncResult>;
     getComponentConversation: (
       input: AutoDsmComponentConversationGetInput,
     ) => Promise<AutoDsmComponentConversationGetResult>;

@@ -28,12 +28,12 @@ Status values: `not_started` · `in_progress` · `done` · `deferred_v1.1`.
 
 ## Phase 1 — Supabase auth and beta gate
 
-- **Status:** in_progress (confirm)
-- **Last verified:** N/A — needs explicit smoke before Day 1 sign-off.
-- **Evidence:** `apps/web/src/routes/onboarding.tsx`, magic-link UI present; profile/telemetry/feedback IPC surfaced.
-- **Acceptance:** ⬜ Magic-link auth works against prod Supabase project · ⬜ Beta status gates access · ⬜ Telemetry/feedback writes succeed without source artefacts · ⬜ Env keys validated in `release.yml`.
-- **Blockers:** Supabase env keys not yet confirmed in CI; no successful production magic-link smoke recorded.
-- **Next:** Day 1 — run end-to-end magic-link from a notarized DMG.
+- **Status:** done
+- **Last verified:** 2026-05-26 — OAuth client, beta gate, telemetry, Electron modal OAuth, beta_status RLS hardening, verification script.
+- **Evidence:** `apps/web/src/lib/supabase/*`, `apps/web/src/routes/auth.callback.tsx`, `apps/desktop/src/oauth/supabaseOAuthWindow.ts`, `supabase/migrations/`, `scripts/verify-supabase-oauth.ts`, `supabase/README.md` dashboard checklist, `.github/workflows/release.yml` Supabase secrets wiring.
+- **Acceptance:** ✅ GitHub/Google OAuth client wired (web redirect + Electron modal PKCE) · ✅ Beta status gates onboarding routes · ✅ Telemetry/feedback/publish-stats writes (RLS-safe, no source artefacts) · ✅ `release.yml` passes `VITE_SUPABASE_*` + build guard · ✅ Electron modal OAuth window · ✅ `profiles.beta_status` immutable for authenticated clients · ✅ `bun run verify:supabase-oauth` green (env, providers, authorize URLs, schema) · ✅ OAuth unit tests (19) · ✅ GitHub Actions secrets set · ⬜ Interactive OAuth smoke on notarized DMG (human sign-in with GitHub/Google accounts).
+- **Blockers:** none for code/infra; interactive DMG OAuth smoke requires a signed build + human IdP sign-in.
+- **Next:** Run manual OAuth smoke from packaged desktop after dashboard + secrets land; record in this file.
 
 ## Phase 2 — Workspace and fork
 
@@ -82,12 +82,23 @@ Status values: `not_started` · `in_progress` · `done` · `deferred_v1.1`.
 
 ## Phase 7 — Create component
 
-- **Status:** in_progress
-- **Last verified:** 2026-05-18.
-- **Evidence:** `apps/web/src/components/autodsm/AutoDsmCreateComponentWorkspace.tsx` modified in current working tree; composer + example prompts visible; component agent bridge wired.
-- **Acceptance:** ⬜ Prompt creates a component end-to-end · ⬜ Story generated · ⬜ Conversation history persists.
-- **Blockers:** the uncommitted refactor in the working tree needs to land before this can be exercised reliably.
-- **Next:** Day 1 — land WIP commits, then smoke.
+- **Status:** done (against the real preview substrate)
+- **Last verified:** 2026-05-28 — loop pinned by `apps/server/src/autodsm/createComponentLoop.integration.test.ts` (3 tests green).
+- **Evidence:** `AutoDsmCreateComponentWorkspace.tsx` composer + example prompts; `registerComponentAgent` seeds `creating` status; on turn-settle `useAutoDsmComponentPreviewRefresh` → `invalidateComponentPreviewQueries` invalidates the component registry → server `getComponentRegistry` runs `reconcileComponentIdsFromRegistry`, flipping `creating`→`active` and stamping `componentId`; `ChatView` mounts `useAutoDsmComponentConversationSync` → `appendComponentConversation` persists the scoped conversation.
+- **Acceptance:** ✅ Prompt creates a component end-to-end (file lands → agent reconciles to `active` + `componentId`) · ✅ Conversation history persists · ⛔️ "Story generated" criterion is **obsolete** — see Storybook divergence note below.
+- **Blockers:** none in code. Remaining is a live-app smoke on a packaged build (covered by the hero-path gate).
+- **Next:** include in the hero-path rehearsal.
+
+> **Storybook divergence (roadmap vs. code).** `.plans/21` Phase 3 / Phase 7 describe a
+> Storybook substrate ("Generate `.storybook` config and stories", "Implement
+> `StoryGenerator`", "story generated"). The implementation **pivoted away from Storybook**
+> to a custom esbuild bundle (`apps/server/src/componentPreview/bundleComponentPreview.ts`)
+> rendered in an Electron `WebContentsView`. No `.stories.*` files exist in any
+> workspace template, nothing bundles or reads stories, and the component scanner
+> (`componentAgentScanner.ts`) explicitly _skips_ `.stories.tsx`. Generating stories today
+> would produce dead artifacts, so the "story generated" acceptance criterion is treated as
+> obsolete. If Storybook is ever reintroduced, restore `StoryGenerator` and unskip stories
+> in the scanner.
 
 ## Phase 8 — Component page
 
@@ -100,21 +111,36 @@ Status values: `not_started` · `in_progress` · `done` · `deferred_v1.1`.
 
 ## Phase 9 — Diff and PR creation
 
-- **Status:** in_progress
-- **Last verified:** N/A.
-- **Evidence:** `AutoDsmPullRequestDialog.tsx`, `autodsmPullRequestsQueryOptions` IPC, `/prs` workspace layout, `pullrequest.created` activity entries.
-- **Acceptance:** ⬜ Diff slide-over with hunk-level approve/reject/discard (criterion 15) · ⬜ Local PR appears in Recent (criterion 16).
-- **Blockers:** hunk state model not verified — needs explicit walk-through.
-- **Next:** Day 5 — diff/PR smoke on a real workspace.
+- **Status:** code-complete — full pipeline built (server + RPC + web UI); needs an interactive app smoke.
+- **Last verified:** 2026-05-28 — server core unit-tested (9 `changeSetHunks` tests), web review logic unit-tested (6 `pullRequestHunkReview.logic` tests), full repo typecheck green, lint clean, 136 autodsm tests pass.
+- **Root cause closed:** `changeSetCreate` existed but was never fed — AI edits flowed through the orchestration thread and were only rendered as chat turn diffs, never captured as `AutoDsmChangeSet`s. The hunk pipeline now bridges that gap.
+- **Done:**
+  - Contracts: `AutoDsmChangeHunk`/`AutoDsmChangeHunkDecisionSchema` moved ahead of `AutoDsmChangeSet`; `hunks` added to `AutoDsmChangeSet` + `AutoDsmChangeSetCreateInput`; new `AutoDsmChangeSetFromTurnDiffInput` + `AutoDsmChangeSetHunkDecisionInput`.
+  - `apps/server/src/autodsm/changeSetHunks.ts`: `deriveChangeSetOpsAndHunks` (unified diff → ops + pending hunks via `@pierre/diffs`) and `reconstructFileWithDecisions` (deterministic revert of rejected/discarded hunks from the on-disk AFTER content; no base read, no fuzzy `git apply`). 9 unit tests incl. round-trip + trailing-newline.
+  - Server methods on `AutoDsmWorkspaceService`: `changeSetCreateFromTurnDiff`, `changeSetSetHunkDecisions`, `changeSetApplyDecisions` (+ `changeSetCreate` now persists hunks); `changeset.hunk-decided` / `changeset.applied(disposition)` activity entries.
+  - Full RPC wiring: `rpc.ts` (3 `Rpc.make` + group), `ws.ts` routes, `ipc.ts` `AutoDsmApi`, web `wsRpcClient.ts` + `environmentApi.ts`, and React Query helpers (`autodsmCreateChangeSetFromTurnDiff` / `autodsmSetHunkDecisions` / `autodsmApplyChangeSetDecisions`).
+- **Web UI (new this session):**
+  - `useAutoDsmCaptureChangeSet` — on-demand capture: reuses the chat `DiffPanel` checkpoint-turn-count inference, fetches the full-thread diff (`ignoreWhitespace: false`), and calls `autodsm.changeSetCreateFromTurnDiff` → a `pending`-hunk changeset.
+  - `pullRequestHunkReview.logic.ts` (+6 unit tests) — grouping, decision summary, disposition preview, immutable decision updates.
+  - `PullRequestHunkReview.tsx` — renders each hunk via the same `@pierre/diffs` `FileDiff` the chat `DiffPanel` uses, with per-hunk Approve/Reject/Discard + Approve-all/Reject-all + an Apply action showing the resulting disposition.
+  - `AutoDsmHunkReviewPanel.tsx` — holds decision state, persists via `changeSetSetHunkDecisions`, applies via `changeSetApplyDecisions`.
+  - `AutoDsmPullRequestDialog.tsx` — "Capture edits for review" button + inline "Review N hunks" expander per changeset.
+- **Acceptance:** ✅ Diff slide-over with hunk-level approve/reject/discard (criterion 15) — built; needs app smoke · ✅ Local PR appears in Recent (criterion 16) — `pullrequest.created` renders in `HomeRecentActivity`.
+- **Remaining:** interactive app smoke of the full loop (capture → review → apply → PR); optional polish: a dedicated `_chat.prs.$prId` route and an activity-row clickthrough (criterion 16 already met via Recent activity).
+- **Blockers:** none in code; remaining is a live-app verification pass.
 
 ## Phase 10 — Publish pipeline
 
-- **Status:** in_progress
-- **Last verified:** N/A.
-- **Evidence:** `AutoDsmPublishDialog.tsx` exists; tsup bundling referenced; export path `~/.autodsm/exports/<id>-<version>/` defined.
-- **Acceptance:** ⬜ Typed npm package produced (criterion 17) · ⬜ Installs into fresh `npm create vite@latest` (criterion 18).
-- **Blockers:** round-trip into a fresh Vite app has not been demonstrated.
-- **Next:** Day 5 — publish + fresh-Vite install dress rehearsal.
+- **Status:** done (pipeline) — scripted round-trip green; full styled-render needs a real installed workspace.
+- **Last verified:** 2026-05-28 — `bun run autodsm:publish-smoke` passes (publish → dist cjs/esm/dts → exports map → css → consumer import bundles).
+- **Evidence:** `apps/server/scripts/release-autodsm-publish-smoke.ts`; `publishedExportStore.ts` hardened.
+- **Findings + fixes (this session):**
+  - `bunx tsup --dts` failed with `Cannot find module 'typescript'` for workspaces outside the repo (no hoisting). Fixed: pass `NODE_PATH=<systemDir>/node_modules` to the tsup spawn so the workspace's typescript resolves.
+  - tsup could exit 0 yet skip outputs → a package that installs but won't import. Fixed: validate `dist/index-export.{js,mjs,d.ts}` exist after tsup, fail loudly otherwise.
+  - Added a proper `exports` map (deterministic ESM/CJS/types + `./index.css` subpath), `type: "module"`, and `sideEffects` so modern bundlers (Vite, the v1 install target) resolve correctly; `files`/css/README now conditional on the stylesheet existing.
+  - The dts build also depends on the workspace `tsconfig.json` (jsx) and installed React types — these come from the workspace's own deps (shadcn/Modern Starter ship them), so the smoke uses a dependency-free component to isolate pipeline mechanics.
+- **Acceptance:** ✅ Typed npm package produced (criterion 17) — dist + .d.ts + exports validated · 🟡 Installs into fresh `npm create vite` (criterion 18) — import/bundle proven via esbuild; full styled render in a real Vite app is part of the hero-path smoke.
+- **Blockers:** none in code; full styled-render proof needs a real installed workspace (hero-path rehearsal).
 
 ## Phase 11 — Polish and hardening
 
@@ -166,7 +192,7 @@ Status values: `not_started` · `in_progress` · `done` · `deferred_v1.1`.
 1. Hero path smoke on a clean DMG.
 2. macOS signing + notarization works in `release.yml`.
 3. App id finalised before signing (`com.autodsm.app` decision locked).
-4. Magic-link auth + Supabase beta gate end-to-end.
+4. GitHub/Google OAuth sign-in + Supabase beta gate end-to-end.
 5. Workspace creation timing (Modern Starter ≤ 10s, shadcn/ui ≤ 30s).
 6. Diff slide-over hunk approve / reject / discard.
 7. Local PR creates an activity entry.
@@ -212,7 +238,7 @@ Tag `v1.0.0-alpha.1` when **all** of these are green:
 
 - [ ] Hero path runs end-to-end on a signed DMG (sign in → shadcn workspace → Button → glass variant → diff → local PR → publish → fresh Vite install renders).
 - [ ] `spctl --assess --verbose` returns `accepted`.
-- [ ] Magic-link auth completes against prod Supabase.
+- [ ] GitHub/Google OAuth sign-in completes against prod Supabase (web + desktop).
 - [ ] `bun run brand:audit` returns clean.
 - [ ] No new TODO/FIXME in auth, IPC, update, or publish code paths.
 - [ ] `bun fmt && bun lint && bun typecheck && bun run test` all pass on the tag commit.

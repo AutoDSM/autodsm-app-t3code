@@ -283,7 +283,7 @@ async function bootstrapServerAuth(): Promise<ServerAuthGateState> {
     return { status: "authenticated" };
   }
 
-  if (shouldAttemptSilentLoopbackAuth(currentSession.auth)) {
+  if (!hasDesktopBootstrapCapability() && shouldAttemptSilentLoopbackAuth(currentSession.auth)) {
     const bypassResult = await ensureDevPairingBypassAuthenticated();
     if (bypassResult.status === "authenticated") {
       return bypassResult;
@@ -452,13 +452,13 @@ export async function resolveInitialServerAuthGateStateForLocalDev(): Promise<Se
     return { status: "authenticated" };
   }
 
+  if (hasDesktopBootstrapCapability()) {
+    return resolveInitialServerAuthGateStateForDesktopProduct();
+  }
+
   const bypassResult = await ensureDevPairingBypassAuthenticated();
   if (bypassResult.status === "authenticated") {
     return bypassResult;
-  }
-
-  if (hasDesktopBootstrapCapability()) {
-    return resolveInitialServerAuthGateStateForDesktopProduct();
   }
 
   return resolveInitialServerAuthGateState();

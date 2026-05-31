@@ -190,3 +190,34 @@ export class ProjectBuildComponentPreviewError extends Schema.TaggedErrorClass<P
     cause: Schema.optional(Schema.Defect),
   },
 ) {}
+
+export const ProjectVariantShowcaseExport = Schema.Struct({
+  exportName: TrimmedNonEmptyString,
+  label: TrimmedNonEmptyString,
+});
+export type ProjectVariantShowcaseExport = typeof ProjectVariantShowcaseExport.Type;
+
+export const ProjectBuildComponentVariantShowcaseInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  relativePath: TrimmedNonEmptyString.check(Schema.isMaxLength(PROJECT_WRITE_FILE_PATH_MAX_LENGTH)),
+  exports: Schema.Array(ProjectVariantShowcaseExport).check(Schema.isMinLength(1)),
+});
+export type ProjectBuildComponentVariantShowcaseInput =
+  typeof ProjectBuildComponentVariantShowcaseInput.Type;
+
+export const ProjectBuildComponentVariantShowcaseResult = Schema.Struct({
+  ok: Schema.Boolean,
+  javascript: Schema.optional(Schema.String),
+  warnings: Schema.Array(TrimmedString),
+  errors: Schema.Array(TrimmedString),
+});
+export type ProjectBuildComponentVariantShowcaseResult =
+  typeof ProjectBuildComponentVariantShowcaseResult.Type;
+
+export class ProjectBuildComponentVariantShowcaseError extends Schema.TaggedErrorClass<ProjectBuildComponentVariantShowcaseError>()(
+  "ProjectBuildComponentVariantShowcaseError",
+  {
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {}

@@ -11,6 +11,8 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 
+import { PRODUCT_BASE_NAME, resolveProductDisplayName } from "@t3tools/shared/productBranding";
+
 import {
   type DesktopSettings,
   resolveDefaultDesktopSettings,
@@ -80,8 +82,6 @@ export class DesktopEnvironment extends Context.Service<
   DesktopEnvironmentShape
 >()("t3/desktop/Environment") {}
 
-const APP_BASE_NAME = "T3 Code";
-
 function resolveDesktopAppStageLabel(input: {
   readonly isDevelopment: boolean;
   readonly appVersion: string;
@@ -99,9 +99,9 @@ function resolveDesktopAppBranding(input: {
 }): DesktopAppBranding {
   const stageLabel = resolveDesktopAppStageLabel(input);
   return {
-    baseName: APP_BASE_NAME,
+    baseName: PRODUCT_BASE_NAME,
     stageLabel,
-    displayName: `${APP_BASE_NAME} (${stageLabel})`,
+    displayName: resolveProductDisplayName(stageLabel),
   };
 }
 

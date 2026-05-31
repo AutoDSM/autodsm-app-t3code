@@ -118,6 +118,21 @@ const COLOR_VALUE_RE =
   /#[0-9a-fA-F]{3,8}\b|\b(?:rgb|rgba|hsl|hsla|oklch|oklab|lab|lch|color)\([^)]*\)/;
 const LENGTH_VALUE_RE = /^-?\d*\.?\d+(?:px|rem|em|vh|vw|vmin|vmax|ch|%)$/;
 const DURATION_VALUE_RE = /^-?\d*\.?\d+m?s$/;
+const SHADOW_VALUE_RE = /\d+(?:\.\d+)?px/;
+const SPECIAL_RECLASSIFY_NAME_RE =
+  /(?:^|-)(?:radius|rounded|shadow|elevation|box-shadow|icon|glyph)\b/;
+
+export const ICON_LIBRARY_TOKEN_NAME = "icon-library";
+
+function tokenCssVarName(token: Pick<AutoDsmBrandToken, "id" | "name">): string {
+  const raw =
+    token.name ??
+    token.id
+      .replace(/^css-var:/, "")
+      .replace(/^user:/, "")
+      .replace(/^config:/, "");
+  return raw.startsWith("--") ? raw.slice(2) : raw;
+}
 
 /** Best-effort category classification for an extracted CSS custom property. */
 export function classifyBrandTokenCategory(
@@ -126,12 +141,6 @@ export function classifyBrandTokenCategory(
 ): AutoDsmBrandTokenCategory {
   const name = varName.toLowerCase();
   const trimmed = value.trim();
-  if (
-    COLOR_VALUE_RE.test(trimmed) ||
-    /(?:^|-)(?:color|colour|fill|bg|background|border)\b/.test(name)
-  ) {
-    return "color";
-  }
   if (/(?:^|-)(?:font|text|leading|tracking|family|weight|line-height|letter-spacing)/.test(name)) {
     return "typography";
   }
@@ -143,13 +152,94 @@ export function classifyBrandTokenCategory(
   ) {
     return "motion";
   }
+  if (/(?:^|-)(?:radius|rounded)\b/.test(name)) {
+    return "radius";
+  }
+  if (
+    /(?:^|-)(?:shadow|elevation|box-shadow)\b/.test(name) ||
+    (SHADOW_VALUE_RE.test(trimmed) &&
+      /\b(?:rgb|rgba|hsl|hsla|oklch|oklab|lab|lch|#|\/\s*\d)\b/.test(trimmed))
+  ) {
+    return "shadow";
+  }
+  if (/(?:^|-)(?:icon|glyph)\b/.test(name)) {
+    return "icon";
+  }
+  if (
+    COLOR_VALUE_RE.test(trimmed) ||
+    /(?:^|-)(?:color|colour|fill|bg|background|border)\b/.test(name)
+  ) {
+    return "color";
+  }
   if (
     LENGTH_VALUE_RE.test(trimmed) ||
-    /(?:^|-)(?:space|spacing|gap|size|radius|inset|width|height)\b/.test(name)
+    /(?:^|-)(?:space|spacing|gap|size|inset|width|height)\b/.test(name)
   ) {
     return "spacing";
   }
   return "spacing";
+}
+
+/** Re-infer a persisted token category from its name/value (migration + resync). */
+export function canonicalizeBrandTokenCategory(
+  token: AutoDsmBrandToken,
+): AutoDsmBrandTokenCategory {
+  const varName = tokenCssVarName(token);
+  const inferred = classifyBrandTokenCategory(varName, token.value);
+  if (token.origin === "scanned" || token.id.startsWith("config:")) {
+    return inferred;
+  }
+  const normalizedName = (token.name ?? "").trim().toLowerCase();
+  if (
+    normalizedName === ICON_LIBRARY_TOKEN_NAME ||
+    SPECIAL_RECLASSIFY_NAME_RE.test(normalizedName) ||
+    SPECIAL_RECLASSIFY_NAME_RE.test(varName.toLowerCase())
+  ) {
+    return inferred;
+  }
+  return token.category as AutoDsmBrandTokenCategory;
+}
+
+function extractIconLibraryToken(cwd: string): AutoDsmBrandToken | null {
+  const abs = path.join(cwd, "components.json");
+  try {
+    const raw = fs.readFileSync(abs, "utf8");
+    const parsed = JSON.parse(raw) as { iconLibrary?: unknown };
+    if (typeof parsed.iconLibrary !== "string") {
+      return null;
+    }
+    const value = parsed.iconLibrary.trim();
+    if (value.length === 0) {
+      return null;
+    }
+    return {
+      id: "config:icon-library",
+      category: "icon",
+      name: ICON_LIBRARY_TOKEN_NAME,
+      value,
+      origin: "scanned",
+      sources: ["/components.json"],
+    };
+  } catch {
+    return null;
+  }
+}
+
+function appendIconLibraryToken(
+  cwd: string,
+  tokens: readonly AutoDsmBrandToken[],
+): readonly AutoDsmBrandToken[] {
+  const iconToken = extractIconLibraryToken(cwd);
+  if (iconToken === null) {
+    return tokens;
+  }
+  const hasIconLibrary = tokens.some(
+    (token) => (token.name ?? "").trim().toLowerCase() === ICON_LIBRARY_TOKEN_NAME,
+  );
+  if (hasIconLibrary) {
+    return tokens;
+  }
+  return [...tokens, iconToken];
 }
 
 /** Split CSS custom properties into light-scope and dark-scope value maps. */
@@ -237,13 +327,13 @@ export function extractBrandTokens(cwd: string): readonly AutoDsmBrandToken[] {
         }
       }
       if (tokens.length > 0) {
-        return tokens;
+        return appendIconLibraryToken(cwd, tokens);
       }
     } catch {
       /* skip unreadable candidate */
     }
   }
-  return [];
+  return appendIconLibraryToken(cwd, []);
 }
 
 export function detectCssPreviewEntryCandidates(cwd: string): readonly string[] {

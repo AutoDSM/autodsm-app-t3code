@@ -4,14 +4,7 @@ import { useEffect } from "react";
 
 import { isElectron } from "~/env";
 import { useDesktopBackendStatus } from "~/hooks/useDesktopBackendStatus";
-import {
-  ensureDevPairingBypassAuthenticated,
-  isDevPairingBypassActive,
-} from "~/lib/devPairingBypass";
-import {
-  fetchSessionState,
-  retryDesktopProductAuthUntilAuthenticated,
-} from "~/environments/primary";
+import { retryDesktopProductAuthUntilAuthenticated } from "~/environments/primary";
 
 const DESKTOP_AUTH_RECOVERY_INTERVAL_MS = 1_000;
 const DESKTOP_AUTH_RECOVERY_MAX_WAIT_MS = 60_000;
@@ -42,15 +35,9 @@ export function ElectronDesktopAuthRecovery(): null {
           break;
         }
         try {
-          const session = await fetchSessionState();
-          if (cancelled) {
-            break;
-          }
-          const result = isDevPairingBypassActive(session.auth)
-            ? await ensureDevPairingBypassAuthenticated()
-            : await retryDesktopProductAuthUntilAuthenticated({
-                maxWaitMs: DESKTOP_AUTH_RECOVERY_INTERVAL_MS + 500,
-              });
+          const result = await retryDesktopProductAuthUntilAuthenticated({
+            maxWaitMs: DESKTOP_AUTH_RECOVERY_INTERVAL_MS + 500,
+          });
           if (cancelled) {
             break;
           }

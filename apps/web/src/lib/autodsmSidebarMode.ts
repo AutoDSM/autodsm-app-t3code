@@ -7,7 +7,7 @@ export interface ShouldUseAutodsmComponentAgentSidebarInput {
 }
 
 /**
- * AutoDSM materialized workspaces use flat component-agent tabs instead of the T3 Code Projects list.
+ * AutoDSM materialized workspaces use flat component-agent tabs instead of the AutoDSM Projects list.
  */
 export function shouldUseAutodsmComponentAgentSidebar(
   input: ShouldUseAutodsmComponentAgentSidebarInput,

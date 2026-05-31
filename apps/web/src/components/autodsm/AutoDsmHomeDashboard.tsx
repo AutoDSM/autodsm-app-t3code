@@ -16,7 +16,12 @@ import {
 import { HomeGreeting } from "./home/HomeGreeting";
 import { HomeMetricCard } from "./home/HomeMetricCard";
 import { HomeRecentActivity } from "./home/HomeRecentActivity";
-import { computeAdoption, computeHealth, type RegistryStatus } from "./home/homeMetrics";
+import {
+  computeAdoption,
+  computeHealth,
+  isPublishActivityKind,
+  type RegistryStatus,
+} from "./home/homeMetrics";
 
 const RECENT_ACTIVITY_LIMIT = 10;
 
@@ -60,12 +65,42 @@ export function AutoDsmHomeDashboard(): JSX.Element {
 
   const componentCount = registryQuery.data?.entries.length ?? null;
   const tokenCount = brandProfileQuery.data?.tokens.length ?? null;
-  const agentCount = componentAgentsQuery.data?.manifest.agents.length ?? null;
+  const agents = componentAgentsQuery.data?.manifest.agents ?? null;
+  // "Active" excludes agents whose status is `creating` (initial bootstrap not
+  // finished) or `archived` (component removed) — those should not count as a
+  // working agent in the dashboard.
+  const activeAgentCount = agents?.filter((agent) => agent.status === "active").length ?? null;
+  const inactiveAgentCount =
+    agents !== null && activeAgentCount !== null ? agents.length - activeAgentCount : null;
+  // Adoption denominator is registry entries (the canonical component list);
+  // numerator must intersect with the registry so stale agents pointing at
+  // removed components do not silently push the ratio over 100%.
+  const registryPaths = useMemo<ReadonlySet<string> | null>(
+    () =>
+      registryQuery.data
+        ? new Set(registryQuery.data.entries.map((entry) => entry.relativePath))
+        : null,
+    [registryQuery.data],
+  );
+  const matchedActiveAgentCount =
+    agents !== null && registryPaths !== null
+      ? agents.filter(
+          (agent) => agent.status === "active" && registryPaths.has(agent.componentPath),
+        ).length
+      : null;
+  // Tokens the user has explicitly created vs scanned from the workspace's
+  // CSS/theme files. Both filters use the real `origin` value — we never
+  // subtract to derive `scanned`, since `origin` is optional and any missing
+  // value would silently inflate the scanned count.
+  const userTokenCount =
+    brandProfileQuery.data?.tokens.filter((token) => token.origin === "user").length ?? null;
+  const scannedTokenCount =
+    brandProfileQuery.data?.tokens.filter((token) => token.origin === "scanned").length ?? null;
   const registryStatus: RegistryStatus | null =
     (projectProfileQuery.data?.status as RegistryStatus | undefined) ?? null;
   const sidecarReady = sidecarQuery.data ? sidecarQuery.data.running : null;
 
-  const adoption = computeAdoption(componentCount, agentCount);
+  const adoption = computeAdoption(componentCount, matchedActiveAgentCount);
   const health = computeHealth({
     registryStatus,
     tokenCount,
@@ -74,7 +109,47 @@ export function AutoDsmHomeDashboard(): JSX.Element {
   });
 
   const recentEntries = activityQuery.data?.entries ?? [];
-  const lastPublishedAt = recentEntries[0]?.createdAt ?? null;
+  const lastPublishedAt =
+    recentEntries.find((entry) => isPublishActivityKind(entry.kind))?.createdAt ?? null;
+
+  // First-paint loading gate: render a neutral skeleton while the workspace
+  // ref is resolving OR the initial project profile query is still pending.
+  // This avoids the "System degraded / 0 components" flash that happens when
+  // useAutoDsmWorkspace hasn't finished selecting a workspace yet.
+  if (!workspaceReady || projectProfileQuery.isPending || projectProfileQuery.isError) {
+    let subtitle: string;
+    if (!workspaceReady) {
+      subtitle = "Resolving workspace from disk history…";
+    } else if (projectProfileQuery.isError) {
+      const message =
+        projectProfileQuery.error instanceof Error
+          ? projectProfileQuery.error.message
+          : "Unknown error";
+      subtitle = `Couldn't load project profile: ${message}`;
+    } else {
+      subtitle = "Loading project profile";
+    }
+    return (
+      <div className="flex min-h-full flex-col gap-8 px-6 py-8 sm:px-10 sm:py-12 max-w-screen-2xl mx-auto w-full">
+        <header className="flex flex-col gap-2">
+          <p className="text-muted-foreground text-sm">&nbsp;</p>
+          <h1 className="text-4xl font-semibold tracking-tight text-foreground/40">
+            Opening workspace…
+          </h1>
+          <p className="text-muted-foreground text-sm">{subtitle}</p>
+          <p className="text-muted-foreground/60 text-[10px] font-mono">
+            cwd: {cwd ?? "(null)"} · env: {environmentId ?? "(null)"}
+          </p>
+        </header>
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <HomeMetricCard label="Components" value="—" loading={true} />
+          <HomeMetricCard label="Tokens created" value="—" loading={true} />
+          <HomeMetricCard label="Adoption" value="—" loading={true} />
+          <HomeMetricCard label="System ready" value="—" loading={true} />
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-full flex-col gap-8 px-6 py-8 sm:px-10 sm:py-12 max-w-screen-2xl mx-auto w-full">
@@ -91,19 +166,42 @@ export function AutoDsmHomeDashboard(): JSX.Element {
           label="Components"
           value={componentCount ?? "—"}
           loading={registryQuery.isPending && workspaceReady}
+          {...(componentCount !== null && componentCount > 0 && activeAgentCount !== null
+            ? {
+                caption:
+                  inactiveAgentCount !== null && inactiveAgentCount > 0
+                    ? `${activeAgentCount} have an active agent (${inactiveAgentCount} archived/creating)`
+                    : `${activeAgentCount} have an active agent`,
+              }
+            : componentCount === 0
+              ? { caption: "No components indexed yet" }
+              : {})}
         />
         <HomeMetricCard
-          label="Tokens"
-          value={tokenCount ?? "—"}
+          label="Tokens created"
+          value={userTokenCount ?? "—"}
           loading={brandProfileQuery.isPending && workspaceReady}
+          {...(tokenCount !== null
+            ? {
+                caption:
+                  tokenCount > 0
+                    ? `${tokenCount} total available (${userTokenCount ?? 0} created · ${scannedTokenCount ?? 0} scanned)`
+                    : "No tokens defined yet",
+              }
+            : {})}
         />
         <HomeMetricCard
           label="Adoption"
           value={adoption !== null ? `${adoption}%` : "—"}
           loading={(registryQuery.isPending || componentAgentsQuery.isPending) && workspaceReady}
+          {...(componentCount !== null && matchedActiveAgentCount !== null && componentCount > 0
+            ? {
+                caption: `${matchedActiveAgentCount} of ${componentCount} components have an active agent`,
+              }
+            : {})}
         />
         <HomeMetricCard
-          label="Health"
+          label="System ready"
           value={health ?? "—"}
           loading={(registryQuery.isPending || sidecarQuery.isPending) && workspaceReady}
           {...(health !== null ? { unit: "/100" } : {})}

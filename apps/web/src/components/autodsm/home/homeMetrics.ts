@@ -92,6 +92,21 @@ export function friendlyActivityKind(kind: string): string {
   return head.charAt(0).toUpperCase() + head.slice(1);
 }
 
+const PUBLISH_KIND_PATTERNS: ReadonlyArray<RegExp> = [
+  /^publish\./,
+  /^release\./,
+  /^pullrequest\.merged/,
+];
+
+/**
+ * Whether an activity entry represents a publish/release/merge — the kinds
+ * that should drive the "last published" indicator in the greeting strip.
+ * Returns false for changesets, renders, sessions, and other day-to-day work.
+ */
+export function isPublishActivityKind(kind: string): boolean {
+  return PUBLISH_KIND_PATTERNS.some((pattern) => pattern.test(kind));
+}
+
 /**
  * Best-effort extraction of a short identifier for the right-side tag column
  * of the Recent activity list — e.g. a component name, PR number, or token id.

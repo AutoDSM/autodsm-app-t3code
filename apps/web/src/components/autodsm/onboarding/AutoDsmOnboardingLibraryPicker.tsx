@@ -63,7 +63,8 @@ export function AutoDsmOnboardingLibraryPicker(): JSX.Element {
               return;
             }
             patch({ starterId: selectedId });
-            void navigate({ to: "/onboarding/loading", replace: true });
+            // Library path: converge on the shared brief page (same as scratch).
+            void navigate({ to: "/onboarding/brief", replace: true });
           }}
           type="button"
         >

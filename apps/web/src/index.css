@@ -25,6 +25,8 @@
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand: var(--brand);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
@@ -96,8 +98,13 @@
   --card-foreground: var(--color-neutral-800);
   --popover: var(--color-white);
   --popover-foreground: var(--color-neutral-800);
-  --primary: #830cfa;
+  /* Primary actions are neutral (monochrome UI); purple is a tint only. */
+  --primary: var(--color-neutral-900);
   --primary-foreground: var(--color-white);
+  /* Brand tint — matches the AutoDSM app icon. Used sparingly: focus rings,
+     selected/active highlights, the brand glyph. Not for primary controls. */
+  --brand: #7a1fd8;
+  --brand-foreground: var(--color-white);
   --secondary: --alpha(var(--color-black) / 4%);
   --secondary-foreground: var(--color-neutral-800);
   --muted: --alpha(var(--color-black) / 4%);
@@ -107,7 +114,7 @@
   --destructive: var(--color-red-500);
   --border: --alpha(var(--color-black) / 8%);
   --input: --alpha(var(--color-black) / 10%);
-  --ring: #830cfa;
+  --ring: var(--brand);
   --destructive-foreground: var(--color-red-700);
   --info: var(--color-blue-500);
   --info-foreground: var(--color-blue-700);
@@ -125,8 +132,12 @@
     --card-foreground: var(--color-neutral-100);
     --popover: color-mix(in srgb, var(--background) 98%, var(--color-white));
     --popover-foreground: var(--color-neutral-100);
-    --primary: #830cfa;
-    --primary-foreground: var(--color-white);
+    /* Primary actions invert to neutral light-on-dark; purple stays a tint. */
+    --primary: var(--color-neutral-100);
+    --primary-foreground: var(--color-neutral-900);
+    /* Brand tint lightened for AA contrast on the dark surface. */
+    --brand: #9a5cf2;
+    --brand-foreground: var(--color-neutral-950);
     --secondary: --alpha(var(--color-white) / 4%);
     --secondary-foreground: var(--color-neutral-100);
     --muted: --alpha(var(--color-white) / 4%);
@@ -136,7 +147,7 @@
     --destructive: color-mix(in srgb, var(--color-red-500) 90%, var(--color-white));
     --border: --alpha(var(--color-white) / 6%);
     --input: --alpha(var(--color-white) / 8%);
-    --ring: #830cfa;
+    --ring: var(--brand);
     --destructive-foreground: var(--color-red-400);
     --info: var(--color-blue-500);
     --info-foreground: var(--color-blue-400);

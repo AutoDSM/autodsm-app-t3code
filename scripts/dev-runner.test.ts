@@ -120,7 +120,27 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
       }),
     );
 
-    it.effect("enables dev pairing bypass by default for local dev modes", () =>
+    it.effect("enables dev pairing bypass by default for web local dev modes", () =>
+      Effect.gen(function* () {
+        const env = yield* createDevRunnerEnv({
+          mode: "dev:server",
+          baseEnv: {},
+          serverOffset: 0,
+          webOffset: 0,
+          t3Home: undefined,
+          noBrowser: undefined,
+          autoBootstrapProjectFromCwd: undefined,
+          logWebSocketEvents: undefined,
+          host: undefined,
+          port: undefined,
+          devUrl: undefined,
+        });
+
+        assert.equal(env.T3CODE_DEV_DISABLE_PAIRING, "1");
+      }),
+    );
+
+    it.effect("does not enable dev pairing bypass for desktop dev mode", () =>
       Effect.gen(function* () {
         const env = yield* createDevRunnerEnv({
           mode: "dev:desktop",
@@ -136,7 +156,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           devUrl: undefined,
         });
 
-        assert.equal(env.T3CODE_DEV_DISABLE_PAIRING, "1");
+        assert.equal(env.T3CODE_DEV_DISABLE_PAIRING, undefined);
       }),
     );
 

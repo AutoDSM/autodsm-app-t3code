@@ -1,6 +1,7 @@
 import type { AutoDsmBrandToken, AutoDsmBrandTokenCategory } from "@t3tools/contracts";
 
 import type { ComposerCommandItem } from "~/components/chat/ComposerCommandMenu";
+import { isBrandingColorToken } from "~/lib/brandingColorTokens";
 import {
   DESIGN_TOKEN_CATEGORY_LABEL,
   groupTokensByCategory,
@@ -35,6 +36,9 @@ export function buildBrandTokenComposerMenuItems(
   const items: ComposerCommandItem[] = [];
   for (const group of groupTokensByCategory(tokens)) {
     for (const token of group.tokens) {
+      if (token.category === "color" && !isBrandingColorToken(token)) {
+        continue;
+      }
       const name = tokenDisplayName(token);
       if (needle.length > 0 && !name.toLowerCase().startsWith(needle)) {
         continue;

@@ -11,6 +11,8 @@ import type {
 } from "@t3tools/contracts";
 import ts from "typescript";
 
+import { ensureViteWorkspaceScaffold } from "../autodsm/viteWorkspaceScaffold.ts";
+
 function getSourceFileModuleSymbol(sf: ts.SourceFile): ts.Symbol | undefined {
   return (sf as unknown as { symbol?: ts.Symbol }).symbol;
 }
@@ -158,12 +160,13 @@ function propsForExportSymbol(sym: ts.Symbol, checker: ts.TypeChecker): Componen
   return [];
 }
 
-export function analyzeReactComponentFile(input: {
-  readonly absolutePath: string;
-  readonly cwd: string;
-  readonly relativePathPosix: string;
-}): ComponentPreviewManifest {
-  const configPath = ts.findConfigFile(input.cwd, ts.sys.fileExists, "tsconfig.json");
+function buildAnalyzerCompilerOptions(cwd: string): ts.CompilerOptions {
+  // Scope the tsconfig lookup to the workspace root. ts.findConfigFile walks
+  // upward, which can latch onto an unrelated ancestor (a stray monorepo
+  // tsconfig, project references, mismatched rootDir) and silently break
+  // single-file compilation — producing empty `exports`.
+  const workspaceTsconfigPath = path.join(cwd, "tsconfig.json");
+  const configPath = ts.sys.fileExists(workspaceTsconfigPath) ? workspaceTsconfigPath : undefined;
 
   const compilerOptions: ts.CompilerOptions = {
     target: ts.ScriptTarget.ES2022,
@@ -186,25 +189,35 @@ export function analyzeReactComponentFile(input: {
         path.dirname(configPath),
       );
       Object.assign(compilerOptions, parsed.options);
+      // Strip fields that derail single-file compilation when inherited from
+      // the workspace tsconfig (composite/declaration emit, build-info paths,
+      // and project references all assume a multi-file build graph we don't
+      // have here).
       compilerOptions.noEmit = true;
+      delete compilerOptions.composite;
+      delete compilerOptions.declaration;
+      delete compilerOptions.declarationMap;
+      delete compilerOptions.outDir;
+      delete compilerOptions.tsBuildInfoFile;
     }
   }
 
-  const host = ts.createCompilerHost(compilerOptions, true);
-  const program = ts.createProgram([input.absolutePath], compilerOptions, host);
-  const checker = program.getTypeChecker();
+  return compilerOptions;
+}
+
+function extractManifestFromProgram(
+  program: ts.Program,
+  checker: ts.TypeChecker,
+  baseDiagnostics: readonly string[],
+  input: { readonly absolutePath: string; readonly relativePathPosix: string },
+): ComponentPreviewManifest {
   const sf = program.getSourceFile(input.absolutePath);
-
-  const diagnostics = ts
-    .getPreEmitDiagnostics(program)
-    .map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n"));
-
   if (!sf) {
     return {
       relativePath: input.relativePathPosix,
       exports: [],
       propsByExport: [],
-      diagnostics: [...diagnostics, "Could not load source file."],
+      diagnostics: [...baseDiagnostics, "Could not load source file."],
     };
   }
 
@@ -214,7 +227,7 @@ export function analyzeReactComponentFile(input: {
       relativePath: input.relativePathPosix,
       exports: [],
       propsByExport: [],
-      diagnostics: [...diagnostics, "Could not load module symbol."],
+      diagnostics: [...baseDiagnostics, "Could not load module symbol."],
     };
   }
 
@@ -228,6 +241,18 @@ export function analyzeReactComponentFile(input: {
     if (rawName.startsWith("__")) continue;
 
     const sym = exp.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(exp) : exp;
+
+    // Skip type-only exports (`interface`, `type FooKind = ...`, `enum` declared
+    // as type-only, etc.). They have no runtime value, so the bundler can't
+    // import them. Without this filter, a file shaped like:
+    //   export interface FooProps { ... }
+    //   export function Foo(props: FooProps) { ... }
+    // would expose BOTH names in the manifest, and `pickInitialExport` could
+    // pick the interface — esbuild then strips the type-only import and the
+    // preview ends up empty.
+    if ((sym.flags & ts.SymbolFlags.Value) === 0) {
+      continue;
+    }
 
     const exportName = rawName === "default" ? "default" : rawName;
 
@@ -246,6 +271,131 @@ export function analyzeReactComponentFile(input: {
     relativePath: input.relativePathPosix,
     exports: exportSpecs,
     propsByExport,
-    diagnostics,
+    diagnostics: [...baseDiagnostics],
   };
+}
+
+/**
+ * A workspace is "initialized" iff its root has a `package.json`. The
+ * workspace-creation flow copies the template's package.json as the first
+ * step (autodsmCreateWorkspace.ts ~line 221), so its presence is a reliable
+ * signal that the cwd is a real workspace and not, e.g., a stale staging path
+ * the frontend is still holding from a crashed creation flow.
+ *
+ * The analyzer used to call `ensureViteWorkspaceScaffold` unconditionally to
+ * heal legacy workspaces, which had the side effect of materialising phantom
+ * `<cwd>/{vite.config.ts,tsconfig.json,index.html,src/main.tsx}` files inside
+ * `.staging/<id>/system/` whenever a stale cwd was sent. Gating on
+ * `package.json` makes the analyzer honest about what's a real workspace.
+ */
+function isInitializedWorkspaceRoot(cwd: string): boolean {
+  return ts.sys.fileExists(path.join(cwd, "package.json"));
+}
+
+function workspaceNotInitializedManifest(input: {
+  readonly cwd: string;
+  readonly relativePathPosix: string;
+}): ComponentPreviewManifest {
+  return {
+    relativePath: input.relativePathPosix,
+    exports: [],
+    propsByExport: [],
+    diagnostics: [`Workspace not initialized: ${input.cwd}/package.json is missing.`],
+  };
+}
+
+export function analyzeReactComponentFile(input: {
+  readonly absolutePath: string;
+  readonly cwd: string;
+  readonly relativePathPosix: string;
+}): ComponentPreviewManifest {
+  if (!isInitializedWorkspaceRoot(input.cwd)) {
+    return workspaceNotInitializedManifest(input);
+  }
+
+  // Real workspace: heal legacy ones that pre-date the scaffold helper.
+  // writeIfMissing makes this idempotent — zero-cost when files already exist.
+  ensureViteWorkspaceScaffold(input.cwd);
+
+  const compilerOptions = buildAnalyzerCompilerOptions(input.cwd);
+  const host = ts.createCompilerHost(compilerOptions, true);
+  const program = ts.createProgram([input.absolutePath], compilerOptions, host);
+  const checker = program.getTypeChecker();
+  const diagnostics = ts
+    .getPreEmitDiagnostics(program)
+    .map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n"));
+
+  return extractManifestFromProgram(program, checker, diagnostics, input);
+}
+
+/**
+ * Batched analyzer for the registry indexer. Loads one ts.Program for the
+ * whole batch instead of paying the lib.d.ts setup cost per file — turns a
+ * ~50-file shadcn registry pass from ~8s (sequential) / ~2s (concurrency 4)
+ * into a single program build.
+ *
+ * Falls back to per-file `analyzeReactComponentFile` calls if the shared
+ * program fails to load (so one corrupt file can't poison the batch).
+ */
+export function analyzeReactComponentBatch(input: {
+  readonly cwd: string;
+  readonly files: readonly { readonly absolutePath: string; readonly relativePathPosix: string }[];
+}): readonly ComponentPreviewManifest[] {
+  if (input.files.length === 0) {
+    return [];
+  }
+
+  if (!isInitializedWorkspaceRoot(input.cwd)) {
+    return input.files.map((file) =>
+      workspaceNotInitializedManifest({
+        cwd: input.cwd,
+        relativePathPosix: file.relativePathPosix,
+      }),
+    );
+  }
+
+  ensureViteWorkspaceScaffold(input.cwd);
+
+  const compilerOptions = buildAnalyzerCompilerOptions(input.cwd);
+  const host = ts.createCompilerHost(compilerOptions, true);
+  const rootFiles = input.files.map((f) => f.absolutePath);
+
+  let program: ts.Program;
+  try {
+    program = ts.createProgram(rootFiles, compilerOptions, host);
+  } catch {
+    return input.files.map((file) =>
+      analyzeReactComponentFile({
+        absolutePath: file.absolutePath,
+        cwd: input.cwd,
+        relativePathPosix: file.relativePathPosix,
+      }),
+    );
+  }
+
+  const checker = program.getTypeChecker();
+  const diagnostics = ts
+    .getPreEmitDiagnostics(program)
+    .map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n"));
+
+  return input.files.map((file) => {
+    try {
+      return extractManifestFromProgram(program, checker, diagnostics, {
+        absolutePath: file.absolutePath,
+        relativePathPosix: file.relativePathPosix,
+      });
+    } catch (cause) {
+      // One file blew up; fall back to a per-file program so the rest of the
+      // batch still produces useful manifests.
+      const message = cause instanceof Error ? cause.message : String(cause);
+      return {
+        ...analyzeReactComponentFile({
+          absolutePath: file.absolutePath,
+          cwd: input.cwd,
+          relativePathPosix: file.relativePathPosix,
+        }),
+        diagnostics: [`Batched analysis failed; degraded to per-file program: ${message}`],
+      };
+    }
+  });
 }

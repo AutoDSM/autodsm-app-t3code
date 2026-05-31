@@ -5,6 +5,10 @@ import * as Schema from "effect/Schema";
 import {
   AutoDsmBrandProfile,
   AutoDsmBrandTokenAddInput,
+  AutoDsmDesignBriefApplyInput,
+  AutoDsmDesignBriefDoc,
+  AutoDsmDesignBriefProposal,
+  AutoDsmDesignBriefUploadInput,
   type AutoDsmProjectProfile,
   decodeAutoDsmProjectProfileUnknown,
   encodeAutoDsmProjectProfile,
@@ -13,6 +17,10 @@ import {
 const encodeBrandProfile = Schema.encodeSync(AutoDsmBrandProfile);
 const decodeBrandProfile = Schema.decodeUnknownSync(AutoDsmBrandProfile);
 const decodeBrandTokenAddInput = Schema.decodeUnknownSync(AutoDsmBrandTokenAddInput);
+const decodeDesignBriefUploadInput = Schema.decodeUnknownSync(AutoDsmDesignBriefUploadInput);
+const decodeDesignBriefProposal = Schema.decodeUnknownSync(AutoDsmDesignBriefProposal);
+const decodeDesignBriefDoc = Schema.decodeUnknownSync(AutoDsmDesignBriefDoc);
+const decodeDesignBriefApplyInput = Schema.decodeUnknownSync(AutoDsmDesignBriefApplyInput);
 
 const minimalProfile: AutoDsmProjectProfile = {
   meta: {
@@ -89,5 +97,77 @@ describe("autodsmArtifacts", () => {
         token: { category: "elevation", name: "x", value: "1" },
       }),
     ).toThrow();
+  });
+
+  describe("design brief schemas", () => {
+    it("accepts upload input under the 32 KB cap and rejects oversize", () => {
+      expect(() => decodeDesignBriefUploadInput({ cwd: "/tmp/ws", markdown: "hi" })).not.toThrow();
+      expect(() =>
+        decodeDesignBriefUploadInput({ cwd: "/tmp/ws", markdown: "x".repeat(32_769) }),
+      ).toThrow();
+    });
+
+    it("accepts the design-brief-store owner literal in the doc schema", () => {
+      const doc = decodeDesignBriefDoc({
+        meta: {
+          kind: "design-brief-doc",
+          schemaVersion: 1,
+          owner: "design-brief-store",
+          invalidationKey: "abc",
+          consumers: [],
+        },
+        contentSha256: "x".repeat(64),
+        byteLength: 12,
+        uploadedAt: "2026-01-01T00:00:00.000Z",
+      });
+      expect(doc.meta.owner).toBe("design-brief-store");
+    });
+
+    it("round-trips a proposal with mixed add/update/remove ops", () => {
+      const proposal = decodeDesignBriefProposal({
+        proposalId: "p-1",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        briefDigest: "x".repeat(64),
+        basedOnInvalidationKey: "inv-key",
+        summary: "warm earthy",
+        operations: [
+          {
+            opId: "op-1",
+            kind: "update",
+            category: "color",
+            tokenName: "primary",
+            patch: { value: "#e2725b" },
+            currentValue: "#3b82f6",
+            proposedValue: "#e2725b",
+          },
+          {
+            opId: "op-2",
+            kind: "add",
+            category: "typography",
+            tokenName: "display",
+            draft: { category: "typography", name: "display", value: "Fraunces 64px" },
+          },
+          {
+            opId: "op-3",
+            kind: "remove",
+            category: "color",
+            tokenName: "accent",
+          },
+        ],
+      });
+      expect(proposal.operations).toHaveLength(3);
+      expect(proposal.operations[0]!.kind).toBe("update");
+      expect(proposal.operations[1]!.draft?.name).toBe("display");
+      expect(proposal.operations[2]!.kind).toBe("remove");
+    });
+
+    it("apply input accepts empty acceptedOpIds (no-op apply)", () => {
+      const input = decodeDesignBriefApplyInput({
+        cwd: "/tmp/ws",
+        proposalId: "p-1",
+        acceptedOpIds: [],
+      });
+      expect(input.acceptedOpIds).toHaveLength(0);
+    });
   });
 });

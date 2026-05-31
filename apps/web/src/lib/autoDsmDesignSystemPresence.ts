@@ -71,9 +71,7 @@ export async function fetchAutoDsmDesignSystemOnDisk(
   }
   try {
     const owner = input.ownerSubject?.trim();
-    const result = await api.autodsm.listWorkspaceHistory(
-      owner ? { ownerSubject: owner } : {},
-    );
+    const result = await api.autodsm.listWorkspaceHistory(owner ? { ownerSubject: owner } : {});
     return { hasMatch: hasAutoDsmDesignSystem(result.entries), entries: result.entries };
   } catch {
     return { hasMatch: false, entries: [] };

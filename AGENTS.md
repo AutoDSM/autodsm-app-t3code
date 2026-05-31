@@ -10,7 +10,9 @@ points into `skills/` for depth.
 
 ## Local dev pairing bypass
 
-`bun run dev`, `bun run dev:server`, and `bun run dev:desktop` inject `T3CODE_DEV_DISABLE_PAIRING=1` so loopback sessions auto-authenticate via `POST /api/auth/dev-auto-bootstrap` — no `/pair` UI or manual startup token during product iteration. This is a **temporary testing convenience**; production and remote pairing stay unchanged. Re-enable pairing locally with `T3CODE_DEV_DISABLE_PAIRING=0 bun run dev:desktop`.
+`bun run dev` and `bun run dev:server` inject `T3CODE_DEV_DISABLE_PAIRING=1` so **web loopback** sessions auto-authenticate via `POST /api/auth/dev-auto-bootstrap` — no `/pair` UI or manual startup token during substrate iteration. This is a **temporary testing convenience** for the T3 Code web client; production and remote pairing stay unchanged. Re-enable pairing locally with `T3CODE_DEV_DISABLE_PAIRING=0 bun run dev`.
+
+The **AutoDSM desktop (Electron) product** does not use pairing UI or this bypass. Desktop auth is silent via `desktopBridge.getLocalEnvironmentBootstrap()` → `POST /api/auth/bootstrap` with the desktop-managed bootstrap token (`bun run dev:desktop` included).
 
 ## Canonical Rule
 

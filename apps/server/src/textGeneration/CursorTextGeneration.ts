@@ -13,6 +13,7 @@ import { type ThreadTitleGenerationResult, type TextGenerationShape } from "./Te
 import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
+  buildDesignBriefProposalPrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
@@ -33,7 +34,8 @@ function mapCursorAcpError(
     | "generateCommitMessage"
     | "generatePrContent"
     | "generateBranchName"
-    | "generateThreadTitle",
+    | "generateThreadTitle"
+    | "generateDesignBriefProposal",
   detail: string,
   cause: unknown,
 ): TextGenerationError {
@@ -74,7 +76,8 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateDesignBriefProposal";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -269,10 +272,30 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
     } satisfies ThreadTitleGenerationResult;
   });
 
+  const generateDesignBriefProposal: TextGenerationShape["generateDesignBriefProposal"] = Effect.fn(
+    "CursorTextGeneration.generateDesignBriefProposal",
+  )(function* (input) {
+    const { prompt, outputSchema } = buildDesignBriefProposalPrompt({
+      briefMarkdown: input.briefMarkdown,
+      currentTokens: input.currentTokens,
+    });
+
+    const generated = yield* runCursorJson({
+      operation: "generateDesignBriefProposal",
+      cwd: input.cwd,
+      prompt,
+      outputSchemaJson: outputSchema,
+      modelSelection: input.modelSelection,
+    });
+
+    return generated;
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateDesignBriefProposal,
   } satisfies TextGenerationShape;
 });

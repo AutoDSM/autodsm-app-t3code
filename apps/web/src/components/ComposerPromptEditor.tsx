@@ -65,6 +65,7 @@ import {
   splitPromptIntoComposerSegments,
 } from "~/composer-editor-mentions";
 import { normalizeTokenCategory, tokenDisplayName } from "~/lib/designTokenGroups";
+import { isBrandingColorToken } from "~/lib/brandingColorTokens";
 import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   type TerminalContextDraft,
@@ -612,6 +613,9 @@ function brandTokenLookupMaps(tokens: ReadonlyArray<AutoDsmBrandToken> | undefin
   const swatches = new Map<string, string | undefined>();
   const categories = new Map<string, AutoDsmBrandTokenCategory>();
   for (const token of tokens ?? []) {
+    if (token.category === "color" && !isBrandingColorToken(token)) {
+      continue;
+    }
     const key = tokenDisplayName(token).toLowerCase();
     names.add(key);
     categories.set(key, normalizeTokenCategory(token.category));
@@ -1592,6 +1596,7 @@ function ComposerBrandTokenTypeaheadPlugin(props: {
     }
     const needle = query.toLowerCase();
     return props.brandTokens
+      .filter((token) => token.category !== "color" || isBrandingColorToken(token))
       .filter((token) => tokenDisplayName(token).toLowerCase().startsWith(needle))
       .slice(0, 8);
   }, [props.brandTokens, query]);

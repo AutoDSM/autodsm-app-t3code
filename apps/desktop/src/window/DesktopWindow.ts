@@ -173,6 +173,7 @@ const make = Effect.gen(function* () {
       backgroundColor: getInitialWindowBackgroundColor(shouldUseDarkColors),
       ...iconOption,
       title: environment.displayName,
+      ...(process.platform === "darwin" ? { tabbingIdentifier: "autodsm-main" } : {}),
       ...getWindowTitleBarOptions(shouldUseDarkColors),
       webPreferences: {
         preload: environment.preloadPath,

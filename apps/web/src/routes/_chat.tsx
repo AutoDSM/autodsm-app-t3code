@@ -1,6 +1,7 @@
 import { Outlet, createFileRoute, redirect } from "@tanstack/react-router";
 import { useEffect } from "react";
 
+import { isElectron } from "~/env";
 import { shouldSkipPairingRedirect } from "~/lib/devPairingBypass";
 
 import { useCommandPaletteStore } from "../commandPaletteStore";
@@ -114,6 +115,9 @@ export const Route = createFileRoute("/_chat")({
       context.authGateState.status === "authenticated" ||
       context.authGateState.status === "hosted-static"
     ) {
+      return;
+    }
+    if (isElectron) {
       return;
     }
     if (

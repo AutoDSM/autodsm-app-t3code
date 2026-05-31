@@ -3,7 +3,7 @@
 ## v1 Ship Checklist
 
 - Clean macOS DMG launches to sign-in.
-- Magic-link auth and beta gate work.
+- GitHub/Google OAuth sign-in and beta gate work.
 - Modern Starter workspace creates in under 10 seconds.
 - shadcn/ui workspace creates in under 30 seconds.
 - Workspace files live under `~/.autodsm/systems/<id>/`.

@@ -110,11 +110,6 @@ const resolveBackendStartConfig = Effect.fn("desktop.backendConfiguration.resolv
     const serverExposure = yield* DesktopServerExposure.DesktopServerExposure;
     const backendExposure = yield* serverExposure.backendConfig;
 
-    const devDisablePairingEnv =
-      environment.isDevelopment && process.env.T3CODE_DEV_DISABLE_PAIRING !== "0"
-        ? "1"
-        : process.env.T3CODE_DEV_DISABLE_PAIRING;
-
     const devServerUrl = Option.getOrUndefined(environment.devServerUrl)?.toString();
 
     return {
@@ -124,7 +119,6 @@ const resolveBackendStartConfig = Effect.fn("desktop.backendConfiguration.resolv
       env: {
         ...backendChildEnvPatch(),
         ELECTRON_RUN_AS_NODE: "1",
-        ...(devDisablePairingEnv ? { T3CODE_DEV_DISABLE_PAIRING: devDisablePairingEnv } : {}),
         ...(devServerUrl ? { VITE_DEV_SERVER_URL: devServerUrl } : {}),
       },
       bootstrap: {

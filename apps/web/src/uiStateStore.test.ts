@@ -48,8 +48,12 @@ function makeUiState(overrides: Partial<UiState> = {}): UiState {
     defaultAdvertisedEndpointKey: null,
     autoDsmWorkspaceProjectRef: null,
     autodsmOnboarding: defaultAutodsmOnboardingState,
+    pendingDesignBriefMarkdown: null,
     autoDsmThreadComponentPathById: {},
     autoDsmComponentAgentGroupExpandedByWorkspaceKey: {},
+    autoDsmActiveViewportByWorkspace: {},
+    autoDsmActiveViewportByThreadKey: {},
+    autoDsmChatLayoutByWorkspace: {},
     ...overrides,
   };
 }

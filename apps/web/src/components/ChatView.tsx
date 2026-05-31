@@ -184,8 +184,12 @@ import { ChatHeader } from "./chat/ChatHeader";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { ChatLaunchEmptyState } from "./autodsm/ChatLaunchEmptyState";
 import { useAutoDsmWorkspace } from "~/hooks/useAutoDsmWorkspace";
-import { autodsmBrandProfileQueryOptions } from "~/lib/autodsmWorkspaceReactQuery";
+import {
+  autodsmBrandProfileQueryOptions,
+  autodsmComponentAgentsQueryOptions,
+} from "~/lib/autodsmWorkspaceReactQuery";
 import { appendBrandTokenContextToPrompt } from "~/lib/brandTokenPromptContext";
+import { filterComposerBrandTokens } from "~/lib/brandingColorTokens";
 import { resolveEffectiveEnvMode, resolveEnvironmentOptionLabel } from "./BranchToolbar.logic";
 import { ProviderStatusBanner } from "./chat/ProviderStatusBanner";
 import { ThreadErrorBanner } from "./chat/ThreadErrorBanner";
@@ -670,6 +674,10 @@ export default function ChatView(props: ChatViewProps) {
   useEffect(() => {
     brandProfileRef.current = autodsmBrandQuery.data;
   }, [autodsmBrandQuery.data]);
+  const composerBrandTokens = useMemo(
+    () => filterComposerBrandTokens(autodsmBrandQuery.data?.tokens ?? []),
+    [autodsmBrandQuery.data?.tokens],
+  );
   const serverThread = useStore(
     useMemo(
       () => createThreadSelectorByRef(routeKind === "server" ? routeThreadRef : null),
@@ -1328,13 +1336,15 @@ export default function ChatView(props: ChatViewProps) {
                 ? "Reconnecting..."
                 : "Reconnect"}
             </Button>
-            <Button
-              size="xs"
-              variant="outline"
-              onClick={() => void navigate({ to: "/settings/connections" })}
-            >
-              Connections
-            </Button>
+            {!isElectron ? (
+              <Button
+                size="xs"
+                variant="outline"
+                onClick={() => void navigate({ to: "/settings/connections" })}
+              >
+                Connections
+              </Button>
+            ) : null}
           </>
         ),
       });
@@ -1828,6 +1838,23 @@ export default function ChatView(props: ChatViewProps) {
   const isAutoDsmComponentPageActive =
     isMaterializedAutoDsmProject && componentPreviewPath !== null && previewAgentSplitMd;
   const componentPreviewVariant = isMaterializedAutoDsmProject ? "product" : "dev";
+
+  // Look up the active thread's seeded agent record so dev-mode preview can
+  // honor the agent's primary export hint when not on the Component Page.
+  const componentAgentsForActiveThreadQuery = useQuery(
+    autodsmComponentAgentsQueryOptions({
+      environmentId: isMaterializedAutoDsmProject ? environmentId : null,
+      cwd: isMaterializedAutoDsmProject ? activeProjectCwd : null,
+      enabled: isMaterializedAutoDsmProject,
+    }),
+  );
+  const activeAgentExportName = useMemo(() => {
+    if (!activeThread || !componentAgentsForActiveThreadQuery.data) return undefined;
+    const agent = componentAgentsForActiveThreadQuery.data.manifest.agents.find(
+      (a) => a.threadId === activeThread.id,
+    );
+    return agent?.exportName?.trim() || undefined;
+  }, [activeThread, componentAgentsForActiveThreadQuery.data]);
   useEffect(() => {
     if (!import.meta.env.DEV || !isMaterializedAutoDsmProject || !activeProjectCwd) {
       return;
@@ -3816,6 +3843,7 @@ export default function ChatView(props: ChatViewProps) {
               environmentId={environmentId}
               workspaceCwd={activeProject?.cwd ?? null}
               variant={componentPreviewVariant}
+              {...(activeAgentExportName ? { initialExportName: activeAgentExportName } : {})}
               registerPromptAppendix={(getter) => {
                 componentPreviewPromptAppendixRef.current = getter;
               }}
@@ -4060,7 +4088,7 @@ export default function ChatView(props: ChatViewProps) {
                       keybindings={keybindings}
                       terminalOpen={Boolean(terminalState.terminalOpen)}
                       gitCwd={gitCwd}
-                      brandTokens={autodsmBrandQuery.data?.tokens ?? []}
+                      brandTokens={composerBrandTokens}
                       {...(isAutoDsmComponentPageActive
                         ? {
                             promptPlaceholder: `Edit ${activeAutoDsmComponentAgentTab?.title ?? "component"}`,

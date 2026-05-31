@@ -5,7 +5,6 @@ import { getRouteApi } from "@tanstack/react-router";
 
 import { AutoDsmOnboardingCreateProject } from "~/components/autodsm/onboarding/AutoDsmOnboardingCreateProject";
 import { ElectronWorkspaceBootstrapLoading } from "~/components/autodsm/ElectronWorkspaceBootstrapLoading";
-import { isDevPairingBypassActive } from "~/lib/devPairingBypass";
 import { shouldShowAutoDsmProjectPicker } from "~/lib/projectIntake/closeActiveWorkspaceProject";
 import {
   useAutoDsmSingleDesignSystemMode,
@@ -33,9 +32,6 @@ export function ElectronAuthenticatedChatLanding(): JSX.Element {
   });
 
   if (authGateState.status === "requires-auth") {
-    if (isDevPairingBypassActive(authGateState.auth)) {
-      return <ElectronWorkspaceBootstrapLoading authPending />;
-    }
     return <ElectronWorkspaceBootstrapLoading authFailed />;
   }
 

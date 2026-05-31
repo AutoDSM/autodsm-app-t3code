@@ -30,7 +30,7 @@ function installTestBrowser(url: string) {
   };
 
   vi.stubGlobal("window", testWindow);
-  vi.stubGlobal("document", { title: "T3 Code" });
+  vi.stubGlobal("document", { title: "AutoDSM" });
 
   return testWindow;
 }
@@ -274,6 +274,68 @@ describe("resolveInitialServerAuthGateState", () => {
       status: "authenticated",
     });
     expect(fetchMock.mock.calls[2]?.[0]).toBe("http://127.0.0.1:5733/api/auth/dev-auto-bootstrap");
+  });
+
+  it("prefers desktop bootstrap over dev pairing bypass when desktop bridge is present", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        sessionResponse({
+          authenticated: false,
+          auth: {
+            policy: "desktop-managed-local",
+            bootstrapMethods: ["desktop-bootstrap"],
+            sessionMethods: ["browser-session-cookie"],
+            sessionCookieName: "t3_session",
+            devPairingDisabled: true,
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          authenticated: true,
+          sessionMethod: "browser-session-cookie",
+          expiresAt: "2026-04-05T00:00:00.000Z",
+        }),
+      )
+      .mockResolvedValueOnce(
+        sessionResponse({
+          authenticated: true,
+          auth: {
+            policy: "desktop-managed-local",
+            bootstrapMethods: ["desktop-bootstrap"],
+            sessionMethods: ["browser-session-cookie"],
+            sessionCookieName: "t3_session",
+            devPairingDisabled: true,
+          },
+          sessionMethod: "browser-session-cookie",
+          expiresAt: "2026-04-05T00:00:00.000Z",
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const testWindow = installTestBrowser("http://127.0.0.1:5733/");
+    vi.stubEnv("VITE_DEV_SERVER_URL", "http://127.0.0.1:5733");
+    testWindow.desktopBridge = {
+      getLocalEnvironmentBootstrap: () => ({
+        label: "Local environment",
+        httpBaseUrl: "http://127.0.0.1:3773",
+        wsBaseUrl: "ws://127.0.0.1:3773",
+        bootstrapToken: "desktop-bootstrap-token",
+      }),
+    } as DesktopBridge;
+
+    const { resolveInitialServerAuthGateState } = await import("./environments/primary");
+
+    await expect(resolveInitialServerAuthGateState()).resolves.toEqual({
+      status: "authenticated",
+    });
+    expect(
+      fetchMock.mock.calls.some(
+        ([url]) => url === "http://127.0.0.1:5733/api/auth/dev-auto-bootstrap",
+      ),
+    ).toBe(false);
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("http://127.0.0.1:5733/api/auth/bootstrap");
   });
 
   it("returns a requires-auth state instead of throwing when no bootstrap credential exists", async () => {

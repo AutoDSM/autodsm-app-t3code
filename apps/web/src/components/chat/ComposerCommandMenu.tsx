@@ -273,10 +273,7 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
       ) : null}
       <span className="flex min-w-0 flex-1 items-center gap-2">
         <span
-          className={cn(
-            "shrink-0",
-            props.item.type === "brand-token" && "font-mono text-[#8a38f5] dark:text-[#c084fc]",
-          )}
+          className={cn("shrink-0", props.item.type === "brand-token" && "font-mono text-brand")}
         >
           {props.item.label}
         </span>

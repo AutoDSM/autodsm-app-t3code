@@ -3,6 +3,8 @@ import { useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 
 import { orderItemsByPreferredIds } from "~/components/Sidebar.logic";
+import { usePrimaryEnvironmentId } from "~/environments/primary";
+import { usePrimaryAutoDsmDesignSystemHistory } from "~/hooks/useAutoDsmDesignSystemHistory";
 import {
   resolveAutoDsmWorkspace,
   type AutoDsmWorkspaceSelection,
@@ -30,6 +32,8 @@ export function useAutoDsmWorkspace(): AutoDsmWorkspaceSelection {
   const sidebarThreads = useStore(
     useShallow((store) => selectSidebarThreadsAcrossEnvironments(store)),
   );
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const designSystemHistory = usePrimaryAutoDsmDesignSystemHistory();
 
   const orderedProjects = useMemo(() => {
     return orderItemsByPreferredIds({
@@ -47,7 +51,17 @@ export function useAutoDsmWorkspace(): AutoDsmWorkspaceSelection {
         orderedProjects,
         projects,
         explicitWorkspaceProjectRef,
+        diskHistory: designSystemHistory.rows,
+        primaryEnvironmentId,
       }),
-    [explicitWorkspaceProjectRef, orderedProjects, pathname, projects, sidebarThreads],
+    [
+      explicitWorkspaceProjectRef,
+      orderedProjects,
+      pathname,
+      projects,
+      sidebarThreads,
+      designSystemHistory.rows,
+      primaryEnvironmentId,
+    ],
   );
 }

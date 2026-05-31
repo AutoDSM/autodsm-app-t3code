@@ -27,6 +27,9 @@ import { Route as OnboardingMethodRouteImport } from './routes/onboarding.method
 import { Route as OnboardingLoadingRouteImport } from './routes/onboarding.loading'
 import { Route as OnboardingLibraryRouteImport } from './routes/onboarding.library'
 import { Route as OnboardingCreateRouteImport } from './routes/onboarding.create'
+import { Route as OnboardingBriefRouteImport } from './routes/onboarding.brief'
+import { Route as OnboardingBetaRouteImport } from './routes/onboarding.beta'
+import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 import { Route as ChatPreviewComponentsSandboxRouteImport } from './routes/_chat.preview-components-sandbox'
 import { Route as ChatHomeRouteImport } from './routes/_chat.home'
 import { Route as ChatDesignTokensRouteImport } from './routes/_chat.design-tokens'
@@ -124,6 +127,21 @@ const OnboardingCreateRoute = OnboardingCreateRouteImport.update({
   path: '/create',
   getParentRoute: () => OnboardingRoute,
 } as any)
+const OnboardingBriefRoute = OnboardingBriefRouteImport.update({
+  id: '/brief',
+  path: '/brief',
+  getParentRoute: () => OnboardingRoute,
+} as any)
+const OnboardingBetaRoute = OnboardingBetaRouteImport.update({
+  id: '/beta',
+  path: '/beta',
+  getParentRoute: () => OnboardingRoute,
+} as any)
+const AuthCallbackRoute = AuthCallbackRouteImport.update({
+  id: '/auth/callback',
+  path: '/auth/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ChatPreviewComponentsSandboxRoute =
   ChatPreviewComponentsSandboxRouteImport.update({
     id: '/preview-components-sandbox',
@@ -173,6 +191,9 @@ export interface FileRoutesByFullPath {
   '/design-tokens': typeof ChatDesignTokensRoute
   '/home': typeof ChatHomeRoute
   '/preview-components-sandbox': typeof ChatPreviewComponentsSandboxRoute
+  '/auth/callback': typeof AuthCallbackRoute
+  '/onboarding/beta': typeof OnboardingBetaRoute
+  '/onboarding/brief': typeof OnboardingBriefRoute
   '/onboarding/create': typeof OnboardingCreateRoute
   '/onboarding/library': typeof OnboardingLibraryRoute
   '/onboarding/loading': typeof OnboardingLoadingRoute
@@ -198,6 +219,9 @@ export interface FileRoutesByTo {
   '/design-tokens': typeof ChatDesignTokensRoute
   '/home': typeof ChatHomeRoute
   '/preview-components-sandbox': typeof ChatPreviewComponentsSandboxRoute
+  '/auth/callback': typeof AuthCallbackRoute
+  '/onboarding/beta': typeof OnboardingBetaRoute
+  '/onboarding/brief': typeof OnboardingBriefRoute
   '/onboarding/create': typeof OnboardingCreateRoute
   '/onboarding/library': typeof OnboardingLibraryRoute
   '/onboarding/loading': typeof OnboardingLoadingRoute
@@ -226,6 +250,9 @@ export interface FileRoutesById {
   '/_chat/design-tokens': typeof ChatDesignTokensRoute
   '/_chat/home': typeof ChatHomeRoute
   '/_chat/preview-components-sandbox': typeof ChatPreviewComponentsSandboxRoute
+  '/auth/callback': typeof AuthCallbackRoute
+  '/onboarding/beta': typeof OnboardingBetaRoute
+  '/onboarding/brief': typeof OnboardingBriefRoute
   '/onboarding/create': typeof OnboardingCreateRoute
   '/onboarding/library': typeof OnboardingLibraryRoute
   '/onboarding/loading': typeof OnboardingLoadingRoute
@@ -255,6 +282,9 @@ export interface FileRouteTypes {
     | '/design-tokens'
     | '/home'
     | '/preview-components-sandbox'
+    | '/auth/callback'
+    | '/onboarding/beta'
+    | '/onboarding/brief'
     | '/onboarding/create'
     | '/onboarding/library'
     | '/onboarding/loading'
@@ -280,6 +310,9 @@ export interface FileRouteTypes {
     | '/design-tokens'
     | '/home'
     | '/preview-components-sandbox'
+    | '/auth/callback'
+    | '/onboarding/beta'
+    | '/onboarding/brief'
     | '/onboarding/create'
     | '/onboarding/library'
     | '/onboarding/loading'
@@ -307,6 +340,9 @@ export interface FileRouteTypes {
     | '/_chat/design-tokens'
     | '/_chat/home'
     | '/_chat/preview-components-sandbox'
+    | '/auth/callback'
+    | '/onboarding/beta'
+    | '/onboarding/brief'
     | '/onboarding/create'
     | '/onboarding/library'
     | '/onboarding/loading'
@@ -330,6 +366,7 @@ export interface RootRouteChildren {
   OnboardingRoute: typeof OnboardingRouteWithChildren
   PairRoute: typeof PairRoute
   SettingsRoute: typeof SettingsRouteWithChildren
+  AuthCallbackRoute: typeof AuthCallbackRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -460,6 +497,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OnboardingCreateRouteImport
       parentRoute: typeof OnboardingRoute
     }
+    '/onboarding/brief': {
+      id: '/onboarding/brief'
+      path: '/brief'
+      fullPath: '/onboarding/brief'
+      preLoaderRoute: typeof OnboardingBriefRouteImport
+      parentRoute: typeof OnboardingRoute
+    }
+    '/onboarding/beta': {
+      id: '/onboarding/beta'
+      path: '/beta'
+      fullPath: '/onboarding/beta'
+      preLoaderRoute: typeof OnboardingBetaRouteImport
+      parentRoute: typeof OnboardingRoute
+    }
+    '/auth/callback': {
+      id: '/auth/callback'
+      path: '/auth/callback'
+      fullPath: '/auth/callback'
+      preLoaderRoute: typeof AuthCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_chat/preview-components-sandbox': {
       id: '/_chat/preview-components-sandbox'
       path: '/preview-components-sandbox'
@@ -537,6 +595,8 @@ const ChatRouteChildren: ChatRouteChildren = {
 const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
 
 interface OnboardingRouteChildren {
+  OnboardingBetaRoute: typeof OnboardingBetaRoute
+  OnboardingBriefRoute: typeof OnboardingBriefRoute
   OnboardingCreateRoute: typeof OnboardingCreateRoute
   OnboardingLibraryRoute: typeof OnboardingLibraryRoute
   OnboardingLoadingRoute: typeof OnboardingLoadingRoute
@@ -546,6 +606,8 @@ interface OnboardingRouteChildren {
 }
 
 const OnboardingRouteChildren: OnboardingRouteChildren = {
+  OnboardingBetaRoute: OnboardingBetaRoute,
+  OnboardingBriefRoute: OnboardingBriefRoute,
   OnboardingCreateRoute: OnboardingCreateRoute,
   OnboardingLibraryRoute: OnboardingLibraryRoute,
   OnboardingLoadingRoute: OnboardingLoadingRoute,
@@ -587,6 +649,7 @@ const rootRouteChildren: RootRouteChildren = {
   OnboardingRoute: OnboardingRouteWithChildren,
   PairRoute: PairRoute,
   SettingsRoute: SettingsRouteWithChildren,
+  AuthCallbackRoute: AuthCallbackRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -72,6 +72,9 @@ export interface WsRpcClient {
     readonly readFile: RpcUnaryMethod<typeof WS_METHODS.projectsReadFile>;
     readonly analyzeReactComponent: RpcUnaryMethod<typeof WS_METHODS.projectsAnalyzeReactComponent>;
     readonly buildComponentPreview: RpcUnaryMethod<typeof WS_METHODS.projectsBuildComponentPreview>;
+    readonly buildComponentVariantShowcase: RpcUnaryMethod<
+      typeof WS_METHODS.projectsBuildComponentVariantShowcase
+    >;
   };
   readonly autodsm: {
     readonly getProjectProfile: RpcUnaryMethod<typeof WS_METHODS.autodsmGetProjectProfile>;
@@ -80,6 +83,13 @@ export interface WsRpcClient {
     readonly removeBrandToken: RpcUnaryMethod<typeof WS_METHODS.autodsmRemoveBrandToken>;
     readonly updateBrandToken: RpcUnaryMethod<typeof WS_METHODS.autodsmUpdateBrandToken>;
     readonly resyncBrandTokens: RpcUnaryMethod<typeof WS_METHODS.autodsmResyncBrandTokens>;
+    readonly uploadDesignBrief: RpcUnaryMethod<typeof WS_METHODS.autodsmUploadDesignBrief>;
+    readonly proposeDesignBrief: RpcUnaryMethod<typeof WS_METHODS.autodsmProposeDesignBrief>;
+    readonly applyDesignBriefProposal: RpcUnaryMethod<
+      typeof WS_METHODS.autodsmApplyDesignBriefProposal
+    >;
+    readonly getDesignBrief: RpcUnaryMethod<typeof WS_METHODS.autodsmGetDesignBrief>;
+    readonly installIconLibrary: RpcUnaryMethod<typeof WS_METHODS.autodsmInstallIconLibrary>;
     readonly getWorkspacePreviewCss: RpcUnaryMethod<
       typeof WS_METHODS.autodsmGetWorkspacePreviewCss
     >;
@@ -106,6 +116,15 @@ export interface WsRpcClient {
     readonly changeSetPreview: RpcUnaryMethod<typeof WS_METHODS.autodsmChangeSetPreview>;
     readonly changeSetApply: RpcUnaryMethod<typeof WS_METHODS.autodsmChangeSetApply>;
     readonly changeSetRollback: RpcUnaryMethod<typeof WS_METHODS.autodsmChangeSetRollback>;
+    readonly changeSetCreateFromTurnDiff: RpcUnaryMethod<
+      typeof WS_METHODS.autodsmChangeSetCreateFromTurnDiff
+    >;
+    readonly changeSetSetHunkDecisions: RpcUnaryMethod<
+      typeof WS_METHODS.autodsmChangeSetSetHunkDecisions
+    >;
+    readonly changeSetApplyDecisions: RpcUnaryMethod<
+      typeof WS_METHODS.autodsmChangeSetApplyDecisions
+    >;
     readonly assembleGenerationPlan: RpcUnaryMethod<
       typeof WS_METHODS.autodsmAssembleGenerationPlan
     >;
@@ -122,6 +141,7 @@ export interface WsRpcClient {
     >;
     readonly updateComponentAgent: RpcUnaryMethod<typeof WS_METHODS.autodsmUpdateComponentAgent>;
     readonly removeComponentAgent: RpcUnaryMethod<typeof WS_METHODS.autodsmRemoveComponentAgent>;
+    readonly resyncComponentAgents: RpcUnaryMethod<typeof WS_METHODS.autodsmResyncComponentAgents>;
     readonly getComponentConversation: RpcUnaryMethod<
       typeof WS_METHODS.autodsmGetComponentConversation
     >;
@@ -256,6 +276,10 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
         transport.request((client) => client[WS_METHODS.projectsAnalyzeReactComponent](input)),
       buildComponentPreview: (input) =>
         transport.request((client) => client[WS_METHODS.projectsBuildComponentPreview](input)),
+      buildComponentVariantShowcase: (input) =>
+        transport.request((client) =>
+          client[WS_METHODS.projectsBuildComponentVariantShowcase](input),
+        ),
     },
     autodsm: {
       getProjectProfile: (input) =>
@@ -270,6 +294,16 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
         transport.request((client) => client[WS_METHODS.autodsmUpdateBrandToken](input)),
       resyncBrandTokens: (input) =>
         transport.request((client) => client[WS_METHODS.autodsmResyncBrandTokens](input)),
+      uploadDesignBrief: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmUploadDesignBrief](input)),
+      proposeDesignBrief: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmProposeDesignBrief](input)),
+      applyDesignBriefProposal: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmApplyDesignBriefProposal](input)),
+      getDesignBrief: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmGetDesignBrief](input)),
+      installIconLibrary: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmInstallIconLibrary](input)),
       getWorkspacePreviewCss: (input) =>
         transport.request((client) => client[WS_METHODS.autodsmGetWorkspacePreviewCss](input)),
       getComponentRegistry: (input) =>
@@ -309,6 +343,12 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
         transport.request((client) => client[WS_METHODS.autodsmChangeSetApply](input)),
       changeSetRollback: (input) =>
         transport.request((client) => client[WS_METHODS.autodsmChangeSetRollback](input)),
+      changeSetCreateFromTurnDiff: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmChangeSetCreateFromTurnDiff](input)),
+      changeSetSetHunkDecisions: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmChangeSetSetHunkDecisions](input)),
+      changeSetApplyDecisions: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmChangeSetApplyDecisions](input)),
       assembleGenerationPlan: (input) =>
         transport.request((client) => client[WS_METHODS.autodsmAssembleGenerationPlan](input)),
       exportPublishedSnapshot: (input) =>
@@ -329,6 +369,8 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
         transport.request((client) => client[WS_METHODS.autodsmUpdateComponentAgent](input)),
       removeComponentAgent: (input) =>
         transport.request((client) => client[WS_METHODS.autodsmRemoveComponentAgent](input)),
+      resyncComponentAgents: (input) =>
+        transport.request((client) => client[WS_METHODS.autodsmResyncComponentAgents](input)),
       getComponentConversation: (input) =>
         transport.request((client) => client[WS_METHODS.autodsmGetComponentConversation](input)),
       appendComponentConversation: (input) =>

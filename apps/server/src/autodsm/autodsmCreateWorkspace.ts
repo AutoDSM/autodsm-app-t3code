@@ -32,6 +32,7 @@ import { detectPackageManager } from "./autoDsmHelpers.ts";
 import { installDesignSystemSync } from "./designSystemInstall.ts";
 import { seedBrandTokensFromWorkspace } from "./autoDsmTokenStore.ts";
 import { seedComponentAgentsManifest } from "./componentAgentStore.ts";
+import { scanTemplateComponentAgents, type ScannerOverlay } from "./componentAgentScanner.ts";
 import { listAutodsmWorkspaceHistoryFromDisk } from "./autodsmWorkspaceHistory.ts";
 import {
   resolveFinalWorkspaceParent,
@@ -44,6 +45,7 @@ interface ComponentAgentsManifest {
   readonly agents: ReadonlyArray<{
     readonly title: string;
     readonly componentPath: string;
+    readonly exportName?: string;
     readonly group?: string;
   }>;
 }
@@ -270,25 +272,36 @@ const materializeWorkspaceCore = (
       yield* logCreateWorkspacePhase("design-system-install-end", input);
 
       yield* logCreateWorkspacePhase("manifest-read", input);
-      const raw = yield* Effect.tryPromise({
-        try: () => fsPromises.readFile(path.join(systemDir, "component-agents.json"), "utf8"),
-        catch: (cause) =>
-          new AutoDsmRpcError({
-            message: "Invalid or missing component-agents.json in template",
-            cause,
-          }),
-      });
-      const manifest = yield* Effect.try({
-        try: () => JSON.parse(raw) as ComponentAgentsManifest,
-        catch: (cause) =>
-          new AutoDsmRpcError({ message: "component-agents.json is not valid JSON", cause }),
+      const overlay = yield* Effect.sync((): ScannerOverlay | null => {
+        try {
+          const raw = fs.readFileSync(path.join(systemDir, "component-agents.json"), "utf8");
+          const parsed = JSON.parse(raw) as ComponentAgentsManifest;
+          if (!parsed || !Array.isArray(parsed.agents)) return null;
+          return { agents: parsed.agents };
+        } catch {
+          return null;
+        }
       });
 
-      if (!Array.isArray(manifest.agents) || manifest.agents.length === 0) {
+      const scanned = yield* Effect.try({
+        try: () =>
+          scanTemplateComponentAgents({
+            systemDir,
+            starterId: input.starterId,
+            overlay,
+          }),
+        catch: (cause) =>
+          new AutoDsmRpcError({ message: "Failed to scan template components", cause }),
+      });
+
+      if (scanned.length === 0) {
         return yield* new AutoDsmRpcError({
-          message: "component-agents.json must declare a non-empty agents array.",
+          message:
+            "Template scan produced no components. Ensure system/src/components/**/*.tsx exists with valid exports.",
         });
       }
+
+      const manifest: ComponentAgentsManifest = { agents: scanned };
 
       const createdAt = yield* Effect.map(DateTime.now, DateTime.formatIso);
       const displayName = titleForStarter(input.starterId, input.displayName);
@@ -362,6 +375,7 @@ const materializeWorkspaceCore = (
           threadId,
           title: agent.title,
           componentPath,
+          ...(agent.exportName?.trim() ? { exportName: agent.exportName.trim() } : {}),
           ...(agent.group?.trim() ? { group: agent.group.trim() } : {}),
         });
       }
@@ -376,6 +390,7 @@ const materializeWorkspaceCore = (
               componentPath: thread.componentPath,
               source: "starter" as const,
               createdAt,
+              ...(thread.exportName?.trim() ? { exportName: thread.exportName.trim() } : {}),
               ...(manifest.agents[index]?.group?.trim()
                 ? { group: manifest.agents[index]!.group!.trim() }
                 : {}),
@@ -397,8 +412,8 @@ const materializeWorkspaceCore = (
         systemPath: finalSystemDir,
         displayName,
         status: "ready" as const,
-        ownerSubject: null,
-        authProvider: null,
+        ownerSubject: input.ownerSubject?.trim() || null,
+        authProvider: input.authProvider?.trim() || null,
       };
       yield* logCreateWorkspacePhase("meta-write", input, { workspaceId });
       yield* Effect.tryPromise({

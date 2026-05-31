@@ -1696,6 +1696,41 @@ function applyEnvironmentShellEvent(
   }
 }
 
+/**
+ * Repoints an existing project's `cwd` without going through the orchestration
+ * shell stream. Used by the stale-staging-cwd recovery hook: when the server
+ * rejects a `.staging/` path, the frontend refetches workspace history (which
+ * skips staging entries and returns the FINAL `systemPath`) and uses this
+ * action to heal the project store in-place. No-op when the project isn't in
+ * the store yet — the next shell event will populate it normally.
+ */
+function setProjectCwd(
+  state: AppState,
+  environmentId: EnvironmentId,
+  projectId: ProjectId,
+  cwd: string,
+): AppState {
+  const environmentState = state.environmentStateById[environmentId];
+  const project = environmentState?.projectById[projectId];
+  if (!environmentState || !project || project.cwd === cwd) {
+    return state;
+  }
+  const nextProject: Project = { ...project, cwd };
+  return {
+    ...state,
+    environmentStateById: {
+      ...state.environmentStateById,
+      [environmentId]: {
+        ...environmentState,
+        projectById: {
+          ...environmentState.projectById,
+          [projectId]: nextProject,
+        },
+      },
+    },
+  };
+}
+
 export function applyOrchestrationEvents(
   state: AppState,
   events: ReadonlyArray<OrchestrationEvent>,
@@ -1957,6 +1992,7 @@ interface AppStore extends AppState {
     environmentId: EnvironmentId,
   ) => void;
   applyShellEvent: (event: OrchestrationShellStreamEvent, environmentId: EnvironmentId) => void;
+  setProjectCwd: (environmentId: EnvironmentId, projectId: ProjectId, cwd: string) => void;
   setError: (threadId: ThreadId, error: string | null) => void;
   setThreadBranch: (
     threadRef: ScopedThreadRef,
@@ -1981,6 +2017,8 @@ export const useStore = create<AppStore>((set) => ({
     set((state) => applyOrchestrationEvents(state, events, environmentId)),
   applyShellEvent: (event, environmentId) =>
     set((state) => applyShellEvent(state, event, environmentId)),
+  setProjectCwd: (environmentId, projectId, cwd) =>
+    set((state) => setProjectCwd(state, environmentId, projectId, cwd)),
   setError: (threadId, error) => set((state) => setError(state, threadId, error)),
   setThreadBranch: (threadRef, branch, worktreePath) =>
     set((state) => setThreadBranch(state, threadRef, branch, worktreePath)),

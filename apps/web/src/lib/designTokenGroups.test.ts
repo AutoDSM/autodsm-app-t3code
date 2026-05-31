@@ -7,6 +7,7 @@ import {
   EMPTY_TOKEN_DRAFT_FIELDS,
   groupTokensByCategory,
   normalizeTokenCategory,
+  resolveTokenCategory,
 } from "./designTokenGroups.ts";
 
 function token(id: string, category: string): AutoDsmBrandToken {
@@ -18,7 +19,9 @@ describe("normalizeTokenCategory", () => {
     expect(normalizeTokenCategory("Colors")).toBe("color");
     expect(normalizeTokenCategory("type")).toBe("typography");
     expect(normalizeTokenCategory("animation")).toBe("motion");
-    expect(normalizeTokenCategory("radius")).toBe("spacing");
+    expect(normalizeTokenCategory("radii")).toBe("radius");
+    expect(normalizeTokenCategory("shadows")).toBe("shadow");
+    expect(normalizeTokenCategory("icons")).toBe("icon");
   });
 
   it("falls back to spacing for unknown categories", () => {
@@ -26,8 +29,22 @@ describe("normalizeTokenCategory", () => {
   });
 });
 
+describe("resolveTokenCategory", () => {
+  it("routes legacy spacing radius tokens into radius", () => {
+    expect(
+      resolveTokenCategory({
+        id: "css-var:radius",
+        category: "spacing",
+        name: "radius",
+        value: "0.5rem",
+        sources: [],
+      }),
+    ).toBe("radius");
+  });
+});
+
 describe("groupTokensByCategory", () => {
-  it("always returns the four canonical groups in order", () => {
+  it("always returns the seven canonical groups in order", () => {
     const groups = groupTokensByCategory([]);
     expect(groups.map((g) => g.category)).toEqual([...DESIGN_TOKEN_CATEGORIES]);
   });

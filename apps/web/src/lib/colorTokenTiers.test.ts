@@ -1,13 +1,7 @@
 import type { AutoDsmBrandToken } from "@t3tools/contracts";
 import { describe, expect, it } from "vitest";
 
-import {
-  buildColorTokenScope,
-  classifyColorTier,
-  parseVarReference,
-  partitionColorsByTier,
-  resolveColorTokenValue,
-} from "./colorTokenTiers";
+import { buildColorTokenScope, parseVarReference, resolveColorTokenValue } from "./colorTokenTiers";
 
 function makeToken(
   overrides: Partial<AutoDsmBrandToken> & Pick<AutoDsmBrandToken, "id" | "value">,
@@ -45,25 +39,6 @@ describe("parseVarReference", () => {
     expect(parseVarReference("var(--)")).toBeNull();
     expect(parseVarReference("var(primary)")).toBeNull();
     expect(parseVarReference("var(--bad name)")).toBeNull();
-  });
-});
-
-describe("classifyColorTier", () => {
-  it("classifies direct values as global", () => {
-    expect(classifyColorTier(makeToken({ id: "t1", value: "#fff" }))).toBe("global");
-    expect(
-      classifyColorTier(makeToken({ id: "t2", value: "x", color: { light: "oklch(0.5 0 0)" } })),
-    ).toBe("global");
-  });
-  it("classifies var() values as semantic", () => {
-    expect(classifyColorTier(makeToken({ id: "primary", value: "var(--blue-500)" }))).toBe(
-      "semantic",
-    );
-    expect(
-      classifyColorTier(
-        makeToken({ id: "primary", value: "ignored", color: { light: "var(--blue-500)" } }),
-      ),
-    ).toBe("semantic");
   });
 });
 
@@ -163,23 +138,5 @@ describe("resolveColorTokenValue", () => {
       value: "#111",
       referenceName: "color-brand-500",
     });
-  });
-});
-
-describe("partitionColorsByTier", () => {
-  it("splits tokens into disjoint sets in insertion order", () => {
-    const tokens = [
-      makeToken({ id: "g1", value: "#111" }),
-      makeToken({ id: "s1", value: "var(--g1)" }),
-      makeToken({ id: "g2", value: "oklch(0.5 0.1 270)" }),
-      makeToken({ id: "s2", value: "var(--g2)" }),
-    ];
-    const { globals, semantics } = partitionColorsByTier(tokens);
-    expect(globals.map((t) => t.id)).toEqual(["g1", "g2"]);
-    expect(semantics.map((t) => t.id)).toEqual(["s1", "s2"]);
-  });
-
-  it("returns empty arrays for an empty input", () => {
-    expect(partitionColorsByTier([])).toEqual({ globals: [], semantics: [] });
   });
 });

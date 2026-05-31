@@ -14,6 +14,18 @@ const manifest: ComponentPreviewManifest = {
   diagnostics: [],
 };
 
+// fetchStatus is derived from isFetching so the mock matches the real TanStack
+// Query v5 shape that WebContentsView now reads (fetchStatus === "fetching" is
+// the only signal that distinguishes a disabled-but-pending query from one that
+// is actually in-flight).
+function withFetchStatus<T extends { isFetching: boolean }>(state: T) {
+  return {
+    ...state,
+    fetchStatus: state.isFetching ? "fetching" : "idle",
+    refetch: () => undefined,
+  };
+}
+
 let manifestQueryState = {
   isPending: false,
   isFetching: false,
@@ -35,12 +47,17 @@ vi.mock("@tanstack/react-query", () => ({
   useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => {
     const key = String(queryKey[0]);
     if (key === "component-preview-manifest") {
-      return manifestQueryState;
+      return withFetchStatus(manifestQueryState);
     }
     if (key.startsWith("component-preview-bundle") || key.includes("executeRenderPlan")) {
-      return bundleQueryState;
+      return withFetchStatus(bundleQueryState);
     }
-    return { isPending: false, isFetching: false, isError: false, data: { entries: [] } };
+    return withFetchStatus({
+      isPending: false,
+      isFetching: false,
+      isError: false,
+      data: { entries: [] },
+    });
   },
 }));
 
@@ -93,7 +110,10 @@ describe("WebContentsView product variant", () => {
 
     expect(html).toContain('data-preview-variant="product"');
     expect(html).not.toContain("Prompt: fix preview");
-    expect(html).not.toContain("Export");
+    // The dev export picker is a <select> element. Diagnostic overlays may
+    // include the word "Export" but never a <select>, so check for the picker
+    // itself rather than the substring.
+    expect(html).not.toContain("<select");
     expect(html).not.toContain("Screenshot");
   });
 

@@ -16,15 +16,24 @@ export const DESIGN_TOKEN_CATEGORIES = [
   "color",
   "typography",
   "spacing",
+  "radius",
+  "shadow",
   "motion",
+  "icon",
 ] as const satisfies readonly AutoDsmBrandTokenCategory[];
 
 export const DESIGN_TOKEN_CATEGORY_LABEL: Record<AutoDsmBrandTokenCategory, string> = {
   color: "Colors",
   typography: "Typography",
   spacing: "Spacing",
+  radius: "Radii",
+  shadow: "Shadows",
   motion: "Motion",
+  icon: "Icon",
 };
+
+const SPECIAL_CATEGORY_NAME_RE =
+  /(?:^|-)(?:radius|rounded|shadow|elevation|box-shadow|icon|glyph)\b/;
 
 /** Map a stored (possibly legacy/free-form) category onto a canonical one. */
 export function normalizeTokenCategory(raw: string): AutoDsmBrandTokenCategory {
@@ -42,9 +51,51 @@ export function normalizeTokenCategory(raw: string): AutoDsmBrandTokenCategory {
     case "animation":
     case "transition":
       return "motion";
+    case "radius":
+    case "radii":
+    case "rounded":
+      return "radius";
+    case "shadow":
+    case "shadows":
+    case "elevation":
+      return "shadow";
+    case "icon":
+    case "icons":
+    case "glyph":
+      return "icon";
     default:
       return "spacing";
   }
+}
+
+/** Infer category from token name when stored category is legacy or ambiguous. */
+export function resolveTokenCategory(token: AutoDsmBrandToken): AutoDsmBrandTokenCategory {
+  const stored = normalizeTokenCategory(token.category);
+  const name = (token.name ?? token.id).toLowerCase();
+  if (name === "icon-library" || SPECIAL_CATEGORY_NAME_RE.test(name)) {
+    if (/(?:^|-)(?:radius|rounded)\b/.test(name)) {
+      return "radius";
+    }
+    if (/(?:^|-)(?:shadow|elevation|box-shadow)\b/.test(name)) {
+      return "shadow";
+    }
+    if (/(?:^|-)(?:icon|glyph)\b/.test(name) || name === "icon-library") {
+      return "icon";
+    }
+  }
+  if (stored !== "spacing") {
+    return stored;
+  }
+  if (/(?:^|-)(?:radius|rounded)\b/.test(name)) {
+    return "radius";
+  }
+  if (/(?:^|-)(?:shadow|elevation|box-shadow)\b/.test(name)) {
+    return "shadow";
+  }
+  if (/(?:^|-)(?:icon|glyph)\b/.test(name) || name === "icon-library") {
+    return "icon";
+  }
+  return stored;
 }
 
 export interface DesignTokenGroup {
@@ -52,7 +103,7 @@ export interface DesignTokenGroup {
   readonly tokens: readonly AutoDsmBrandToken[];
 }
 
-/** Group tokens into the four canonical categories — always returns all four. */
+/** Group tokens into the seven canonical categories — always returns all seven. */
 export function groupTokensByCategory(
   tokens: readonly AutoDsmBrandToken[],
 ): readonly DesignTokenGroup[] {
@@ -60,7 +111,7 @@ export function groupTokensByCategory(
     DESIGN_TOKEN_CATEGORIES.map((category) => [category, []]),
   );
   for (const token of tokens) {
-    buckets.get(normalizeTokenCategory(token.category))?.push(token);
+    buckets.get(resolveTokenCategory(token))?.push(token);
   }
   return DESIGN_TOKEN_CATEGORIES.map((category) => ({
     category,

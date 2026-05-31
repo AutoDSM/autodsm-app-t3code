@@ -1,6 +1,277 @@
 {
   "agents": [
-    { "title": "Utility strip", "componentPath": "/src/components/UtilityStrip.tsx" },
-    { "title": "Gradient heading", "componentPath": "/src/components/GradientHeading.tsx" }
+    {
+      "title": "Gradient heading",
+      "componentPath": "/src/components/GradientHeading.tsx",
+      "group": "Display"
+    },
+    {
+      "title": "Accordion",
+      "componentPath": "/src/components/TwAccordion.tsx",
+      "group": "Display",
+      "exportName": "TwAccordion"
+    },
+    {
+      "title": "Alert dialog",
+      "componentPath": "/src/components/TwAlertDialog.tsx",
+      "group": "Overlays",
+      "exportName": "TwAlertDialog"
+    },
+    {
+      "title": "Aspect ratio",
+      "componentPath": "/src/components/TwAspectRatio.tsx",
+      "group": "Layout",
+      "exportName": "TwAspectRatio"
+    },
+    {
+      "title": "Avatar",
+      "componentPath": "/src/components/TwAvatar.tsx",
+      "group": "Display",
+      "exportName": "TwAvatar"
+    },
+    {
+      "title": "Badge",
+      "componentPath": "/src/components/TwBadge.tsx",
+      "group": "Display",
+      "exportName": "TwBadge"
+    },
+    {
+      "title": "Breadcrumb",
+      "componentPath": "/src/components/TwBreadcrumb.tsx",
+      "group": "Navigation"
+    },
+    {
+      "title": "Button",
+      "componentPath": "/src/components/TwButton.tsx",
+      "group": "Buttons",
+      "exportName": "TwButton"
+    },
+    {
+      "title": "Calendar",
+      "componentPath": "/src/components/TwCalendar.tsx",
+      "group": "Forms"
+    },
+    {
+      "title": "Card",
+      "componentPath": "/src/components/TwCard.tsx",
+      "group": "Cards",
+      "exportName": "TwCard"
+    },
+    {
+      "title": "Carousel",
+      "componentPath": "/src/components/TwCarousel.tsx",
+      "group": "Display"
+    },
+    {
+      "title": "Checkbox",
+      "componentPath": "/src/components/TwCheckbox.tsx",
+      "group": "Forms",
+      "exportName": "TwCheckbox"
+    },
+    {
+      "title": "Collapsible",
+      "componentPath": "/src/components/TwCollapsible.tsx",
+      "group": "Display"
+    },
+    {
+      "title": "Combobox",
+      "componentPath": "/src/components/TwCombobox.tsx",
+      "group": "Forms"
+    },
+    {
+      "title": "Command",
+      "componentPath": "/src/components/TwCommand.tsx",
+      "group": "Overlays"
+    },
+    {
+      "title": "Context menu",
+      "componentPath": "/src/components/TwContextMenu.tsx",
+      "group": "Overlays"
+    },
+    {
+      "title": "Data table",
+      "componentPath": "/src/components/TwDataTable.tsx",
+      "group": "Data"
+    },
+    {
+      "title": "Date picker",
+      "componentPath": "/src/components/TwDatePicker.tsx",
+      "group": "Forms"
+    },
+    {
+      "title": "Dialog",
+      "componentPath": "/src/components/TwDialog.tsx",
+      "group": "Overlays",
+      "exportName": "TwDialog"
+    },
+    {
+      "title": "Drawer",
+      "componentPath": "/src/components/TwDrawer.tsx",
+      "group": "Overlays",
+      "exportName": "TwDrawer"
+    },
+    {
+      "title": "Dropdown menu",
+      "componentPath": "/src/components/TwDropdownMenu.tsx",
+      "group": "Overlays",
+      "exportName": "TwDropdownMenu"
+    },
+    {
+      "title": "Form",
+      "componentPath": "/src/components/TwForm.tsx",
+      "group": "Forms"
+    },
+    {
+      "title": "Hover card",
+      "componentPath": "/src/components/TwHoverCard.tsx",
+      "group": "Overlays"
+    },
+    {
+      "title": "Input",
+      "componentPath": "/src/components/TwInput.tsx",
+      "group": "Forms",
+      "exportName": "TwInput"
+    },
+    {
+      "title": "Input OTP",
+      "componentPath": "/src/components/TwInputOtp.tsx",
+      "group": "Forms",
+      "exportName": "TwInputOtp"
+    },
+    {
+      "title": "Label",
+      "componentPath": "/src/components/TwLabel.tsx",
+      "group": "Forms"
+    },
+    {
+      "title": "Menubar",
+      "componentPath": "/src/components/TwMenubar.tsx",
+      "group": "Navigation"
+    },
+    {
+      "title": "Navigation menu",
+      "componentPath": "/src/components/TwNavigationMenu.tsx",
+      "group": "Navigation"
+    },
+    {
+      "title": "Pagination",
+      "componentPath": "/src/components/TwPagination.tsx",
+      "group": "Navigation",
+      "exportName": "TwPagination"
+    },
+    {
+      "title": "Popover",
+      "componentPath": "/src/components/TwPopover.tsx",
+      "group": "Overlays"
+    },
+    {
+      "title": "Progress",
+      "componentPath": "/src/components/TwProgress.tsx",
+      "group": "Feedback",
+      "exportName": "TwProgress"
+    },
+    {
+      "title": "Radio group",
+      "componentPath": "/src/components/TwRadioGroup.tsx",
+      "group": "Forms",
+      "exportName": "TwRadioGroup"
+    },
+    {
+      "title": "Resizable",
+      "componentPath": "/src/components/TwResizable.tsx",
+      "group": "Layout"
+    },
+    {
+      "title": "Scroll area",
+      "componentPath": "/src/components/TwScrollArea.tsx",
+      "group": "Layout"
+    },
+    {
+      "title": "Select",
+      "componentPath": "/src/components/TwSelect.tsx",
+      "group": "Forms",
+      "exportName": "TwSelect"
+    },
+    {
+      "title": "Separator",
+      "componentPath": "/src/components/TwSeparator.tsx",
+      "group": "Layout",
+      "exportName": "TwSeparator"
+    },
+    {
+      "title": "Sheet",
+      "componentPath": "/src/components/TwSheet.tsx",
+      "group": "Overlays",
+      "exportName": "TwSheet"
+    },
+    {
+      "title": "Sidebar",
+      "componentPath": "/src/components/TwSidebar.tsx",
+      "group": "Navigation"
+    },
+    {
+      "title": "Skeleton",
+      "componentPath": "/src/components/TwSkeleton.tsx",
+      "group": "Feedback",
+      "exportName": "TwSkeleton"
+    },
+    {
+      "title": "Slider",
+      "componentPath": "/src/components/TwSlider.tsx",
+      "group": "Forms",
+      "exportName": "TwSlider"
+    },
+    {
+      "title": "Sonner",
+      "componentPath": "/src/components/TwSonner.tsx",
+      "group": "Feedback"
+    },
+    {
+      "title": "Switch",
+      "componentPath": "/src/components/TwSwitch.tsx",
+      "group": "Forms",
+      "exportName": "TwSwitch"
+    },
+    {
+      "title": "Table",
+      "componentPath": "/src/components/TwTable.tsx",
+      "group": "Data",
+      "exportName": "TwTable"
+    },
+    {
+      "title": "Tabs",
+      "componentPath": "/src/components/TwTabs.tsx",
+      "group": "Navigation",
+      "exportName": "TwTabs"
+    },
+    {
+      "title": "Textarea",
+      "componentPath": "/src/components/TwTextarea.tsx",
+      "group": "Forms",
+      "exportName": "TwTextarea"
+    },
+    {
+      "title": "Toggle",
+      "componentPath": "/src/components/TwToggle.tsx",
+      "group": "Buttons",
+      "exportName": "TwToggle"
+    },
+    {
+      "title": "Toggle group",
+      "componentPath": "/src/components/TwToggleGroup.tsx",
+      "group": "Buttons",
+      "exportName": "TwToggleGroup"
+    },
+    {
+      "title": "Tooltip",
+      "componentPath": "/src/components/TwTooltip.tsx",
+      "group": "Overlays",
+      "exportName": "TwTooltip"
+    },
+    {
+      "title": "Utility strip",
+      "componentPath": "/src/components/UtilityStrip.tsx",
+      "group": "Display"
+    }
   ]
 }

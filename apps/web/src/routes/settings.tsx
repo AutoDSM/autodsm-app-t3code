@@ -108,6 +108,7 @@ export const Route = createFileRoute("/settings")({
     if (
       context.authGateState.status !== "authenticated" &&
       context.authGateState.status !== "hosted-static" &&
+      !isElectron &&
       !shouldSkipPairingRedirect(
         context.authGateState.status === "requires-auth" ? context.authGateState.auth : undefined,
       )

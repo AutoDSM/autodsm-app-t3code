@@ -119,6 +119,9 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     ipcRenderer.invoke(IpcChannels.COMPONENT_PREVIEW_PRIME_CHANNEL, input),
   captureComponentPreview: (input) =>
     ipcRenderer.invoke(IpcChannels.COMPONENT_PREVIEW_CAPTURE_CHANNEL, input),
+  startSupabaseOAuth: (input) =>
+    ipcRenderer.invoke(IpcChannels.SUPABASE_OAUTH_START_CHANNEL, input),
+  cancelSupabaseOAuth: () => ipcRenderer.invoke(IpcChannels.SUPABASE_OAUTH_CANCEL_CHANNEL),
   onMenuAction: (listener) => {
     const wrappedListener = (_event: Electron.IpcRendererEvent, action: unknown) => {
       if (typeof action !== "string") return;

@@ -10,7 +10,7 @@ export function desktopDevProcessMarkers(desktopDir) {
   return [
     `--t3code-dev-root=${desktopDir}`,
     `${desktopDir}/dist-electron/main.cjs`,
-    `${desktopDir}/.electron-runtime/T3 Code (Dev).app/Contents/MacOS/Electron`,
+    `${desktopDir}/.electron-runtime/AutoDSM (Dev).app/Contents/MacOS/Electron`,
   ];
 }
 

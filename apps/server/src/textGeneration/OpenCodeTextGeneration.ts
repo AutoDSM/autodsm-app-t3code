@@ -20,6 +20,7 @@ import { resolveAttachmentPath } from "../attachmentStore.ts";
 import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
+  buildDesignBriefProposalPrompt,
   buildPrContentPrompt,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
@@ -160,7 +161,8 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateDesignBriefProposal";
   }) =>
     sharedServerMutex.withPermit(
       Effect.gen(function* () {
@@ -270,7 +272,8 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "generateDesignBriefProposal";
     readonly cwd: string;
     readonly prompt: string;
     readonly outputSchemaJson: S;
@@ -302,7 +305,7 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
               : {}),
           });
           const session = await client.session.create({
-            title: `T3 Code ${input.operation}`,
+            title: `AutoDSM ${input.operation}`,
             permission: [{ permission: "*", pattern: "*", action: "deny" }],
           });
           if (!session.data) {
@@ -458,10 +461,29 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
     };
   });
 
+  const generateDesignBriefProposal: TextGenerationShape["generateDesignBriefProposal"] = Effect.fn(
+    "OpenCodeTextGeneration.generateDesignBriefProposal",
+  )(function* (input) {
+    const { prompt, outputSchema } = buildDesignBriefProposalPrompt({
+      briefMarkdown: input.briefMarkdown,
+      currentTokens: input.currentTokens,
+    });
+    const generated = yield* runOpenCodeJson({
+      operation: "generateDesignBriefProposal",
+      cwd: input.cwd,
+      prompt,
+      outputSchemaJson: outputSchema,
+      modelSelection: input.modelSelection,
+    });
+
+    return generated;
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    generateDesignBriefProposal,
   } satisfies TextGenerationShape;
 });

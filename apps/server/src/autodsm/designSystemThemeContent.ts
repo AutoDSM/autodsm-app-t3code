@@ -5,8 +5,8 @@
  */
 import type { AutoDsmWorkspaceStarterId } from "@t3tools/contracts";
 
-/** Matches AutoDSM shell `apps/web/src/index.css` — `--primary` / `--ring`. */
-const SYSTEM_PRIMARY = "#830cfa";
+/** Matches the AutoDSM brand tint (`--brand` in `apps/web/src/index.css`). */
+const SYSTEM_PRIMARY = "#7a1fd8";
 
 /** Canonical shadcn-style semantic CSS variables (light + dark). */
 export const SHADCN_THEME_CSS = `:root {
@@ -30,6 +30,13 @@ export const SHADCN_THEME_CSS = `:root {
   --input: oklch(0.92 0.004 286.32);
   --ring: ${SYSTEM_PRIMARY};
   --radius: 0.625rem;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+  --icon-size-sm: 1rem;
+  --icon-size-md: 1.25rem;
+  --icon-size-lg: 1.5rem;
+  --icon-stroke-width: 2;
   --font-sans: ui-sans-serif, system-ui, sans-serif;
   --font-size-base: 16px;
   --letter-spacing-normal: 0em;
@@ -108,6 +115,13 @@ export const MODERN_STARTER_THEME_CSS = `@import "tailwindcss";
   --muted-foreground: #64748b;
   --border: #e2e8f0;
   --radius: 0.5rem;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+  --icon-size-sm: 1rem;
+  --icon-size-md: 1.25rem;
+  --icon-size-lg: 1.5rem;
+  --icon-stroke-width: 2;
   --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
   --font-size-base: 16px;
   --space-2: 0.5rem;

@@ -8,8 +8,9 @@ import { useNavigate } from "@tanstack/react-router";
 
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { readEnvironmentApi } from "~/environmentApi";
-import { usePrimaryEnvironmentId } from "~/environments/primary";
+import { usePrimaryEnvironmentId, ensurePrimaryEnvironmentReady } from "~/environments/primary";
 import { loadingLabelForStarter } from "~/lib/autoDsmOnboarding";
+import { estimateAutoDsmEta, recordAutoDsmInstallTiming } from "~/lib/autoDsmEtaEstimator";
 import {
   createWorkspaceInflightKey,
   clearCreateWorkspaceSessionCache,
@@ -24,11 +25,14 @@ import {
 } from "~/lib/autoDsmDesignSystemPresence";
 import { formatUnknownErrorMessage } from "~/lib/formatUnknownErrorMessage";
 import { normalizeSidebarComponentCatalogPath } from "~/lib/srcComponentsWorkspacePaths";
+import { waitForOnboardingEnvironmentApi } from "~/lib/waitForOnboardingEnvironment";
 import {
   waitForOrchestrationThreadInStore,
   waitForProjectCwdInStore,
 } from "~/lib/waitForOrchestrationThread";
 import { cn } from "~/lib/utils";
+import { getSupabaseBrowserClient } from "~/lib/supabase/browserClient";
+import { recordAutoDsmTelemetry } from "~/lib/supabase/telemetry";
 import { useUiStateStore } from "~/uiStateStore";
 
 import { AutoDsmWatermark } from "../AutoDsmWatermark";
@@ -43,6 +47,8 @@ const STAGES = [
 ] as const;
 
 const STAGE_ADVANCE_MS = 1200;
+const CREATE_WORKSPACE_TIMEOUT_MS = 120_000;
+const ENVIRONMENT_READY_TIMEOUT_MS = 120_000;
 
 export function AutoDsmOnboardingLoading(): JSX.Element {
   const navigate = useNavigate();
@@ -50,16 +56,21 @@ export function AutoDsmOnboardingLoading(): JSX.Element {
   const complete = useUiStateStore((s) => s.completeAutodsmOnboarding);
   const mergePaths = useUiStateStore((s) => s.mergeAutoDsmThreadComponentPaths);
   const setWorkspaceRef = useUiStateStore((s) => s.setAutoDsmWorkspaceProjectRef);
+  const setPendingDesignBrief = useUiStateStore((s) => s.setPendingDesignBriefMarkdown);
   const starterId = useUiStateStore((s) => s.autodsmOnboarding.starterId);
   const designSystemName = useUiStateStore((s) => s.autodsmOnboarding.designSystemName);
+  const authProvider = useUiStateStore((s) => s.autodsmOnboarding.fakeAuthProvider);
   const [stageIndex, setStageIndex] = useState(0);
   const [fatalError, setFatalError] = useState<string | null>(null);
+  const [environmentWaiting, setEnvironmentWaiting] = useState(false);
   const [showResetWorkspace, setShowResetWorkspace] = useState(false);
   const [isResettingWorkspace, setIsResettingWorkspace] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
+  const [elapsedMs, setElapsedMs] = useState(0);
   const runGenerationRef = useRef(0);
   const requestIdRef = useRef<string | null>(null);
   const workspaceCreateCompletedRef = useRef(false);
+  const startedAtRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (workspaceCreateCompletedRef.current) {
@@ -71,14 +82,27 @@ export function AutoDsmOnboardingLoading(): JSX.Element {
       return;
     }
     if (!primaryEnvironmentId) {
+      setEnvironmentWaiting(true);
+      void ensurePrimaryEnvironmentReady().finally(() => {
+        if (!cancelled && runGeneration === runGenerationRef.current) {
+          setEnvironmentWaiting(false);
+        }
+      });
       return;
     }
+    setEnvironmentWaiting(false);
 
     const runGeneration = ++runGenerationRef.current;
     let cancelled = false;
+    startedAtRef.current = Date.now();
+    setElapsedMs(0);
     const stageTimer = window.setInterval(() => {
       setStageIndex((i) => Math.min(i + 1, STAGES.length - 2));
     }, STAGE_ADVANCE_MS);
+    const elapsedTimer = window.setInterval(() => {
+      if (startedAtRef.current === null) return;
+      setElapsedMs(Date.now() - startedAtRef.current);
+    }, 500);
 
     const displayName = designSystemName?.trim() || undefined;
     if (requestIdRef.current === null) {
@@ -96,10 +120,25 @@ export function AutoDsmOnboardingLoading(): JSX.Element {
     const inflightKey = createWorkspaceInflightKey(starterId, primaryEnvironmentId, displayName);
 
     void (async () => {
-      const api = readEnvironmentApi(primaryEnvironmentId);
+      recordAutoDsmTelemetry("autodsm.onboarding.step", {
+        step: "loading",
+        outcome: "started",
+        starterId,
+      });
+
+      const api = await waitForOnboardingEnvironmentApi(primaryEnvironmentId, {
+        timeoutMs: ENVIRONMENT_READY_TIMEOUT_MS,
+      });
       if (!api) {
         if (!cancelled && runGeneration === runGenerationRef.current) {
-          setFatalError("Connect to your workspace environment, then try again.");
+          setFatalError(
+            "Could not connect to the workspace environment. Check that AutoDSM is running and try again.",
+          );
+          recordAutoDsmTelemetry("autodsm.onboarding.step", {
+            step: "loading",
+            outcome: "environment_unavailable",
+            starterId,
+          });
           toastManager.add(
             stackedThreadToast({
               type: "error",
@@ -112,22 +151,63 @@ export function AutoDsmOnboardingLoading(): JSX.Element {
       }
 
       try {
-        const result = await runCreateWorkspaceWithTransportRetry(inflightKey, () =>
+        const supabaseUserId =
+          (await getSupabaseBrowserClient()?.auth.getUser())?.data.user?.id ?? undefined;
+        const createWorkspacePromise = runCreateWorkspaceWithTransportRetry(inflightKey, () =>
           api.autodsm.createWorkspace({
             starterId,
             environmentId: primaryEnvironmentId,
             requestId,
             ...(displayName ? { displayName } : {}),
+            ...(supabaseUserId ? { ownerSubject: supabaseUserId } : {}),
+            ...(authProvider ? { authProvider } : {}),
           }),
         );
+        const timeoutPromise = new Promise<never>((_resolve, reject) => {
+          setTimeout(() => {
+            reject(new Error("Workspace creation timed out. Try again."));
+          }, CREATE_WORKSPACE_TIMEOUT_MS);
+        });
+        const result = await Promise.race([createWorkspacePromise, timeoutPromise]);
         if (cancelled || runGeneration !== runGenerationRef.current) {
           return;
         }
 
         window.clearInterval(stageTimer);
+        window.clearInterval(elapsedTimer);
         setStageIndex(STAGES.length - 1);
 
         workspaceCreateCompletedRef.current = true;
+        if (startedAtRef.current !== null) {
+          recordAutoDsmInstallTiming(starterId, Date.now() - startedAtRef.current);
+        }
+        recordAutoDsmTelemetry("autodsm.workspace.create.completed", {
+          starterId,
+          durationMs: startedAtRef.current !== null ? Date.now() - startedAtRef.current : 0,
+        });
+        recordAutoDsmTelemetry("autodsm.onboarding.step", {
+          step: "loading",
+          outcome: "completed",
+          starterId,
+        });
+
+        const pendingBrief = useUiStateStore.getState().pendingDesignBriefMarkdown?.trim();
+        if (pendingBrief) {
+          try {
+            await api.autodsm.uploadDesignBrief({
+              cwd: result.cwd,
+              markdown: pendingBrief,
+            });
+            setPendingDesignBrief(null);
+          } catch (briefError) {
+            recordAutoDsmTelemetry("autodsm.onboarding.step", {
+              step: "loading",
+              outcome: "brief_upload_failed",
+              starterId,
+              error: formatUnknownErrorMessage(briefError, "Brief upload failed."),
+            });
+          }
+        }
 
         const paths: Record<string, string> = {};
         for (const row of result.threads) {
@@ -181,6 +261,7 @@ export function AutoDsmOnboardingLoading(): JSX.Element {
         }
       } catch (error) {
         window.clearInterval(stageTimer);
+        window.clearInterval(elapsedTimer);
         if (cancelled || runGeneration !== runGenerationRef.current) {
           return;
         }
@@ -192,7 +273,8 @@ export function AutoDsmOnboardingLoading(): JSX.Element {
               stackedThreadToast({
                 type: "success",
                 title: "Design system already exists",
-                description: "Opening your existing workspace.",
+                description:
+                  "Opening your existing workspace. If components look out of date, click Resync from template in the Components workspace.",
               }),
             );
             complete();
@@ -208,6 +290,16 @@ export function AutoDsmOnboardingLoading(): JSX.Element {
           error,
           "Workspace creation failed. Please retry.",
         );
+        recordAutoDsmTelemetry("autodsm.workspace.create.failed", {
+          starterId,
+          error: message,
+        });
+        recordAutoDsmTelemetry("autodsm.onboarding.step", {
+          step: "loading",
+          outcome: "failed",
+          starterId,
+          error: message,
+        });
         setFatalError(message);
         toastManager.add(
           stackedThreadToast({
@@ -222,6 +314,7 @@ export function AutoDsmOnboardingLoading(): JSX.Element {
     return () => {
       cancelled = true;
       window.clearInterval(stageTimer);
+      window.clearInterval(elapsedTimer);
     };
   }, [
     complete,
@@ -232,6 +325,7 @@ export function AutoDsmOnboardingLoading(): JSX.Element {
     starterId,
     designSystemName,
     retryNonce,
+    setPendingDesignBrief,
   ]);
 
   const handleResetWorkspace = () => {
@@ -243,7 +337,9 @@ export function AutoDsmOnboardingLoading(): JSX.Element {
     const inflightKey = createWorkspaceInflightKey(starterId, primaryEnvironmentId, displayName);
     const api = readEnvironmentApi(primaryEnvironmentId);
     if (!api) {
-      setFatalError("Connect to your workspace environment, then try again.");
+      setFatalError(
+        "Could not connect to the workspace environment. Check that AutoDSM is running and try again.",
+      );
       return;
     }
 
@@ -282,7 +378,23 @@ export function AutoDsmOnboardingLoading(): JSX.Element {
     })();
   };
 
+  const handleRetry = (): void => {
+    setFatalError(null);
+    setShowResetWorkspace(false);
+    setStageIndex(0);
+    workspaceCreateCompletedRef.current = false;
+    setRetryNonce((value) => value + 1);
+  };
+
   const headline = loadingLabelForStarter(starterId);
+  const eta =
+    starterId && !fatalError
+      ? estimateAutoDsmEta({
+          starterId,
+          elapsedMs,
+          progressFraction: stageIndex / Math.max(1, STAGES.length - 1),
+        })
+      : null;
 
   return (
     <AutoDsmOnboardingShell>
@@ -293,12 +405,17 @@ export function AutoDsmOnboardingLoading(): JSX.Element {
           <p className="text-sm text-muted-foreground">
             {fatalError
               ? fatalError
-              : !primaryEnvironmentId
-                ? "Waiting for environment…"
+              : environmentWaiting || !primaryEnvironmentId
+                ? "Connecting to environment…"
                 : starterId
                   ? STAGES[Math.min(stageIndex, STAGES.length - 1)]
                   : "…"}
           </p>
+          {eta?.visible ? (
+            <p className="text-xs text-muted-foreground/80" aria-live="polite">
+              About {Math.max(1, Math.round(eta.remainingSeconds))}s remaining
+            </p>
+          ) : null}
         </div>
         <div className="flex w-full max-w-xs gap-1">
           {STAGES.map((label, i) => (
@@ -311,6 +428,11 @@ export function AutoDsmOnboardingLoading(): JSX.Element {
             />
           ))}
         </div>
+        {fatalError && !showResetWorkspace ? (
+          <Button onClick={handleRetry} type="button">
+            Retry
+          </Button>
+        ) : null}
         {showResetWorkspace ? (
           <Button disabled={isResettingWorkspace} onClick={handleResetWorkspace} type="button">
             {isResettingWorkspace ? "Resetting workspace…" : "Reset workspace"}

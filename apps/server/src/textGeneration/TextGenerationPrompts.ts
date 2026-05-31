@@ -216,3 +216,137 @@ export function buildThreadTitlePrompt(input: ThreadTitlePromptInput) {
 
   return { prompt, outputSchema };
 }
+
+// ---------------------------------------------------------------------------
+// Design brief proposal (AutoDSM — `design.md` → token operations)
+// ---------------------------------------------------------------------------
+
+export interface DesignBriefProposalPromptToken {
+  readonly category: string;
+  readonly name: string;
+  readonly value: string;
+}
+
+export interface DesignBriefProposalPromptInput {
+  readonly briefMarkdown: string;
+  readonly currentTokens: ReadonlyArray<DesignBriefProposalPromptToken>;
+}
+
+/**
+ * Output schema for `proposeDesignBriefOperations`. Loose by design — the
+ * design-brief proposer re-validates each operation against the canonical
+ * `AutoDsmBrandTokenDraft` / `AutoDsmBrandTokenPatch` schemas downstream, and
+ * drops any that fail. Keeping this permissive avoids the LLM tripping over
+ * Effect Schema's `TrimmedNonEmptyString` requirements at the CLI boundary.
+ */
+const DesignBriefProposalOperationSchema = Schema.Struct({
+  kind: Schema.Literals(["add", "update", "remove"]),
+  category: Schema.Literals([
+    "color",
+    "typography",
+    "spacing",
+    "radius",
+    "shadow",
+    "motion",
+    "icon",
+  ]),
+  tokenName: Schema.String,
+  rationale: Schema.optional(Schema.String),
+  value: Schema.optional(Schema.String),
+  color: Schema.optional(
+    Schema.Struct({
+      light: Schema.optional(Schema.String),
+      dark: Schema.optional(Schema.String),
+    }),
+  ),
+  typography: Schema.optional(
+    Schema.Struct({
+      fontFamily: Schema.optional(Schema.String),
+      fontSize: Schema.optional(Schema.String),
+      lineHeight: Schema.optional(Schema.String),
+      fontWeight: Schema.optional(Schema.String),
+      letterSpacing: Schema.optional(Schema.String),
+    }),
+  ),
+});
+export type DesignBriefProposalOperationDraft = typeof DesignBriefProposalOperationSchema.Type;
+
+export const DesignBriefProposalSchema = Schema.Struct({
+  summary: Schema.String,
+  operations: Schema.Array(DesignBriefProposalOperationSchema),
+});
+export type DesignBriefProposalDraft = typeof DesignBriefProposalSchema.Type;
+
+export function buildDesignBriefProposalPrompt(input: DesignBriefProposalPromptInput): {
+  prompt: string;
+  outputSchema: typeof DesignBriefProposalSchema;
+} {
+  const tokenRows =
+    input.currentTokens.length === 0
+      ? "(no tokens defined yet — this is a fresh design system)"
+      : input.currentTokens.map((t) => `${t.category} | ${t.name} | ${t.value}`).join("\n");
+
+  const prompt = [
+    "You are a meticulous design-token extractor for AutoDSM.",
+    "Read the entire brand brief carefully BEFORE emitting any operation. The brief",
+    "may be an editorial-length document (multi-section, with named scales and",
+    "hierarchy tables). Your goal is to produce a complete, faithful set of",
+    "atomic design tokens that reflects the brief's full system.",
+    "",
+    "Input: a freeform brand brief (markdown) plus the current design-token table.",
+    "Output a JSON object with keys: summary, operations.",
+    "",
+    "Rules:",
+    "- summary: 2–3 sentences. Describe the overall aesthetic direction (palette mood,",
+    "  typographic voice, surface rhythm). If the brief defines named components",
+    "  (e.g. `button-primary`, `feature-card`, `callout-card-coral`), note in the",
+    "  summary that component-level descriptors were read and skipped — the token",
+    "  store is atomic-only.",
+    "- operations[]: { kind: 'add'|'update'|'remove', category, tokenName, rationale?, value?, color?, typography? }",
+    "- Prefer `update` over `add` when a token already exists with the same (category, tokenName, case-insensitive).",
+    "- NEVER change a token's category — if a token needs to move categories, emit a `remove` + `add`.",
+    "- Only propose `remove` when the brief explicitly contradicts an existing token.",
+    "- For `add` and `update`: provide `value` (CSS-valid string) for any category, plus",
+    "  `color.{light,dark}` for color tokens with theme variants, and",
+    "  `typography.{fontFamily,fontSize,lineHeight,fontWeight,letterSpacing}` for typography tokens.",
+    "- Color values must be valid CSS color expressions (hex, rgb, rgba, hsl, oklch, etc.).",
+    "- Use category literals: color, typography, spacing, radius, shadow, motion, icon.",
+    "- Preserve naming exactly as the brief writes it (kebab-case names like `primary-active`,",
+    "  `surface-card`, `on-dark-soft`, `display-xl`, `title-md`, `caption-uppercase`).",
+    "- Cap output at 120 operations. The cap is intentionally generous so a complete",
+    "  system fits — do NOT trim the list to be conservative.",
+    "- If the brief is empty or contains no aesthetic guidance, return an empty operations",
+    "  array with a short summary noting that.",
+    "",
+    "Per-category extraction guidance:",
+    "- COLOR: extract every named color in the brief, including sub-groups (Brand & Accent,",
+    "  Surface, Text, Semantic). Do not collapse near-duplicates — `surface-card`,",
+    "  `surface-cream-strong`, `surface-soft` are distinct tokens even if visually close.",
+    "  When the brief gives only one hex, set `value` to that hex. When the brief implies",
+    "  a light/dark pair, use `color.light` / `color.dark`.",
+    "- TYPOGRAPHY: produce one token per row of any Hierarchy table or named scale",
+    "  (`display-xl`, `display-lg`, `display-md`, `display-sm`, `title-lg`, `title-md`,",
+    "  `title-sm`, `body-md`, `body-sm`, `caption`, `caption-uppercase`, `code`, `button`,",
+    "  `nav-link`, etc.). Populate `fontFamily`, `fontSize`, `fontWeight`, `lineHeight`,",
+    "  and `letterSpacing` whenever the brief states them. Include `px` units on sizes.",
+    "- SPACING: extract every named scale step the brief lists (xxs / xs / sm / md / lg /",
+    "  xl / xxl / section / etc.). Use the `px` value the brief states.",
+    "- RADIUS: extract every named scale step (xs / sm / md / lg / xl / pill / full).",
+    "- SHADOW / MOTION / ICON: only emit ops when the brief explicitly defines them.",
+    "",
+    "What NOT to extract:",
+    "- Named components like `button-primary`, `feature-card`, `cta-band-coral`,",
+    "  `callout-card-coral`, `top-nav`, `footer`, etc. These are out of scope for the",
+    "  atomic token store. Acknowledge them in `summary` instead of emitting ops.",
+    "- Do's / Don'ts narrative, Responsive Behavior tables, Iteration Guide — read for",
+    "  context but do not emit token ops from them.",
+    "",
+    "Brand brief:",
+    limitSection(input.briefMarkdown, 96_000),
+    "",
+    "Current tokens (category | name | value):",
+    limitSection(tokenRows, 12_000),
+  ].join("\n");
+
+  return { prompt, outputSchema: DesignBriefProposalSchema };
+}

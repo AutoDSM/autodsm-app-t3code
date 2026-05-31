@@ -65,8 +65,9 @@ export function AutoDsmOnboardingBuildMethod(): JSX.Element {
               void navigate({ to: "/onboarding/library", replace: true });
               return;
             }
+            // Scratch path: auto-set starter and converge on the shared brief page.
             patch({ starterId: "modern-starter" });
-            void navigate({ to: "/onboarding/loading", replace: true });
+            void navigate({ to: "/onboarding/brief", replace: true });
           }}
           type="button"
         >

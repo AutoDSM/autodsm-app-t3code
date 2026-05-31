@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useCanGoBack, useNavigate } from "@tanstack/react-router";
 
+import { isElectron } from "~/env";
 import {
   SidebarContent,
   SidebarFooter,
@@ -71,7 +72,9 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
       <SidebarContent className="overflow-x-hidden">
         <SidebarGroup className="px-2 py-3">
           <SidebarMenu>
-            {SETTINGS_NAV_ITEMS.map((item) => {
+            {SETTINGS_NAV_ITEMS.filter(
+              (item) => !(isElectron && item.to === "/settings/connections"),
+            ).map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.to;
               return (
