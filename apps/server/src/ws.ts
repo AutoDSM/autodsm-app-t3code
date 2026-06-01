@@ -28,6 +28,7 @@ import {
   ORCHESTRATION_WS_METHODS,
   ProjectAnalyzeReactComponentError,
   ProjectBuildComponentPreviewError,
+  ProjectBuildComponentPropVariantShowcaseError,
   ProjectBuildComponentVariantShowcaseError,
   ProjectReadFileError,
   ProjectSearchEntriesError,
@@ -80,6 +81,7 @@ import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import { analyzeReactComponentFile } from "./componentPreview/analyzeReactComponent.ts";
 import { bundleComponentPreview } from "./componentPreview/bundleComponentPreview.ts";
+import { bundleComponentPropVariantShowcase } from "./componentPreview/bundleComponentPropVariantShowcase.ts";
 import { bundleComponentVariantShowcase } from "./componentPreview/bundleComponentVariantShowcase.ts";
 import { AutoDsmWorkspaceService } from "./autodsm/AutoDsmWorkspaceService.ts";
 import * as SourceControlDiscoveryLayer from "./sourceControl/SourceControlDiscovery.ts";
@@ -110,6 +112,9 @@ const isProjectAnalyzeReactComponentError = Schema.is(ProjectAnalyzeReactCompone
 const isProjectBuildComponentPreviewError = Schema.is(ProjectBuildComponentPreviewError);
 const isProjectBuildComponentVariantShowcaseError = Schema.is(
   ProjectBuildComponentVariantShowcaseError,
+);
+const isProjectBuildComponentPropVariantShowcaseError = Schema.is(
+  ProjectBuildComponentPropVariantShowcaseError,
 );
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
@@ -1202,6 +1207,73 @@ const makeWsRpcLayer = (currentSessionId: AuthSessionId) =>
                 return Effect.fail(
                   new ProjectBuildComponentVariantShowcaseError({
                     message: "Failed to bundle component variant showcase.",
+                    cause,
+                  }),
+                );
+              }),
+            ),
+            { "rpc.aggregate": "workspace" },
+          ),
+        [WS_METHODS.projectsBuildComponentPropVariantShowcase]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.projectsBuildComponentPropVariantShowcase,
+            Effect.gen(function* () {
+              if (!isWorkspaceSrcComponentsUiRelativePath(input.relativePath)) {
+                return yield* Effect.fail(
+                  new ProjectBuildComponentPropVariantShowcaseError({
+                    message:
+                      "Variant showcase bundling is limited to workspace .tsx/.jsx files under …/src/components/.",
+                  }),
+                );
+              }
+              const target = yield* workspacePaths.resolveRelativePathWithinRoot({
+                workspaceRoot: input.cwd,
+                relativePath: input.relativePath,
+              });
+              return yield* Effect.tryPromise({
+                try: () =>
+                  bundleComponentPropVariantShowcase({
+                    cwd: input.cwd,
+                    absoluteComponentPath: target.absolutePath,
+                    relativePathPosix: target.relativePath,
+                    exportName: input.exportName,
+                    cells: input.cells,
+                  }),
+                catch: (cause) =>
+                  new ProjectBuildComponentPropVariantShowcaseError({
+                    message:
+                      cause instanceof Error
+                        ? cause.message
+                        : "Failed to bundle component prop-variant showcase.",
+                    cause,
+                  }),
+              }).pipe(
+                Effect.timeout("30 seconds"),
+                Effect.catchCause((cause) =>
+                  Effect.fail(
+                    new ProjectBuildComponentPropVariantShowcaseError({
+                      message: `bundleComponentPropVariantShowcase timed out: ${Cause.pretty(cause)}`,
+                      cause,
+                    }),
+                  ),
+                ),
+              );
+            }).pipe(
+              Effect.catch((cause: unknown) => {
+                if (isProjectBuildComponentPropVariantShowcaseError(cause)) {
+                  return Effect.fail(cause);
+                }
+                if (isWorkspacePathOutsideRootError(cause)) {
+                  return Effect.fail(
+                    new ProjectBuildComponentPropVariantShowcaseError({
+                      message: "Workspace file path must stay within the project root.",
+                      cause,
+                    }),
+                  );
+                }
+                return Effect.fail(
+                  new ProjectBuildComponentPropVariantShowcaseError({
+                    message: "Failed to bundle component prop-variant showcase.",
                     cause,
                   }),
                 );

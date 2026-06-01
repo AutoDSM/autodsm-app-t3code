@@ -107,6 +107,7 @@ import {
   type TurnDiffSummary,
 } from "../types";
 import { useAutoDsmComponentAgentTabs } from "~/hooks/useAutoDsmComponentAgentTabs";
+import { useAutoDsmComponentPreviewState } from "~/hooks/useAutoDsmComponentPreviewState";
 import { useAutoDsmMaterializedProductWorkspace } from "~/hooks/useAutoDsmMaterializedProductWorkspace";
 import { useAutoDsmSingleDesignSystemMode } from "~/hooks/useAutoDsmWorkspaceBootstrap";
 import { useSrcComponentsCatalog } from "~/hooks/useSrcComponentsCatalog";
@@ -129,6 +130,7 @@ import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
 import { AutoDsmComponentAgentTabBar } from "./autodsm/AutoDsmComponentAgentTabBar";
 import { AutoDsmComponentAgentRailHeader } from "./autodsm/AutoDsmComponentAgentRailHeader";
 import { AutoDsmComponentPreviewCanvas } from "./autodsm/AutoDsmComponentPreviewCanvas";
+import { AutoDsmPropsPanel } from "./autodsm/AutoDsmPropsPanel";
 import { ComponentPreviewTabBar } from "./ComponentPreviewTabBar";
 import { PreviewSplitDivider } from "./PreviewSplitDivider";
 import { WebContentsView } from "./WebContentsView";
@@ -1838,6 +1840,15 @@ export default function ChatView(props: ChatViewProps) {
   const isAutoDsmComponentPageActive =
     isMaterializedAutoDsmProject && componentPreviewPath !== null && previewAgentSplitMd;
   const componentPreviewVariant = isMaterializedAutoDsmProject ? "product" : "dev";
+  // Shared component-preview manifest + controlled props for the Component Page:
+  // consumed by both the preview canvas and the right-column Props tab.
+  const componentPreviewState = useAutoDsmComponentPreviewState({
+    relativePath: isAutoDsmComponentPageActive ? componentPreviewPath : null,
+    environmentId,
+    workspaceCwd: activeProjectCwd,
+  });
+  // Right-column inspector tab on the Component Page: chat ("agent") vs "props".
+  const [componentRailTab, setComponentRailTab] = useState<"agent" | "props">("agent");
 
   // Look up the active thread's seeded agent record so dev-mode preview can
   // honor the agent's primary export hint when not on the Component Page.
@@ -3831,6 +3842,9 @@ export default function ChatView(props: ChatViewProps) {
               relativePath={componentPreviewPath}
               environmentId={environmentId}
               workspaceCwd={activeProject?.cwd ?? null}
+              manifest={componentPreviewState.manifest}
+              primaryExportName={componentPreviewState.primaryExportName}
+              controlledProps={componentPreviewState.controlledProps}
               registerPromptAppendix={(getter) => {
                 componentPreviewPromptAppendixRef.current = getter;
               }}
@@ -3916,7 +3930,34 @@ export default function ChatView(props: ChatViewProps) {
           </header>
         ) : null}
 
-        {isAutoDsmComponentPageActive && activeProjectCwd ? (
+        {isAutoDsmComponentPageActive ? (
+          <div
+            role="tablist"
+            aria-label="Component inspector"
+            className="flex shrink-0 items-center gap-1 border-b border-border/60 px-3 py-2 sm:px-4"
+            data-testid="autodsm-component-rail-tabbar"
+          >
+            {(["props", "agent"] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                role="tab"
+                aria-selected={componentRailTab === tab}
+                onClick={() => setComponentRailTab(tab)}
+                className={cn(
+                  "rounded-md px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  componentRailTab === tab
+                    ? "bg-muted text-foreground active:bg-muted/70"
+                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground active:bg-muted/70",
+                )}
+              >
+                {tab === "props" ? "Props" : "Agent"}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {isAutoDsmComponentPageActive && activeProjectCwd && componentRailTab === "agent" ? (
           <AutoDsmComponentAgentRailHeader
             environmentId={environmentId}
             cwd={activeProjectCwd}
@@ -3924,7 +3965,8 @@ export default function ChatView(props: ChatViewProps) {
           />
         ) : null}
 
-        {isMaterializedAutoDsmProject &&
+        {(!isAutoDsmComponentPageActive || componentRailTab === "agent") &&
+        isMaterializedAutoDsmProject &&
         autoDsmComponentAgentTabs.length > 0 &&
         showAutodsmAgentTabsInChatHeader ? (
           <AutoDsmComponentAgentTabBar
@@ -3950,8 +3992,22 @@ export default function ChatView(props: ChatViewProps) {
           error={activeThread.error}
           onDismiss={() => setThreadError(activeThread.id, null)}
         />
+        {/* Component Page: Props tab replaces the chat body (chat stays mounted, hidden). */}
+        {isAutoDsmComponentPageActive && componentRailTab === "props" ? (
+          <AutoDsmPropsPanel
+            propSpecs={componentPreviewState.propSpecs}
+            propsRecord={componentPreviewState.controlledProps}
+            onPropsChange={componentPreviewState.setControlledProps}
+            className="min-h-0 flex-1"
+          />
+        ) : null}
         {/* Main content area with optional plan sidebar */}
-        <div className="flex min-h-0 min-w-0 flex-1">
+        <div
+          className={cn(
+            "flex min-h-0 min-w-0 flex-1",
+            isAutoDsmComponentPageActive && componentRailTab === "props" && "hidden",
+          )}
+        >
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             {componentPreviewPath && !previewAgentSplitMd ? (
               <>

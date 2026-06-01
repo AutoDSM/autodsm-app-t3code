@@ -136,10 +136,10 @@ export function ComponentPreviewPropControl(input: {
                 <button
                   key={opt}
                   type="button"
-                  className={`rounded-md border px-2 py-1 text-xs capitalize transition-colors ${
+                  className={`rounded-md border px-2 py-1 text-xs capitalize transition-colors active:bg-muted/70 ${
                     selected
-                      ? "border-foreground/40 bg-neutral-800 text-foreground"
-                      : "border-border/60 text-muted-foreground hover:text-foreground"
+                      ? "border-border bg-muted text-foreground"
+                      : "border-border/60 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                   }`}
                   onClick={() => onChange(opt)}
                 >

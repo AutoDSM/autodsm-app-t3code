@@ -88,6 +88,15 @@ export function AutoDsmHomeDashboard(): JSX.Element {
           (agent) => agent.status === "active" && registryPaths.has(agent.componentPath),
         ).length
       : null;
+  // Components "actually there": prefer the canonical registry count, but when
+  // the registry hasn't indexed (empty), surface the distinct components the
+  // user already has as agents so the counter reflects real work, not 0.
+  const agentComponentCount =
+    agents !== null ? new Set(agents.map((agent) => agent.componentPath)).size : null;
+  const componentCountFromRegistry = componentCount !== null && componentCount > 0;
+  const displayComponentCount = componentCountFromRegistry
+    ? componentCount
+    : (agentComponentCount ?? componentCount);
   // Tokens the user has explicitly created vs scanned from the workspace's
   // CSS/theme files. Both filters use the real `origin` value — we never
   // subtract to derive `scanned`, since `origin` is optional and any missing
@@ -143,7 +152,7 @@ export function AutoDsmHomeDashboard(): JSX.Element {
         </header>
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <HomeMetricCard label="Components" value="—" loading={true} />
-          <HomeMetricCard label="Tokens created" value="—" loading={true} />
+          <HomeMetricCard label="Tokens" value="—" loading={true} />
           <HomeMetricCard label="Adoption" value="—" loading={true} />
           <HomeMetricCard label="System ready" value="—" loading={true} />
         </section>
@@ -164,28 +173,31 @@ export function AutoDsmHomeDashboard(): JSX.Element {
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <HomeMetricCard
           label="Components"
-          value={componentCount ?? "—"}
+          value={displayComponentCount ?? "—"}
           loading={registryQuery.isPending && workspaceReady}
-          {...(componentCount !== null && componentCount > 0 && activeAgentCount !== null
+          {...(displayComponentCount !== null && displayComponentCount > 0
             ? {
-                caption:
-                  inactiveAgentCount !== null && inactiveAgentCount > 0
+                caption: componentCountFromRegistry
+                  ? activeAgentCount !== null && inactiveAgentCount !== null && inactiveAgentCount > 0
                     ? `${activeAgentCount} have an active agent (${inactiveAgentCount} archived/creating)`
-                    : `${activeAgentCount} have an active agent`,
+                    : activeAgentCount !== null
+                      ? `${activeAgentCount} have an active agent`
+                      : `${displayComponentCount} components indexed`
+                  : `${displayComponentCount} components`,
               }
-            : componentCount === 0
+            : displayComponentCount === 0
               ? { caption: "No components indexed yet" }
               : {})}
         />
         <HomeMetricCard
-          label="Tokens created"
-          value={userTokenCount ?? "—"}
+          label="Tokens"
+          value={tokenCount ?? "—"}
           loading={brandProfileQuery.isPending && workspaceReady}
           {...(tokenCount !== null
             ? {
                 caption:
                   tokenCount > 0
-                    ? `${tokenCount} total available (${userTokenCount ?? 0} created · ${scannedTokenCount ?? 0} scanned)`
+                    ? `${userTokenCount ?? 0} created · ${scannedTokenCount ?? 0} scanned`
                     : "No tokens defined yet",
               }
             : {})}

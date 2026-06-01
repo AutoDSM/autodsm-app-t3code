@@ -5,6 +5,7 @@ import type { JSX, ReactNode } from "react";
 
 import { AutoDsmComponentAgentRailHeader } from "~/components/autodsm/AutoDsmComponentAgentRailHeader";
 import { AutoDsmComponentPreviewCanvas } from "~/components/autodsm/AutoDsmComponentPreviewCanvas";
+import { useAutoDsmComponentPreviewState } from "~/hooks/useAutoDsmComponentPreviewState";
 import { cn } from "~/lib/utils";
 
 export interface AutoDsmComponentPageShellProps {
@@ -40,6 +41,12 @@ export function AutoDsmComponentPageShell(props: AutoDsmComponentPageShellProps)
     className,
   } = props;
 
+  const previewState = useAutoDsmComponentPreviewState({
+    relativePath,
+    environmentId,
+    workspaceCwd,
+  });
+
   return (
     <div
       className={cn("grid min-h-0 min-w-0 flex-1 overflow-hidden", className)}
@@ -50,6 +57,9 @@ export function AutoDsmComponentPageShell(props: AutoDsmComponentPageShellProps)
         relativePath={relativePath}
         environmentId={environmentId}
         workspaceCwd={workspaceCwd}
+        manifest={previewState.manifest}
+        primaryExportName={previewState.primaryExportName}
+        controlledProps={previewState.controlledProps}
         {...(exportName ? { exportName } : {})}
         {...(registerPromptAppendix ? { registerPromptAppendix } : {})}
         {...(onInjectComposerText ? { onInjectComposerText } : {})}

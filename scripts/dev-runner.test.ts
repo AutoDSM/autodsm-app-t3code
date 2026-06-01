@@ -160,6 +160,68 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
       }),
     );
 
+    it.effect("enables desktop dev auto-restart by default", () =>
+      Effect.gen(function* () {
+        const env = yield* createDevRunnerEnv({
+          mode: "dev:desktop",
+          baseEnv: {},
+          serverOffset: 0,
+          webOffset: 0,
+          t3Home: undefined,
+          noBrowser: undefined,
+          autoBootstrapProjectFromCwd: undefined,
+          logWebSocketEvents: undefined,
+          host: undefined,
+          port: undefined,
+          devUrl: undefined,
+        });
+
+        assert.equal(env.T3CODE_DESKTOP_DEV_AUTO_RESTART, "1");
+      }),
+    );
+
+    it.effect("respects explicit T3CODE_DESKTOP_DEV_AUTO_RESTART=0 override", () =>
+      Effect.gen(function* () {
+        const env = yield* createDevRunnerEnv({
+          mode: "dev:desktop",
+          baseEnv: {
+            T3CODE_DESKTOP_DEV_AUTO_RESTART: "0",
+          },
+          serverOffset: 0,
+          webOffset: 0,
+          t3Home: undefined,
+          noBrowser: undefined,
+          autoBootstrapProjectFromCwd: undefined,
+          logWebSocketEvents: undefined,
+          host: undefined,
+          port: undefined,
+          devUrl: undefined,
+        });
+
+        assert.equal(env.T3CODE_DESKTOP_DEV_AUTO_RESTART, "0");
+      }),
+    );
+
+    it.effect("does not set desktop auto-restart in web dev mode", () =>
+      Effect.gen(function* () {
+        const env = yield* createDevRunnerEnv({
+          mode: "dev",
+          baseEnv: {},
+          serverOffset: 0,
+          webOffset: 0,
+          t3Home: undefined,
+          noBrowser: undefined,
+          autoBootstrapProjectFromCwd: undefined,
+          logWebSocketEvents: undefined,
+          host: undefined,
+          port: undefined,
+          devUrl: undefined,
+        });
+
+        assert.equal(env.T3CODE_DESKTOP_DEV_AUTO_RESTART, undefined);
+      }),
+    );
+
     it.effect("respects explicit T3CODE_DEV_DISABLE_PAIRING=0 override", () =>
       Effect.gen(function* () {
         const env = yield* createDevRunnerEnv({

@@ -56,6 +56,9 @@ import {
   ProjectBuildComponentPreviewError,
   ProjectBuildComponentPreviewInput,
   ProjectBuildComponentPreviewResult,
+  ProjectBuildComponentPropVariantShowcaseError,
+  ProjectBuildComponentPropVariantShowcaseInput,
+  ProjectBuildComponentPropVariantShowcaseResult,
   ProjectBuildComponentVariantShowcaseError,
   ProjectBuildComponentVariantShowcaseInput,
   ProjectBuildComponentVariantShowcaseResult,
@@ -209,6 +212,7 @@ export const WS_METHODS = {
   projectsAnalyzeReactComponent: "projects.analyzeReactComponent",
   projectsBuildComponentPreview: "projects.buildComponentPreview",
   projectsBuildComponentVariantShowcase: "projects.buildComponentVariantShowcase",
+  projectsBuildComponentPropVariantShowcase: "projects.buildComponentPropVariantShowcase",
 
   autodsmGetProjectProfile: "autodsm.getProjectProfile",
   autodsmGetBrandProfile: "autodsm.getBrandProfile",
@@ -463,6 +467,15 @@ export const WsProjectsBuildComponentVariantShowcaseRpc = Rpc.make(
     payload: ProjectBuildComponentVariantShowcaseInput,
     success: ProjectBuildComponentVariantShowcaseResult,
     error: ProjectBuildComponentVariantShowcaseError,
+  },
+);
+
+export const WsProjectsBuildComponentPropVariantShowcaseRpc = Rpc.make(
+  WS_METHODS.projectsBuildComponentPropVariantShowcase,
+  {
+    payload: ProjectBuildComponentPropVariantShowcaseInput,
+    success: ProjectBuildComponentPropVariantShowcaseResult,
+    error: ProjectBuildComponentPropVariantShowcaseError,
   },
 );
 
@@ -1045,6 +1058,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsProjectsAnalyzeReactComponentRpc,
   WsProjectsBuildComponentPreviewRpc,
   WsProjectsBuildComponentVariantShowcaseRpc,
+  WsProjectsBuildComponentPropVariantShowcaseRpc,
   WsAutodsmGetProjectProfileRpc,
   WsAutodsmGetBrandProfileRpc,
   WsAutodsmAddBrandTokenRpc,

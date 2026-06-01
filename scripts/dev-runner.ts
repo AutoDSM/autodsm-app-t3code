@@ -187,6 +187,13 @@ export function createDevRunnerEnv({
       delete output.T3CODE_MODE;
       delete output.T3CODE_NO_BROWSER;
       delete output.T3CODE_HOST;
+      // Auto-restart Electron (and respawn the backend) when the desktop or
+      // server bundle rebuilds. Without this the supervisor launches once and a
+      // rebuilt apps/server/dist/bin.mjs is never picked up, so newly-added RPCs
+      // surface as "Unknown request tag". Overridable: set to "0" to opt out.
+      if (output.T3CODE_DESKTOP_DEV_AUTO_RESTART === undefined) {
+        output.T3CODE_DESKTOP_DEV_AUTO_RESTART = "1";
+      }
     }
 
     if (!isDesktopMode && host !== undefined) {

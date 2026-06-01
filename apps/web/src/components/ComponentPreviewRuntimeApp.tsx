@@ -13,9 +13,20 @@ import {
   COMPONENT_PREVIEW_RENDERED,
   COMPONENT_PREVIEW_RUNTIME_ERROR,
   COMPONENT_PREVIEW_STATUS,
+  COMPONENT_PREVIEW_THEME,
   type ComponentPreviewInitPayload,
   type ComponentPreviewStatusPayload,
+  type ComponentPreviewTheme,
+  type ComponentPreviewThemePayload,
 } from "~/lib/componentPreviewMessages";
+
+/** Toggle the `.dark` class so the iframe's theme tokens resolve for the active mode. */
+function applyPreviewTheme(theme: ComponentPreviewTheme): void {
+  if (typeof document === "undefined") {
+    return;
+  }
+  document.documentElement.classList.toggle("dark", theme === "dark");
+}
 
 const SLOW_BUNDLE_THRESHOLD_MS = 10_000;
 
@@ -127,9 +138,19 @@ export function ComponentPreviewRuntimeApp(): JSX.Element {
       }
       const data = event.data as {
         type?: string;
-        payload?: ComponentPreviewInitPayload | ComponentPreviewStatusPayload;
+        payload?:
+          | ComponentPreviewInitPayload
+          | ComponentPreviewStatusPayload
+          | ComponentPreviewThemePayload;
       };
       if (!data || typeof data.type !== "string") {
+        return;
+      }
+      if (data.type === COMPONENT_PREVIEW_THEME) {
+        const themePayload = data.payload as ComponentPreviewThemePayload | undefined;
+        if (themePayload) {
+          applyPreviewTheme(themePayload.resolvedTheme);
+        }
         return;
       }
       if (data.type === COMPONENT_PREVIEW_STATUS) {
@@ -146,6 +167,9 @@ export function ComponentPreviewRuntimeApp(): JSX.Element {
       setStatus(null);
 
       const initPayload = data.payload as ComponentPreviewInitPayload;
+      if (initPayload.resolvedTheme) {
+        applyPreviewTheme(initPayload.resolvedTheme);
+      }
 
       void (async () => {
         let phase:
@@ -273,7 +297,7 @@ export function ComponentPreviewRuntimeApp(): JSX.Element {
   }, []);
 
   return (
-    <div className="box-border flex min-h-svh w-full min-w-0 items-center justify-center bg-[#1b1b1b] p-2 text-foreground">
+    <div className="box-border flex min-h-svh w-full min-w-0 items-center justify-center bg-transparent p-2 text-foreground">
       {node ?? <PreviewPlaceholder status={status} slowBundle={slowBundle} />}
     </div>
   );

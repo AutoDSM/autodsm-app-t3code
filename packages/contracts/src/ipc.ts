@@ -24,6 +24,8 @@ import type {
   ProjectAnalyzeReactComponentResult,
   ProjectBuildComponentPreviewInput,
   ProjectBuildComponentPreviewResult,
+  ProjectBuildComponentPropVariantShowcaseInput,
+  ProjectBuildComponentPropVariantShowcaseResult,
   ProjectBuildComponentVariantShowcaseInput,
   ProjectBuildComponentVariantShowcaseResult,
   ProjectReadFileInput,
@@ -613,7 +615,12 @@ export interface DesktopBridge {
     readonly javascript: string;
     readonly propsJson: string;
     readonly workspaceStyleCss?: string;
+    readonly resolvedTheme?: "light" | "dark";
   }) => Promise<boolean>;
+  setComponentPreviewTheme?: (input: {
+    readonly viewId: string;
+    readonly resolvedTheme: "light" | "dark";
+  }) => Promise<void>;
   captureComponentPreview?: (input: { readonly viewId: string }) => Promise<string | null>;
 
   /**
@@ -718,6 +725,9 @@ export interface EnvironmentApi {
     buildComponentVariantShowcase: (
       input: ProjectBuildComponentVariantShowcaseInput,
     ) => Promise<ProjectBuildComponentVariantShowcaseResult>;
+    buildComponentPropVariantShowcase: (
+      input: ProjectBuildComponentPropVariantShowcaseInput,
+    ) => Promise<ProjectBuildComponentPropVariantShowcaseResult>;
   };
   autodsm: {
     getProjectProfile: (input: AutoDsmCwdInput) => Promise<AutoDsmProjectProfile>;

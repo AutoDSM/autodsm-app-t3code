@@ -7,6 +7,9 @@ import { COMPONENT_PREVIEW_STATUS_CHANNEL } from "../ipc/channels.ts";
 
 /** Must stay aligned with `apps/web/src/lib/componentPreviewMessages.ts`. */
 export const COMPONENT_PREVIEW_INIT_MESSAGE_TYPE = "t3-component-preview:init";
+export const COMPONENT_PREVIEW_THEME_MESSAGE_TYPE = "t3-component-preview:theme";
+
+export type PreviewTheme = "light" | "dark";
 
 export interface PreviewBounds {
   readonly x: number;
@@ -43,6 +46,9 @@ function contentSizeForWindow(browserWindow: Electron.BrowserWindow): {
 
 type WebContentsViewInstance = {
   setBounds: (rect: Electron.Rectangle) => void;
+  /** Inherited from Electron's `View`; transparent ("#00000000") lets the
+   *  main window's React canvas show through behind the composited view. */
+  setBackgroundColor?: (color: string) => void;
   readonly webContents: Electron.WebContents;
 };
 
@@ -168,6 +174,12 @@ export async function attachPreviewView(input: {
     registry.set(input.viewId, entry);
     input.browserWindow.contentView.addChildView(view as unknown as Electron.View);
 
+    // Composite the preview transparently so the main window's React canvas
+    // (the component-page card surface) shows through. The loaded preview page
+    // keeps its <body> transparent (see apps/web/index.html), so the only
+    // remaining opaque layer is the view's own backing — clear it here.
+    view.setBackgroundColor?.("#00000000");
+
     view.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     view.webContents.removeAllListeners("will-navigate");
     view.webContents.on("will-navigate", (event, navigationUrl) => {
@@ -244,6 +256,7 @@ export async function primePreviewView(
   javascript: string,
   propsJson: string,
   workspaceStyleCss?: string,
+  resolvedTheme?: PreviewTheme,
 ): Promise<boolean> {
   const entry = registry.get(viewId);
   if (!entry) {
@@ -254,6 +267,7 @@ export async function primePreviewView(
     javascript,
     propsJson,
     ...(workspaceStyleCss && workspaceStyleCss.trim().length > 0 ? { workspaceStyleCss } : {}),
+    ...(resolvedTheme ? { resolvedTheme } : {}),
   };
 
   const message = {
@@ -287,6 +301,32 @@ export async function primePreviewView(
       // ignore secondary failures
     }
     return false;
+  }
+}
+
+/**
+ * Push a theme change into an already-primed native preview so its `.dark`
+ * class tracks the app theme. The view's own session has a separate
+ * localStorage, so it cannot observe the main window's theme toggle directly.
+ */
+export async function setPreviewTheme(viewId: string, resolvedTheme: PreviewTheme): Promise<void> {
+  const entry = registry.get(viewId);
+  if (!entry || entry.view.webContents.isDestroyed()) {
+    return;
+  }
+
+  const message = {
+    type: COMPONENT_PREVIEW_THEME_MESSAGE_TYPE,
+    payload: { resolvedTheme },
+  };
+
+  try {
+    await entry.view.webContents.executeJavaScript(
+      `window.postMessage(${JSON.stringify(message)}, window.location.origin);`,
+      true,
+    );
+  } catch {
+    // View may be navigating/tearing down; theme updates are advisory.
   }
 }
 

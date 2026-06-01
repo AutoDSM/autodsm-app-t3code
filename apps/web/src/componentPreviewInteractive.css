@@ -68,9 +68,9 @@
   width: 100%;
   max-width: 280px;
   border-radius: 6px;
-  border: 1px solid oklch(0.35 0.02 280);
-  background: oklch(0.15 0.02 280);
-  color: oklch(0.98 0 0);
+  border: 1px solid var(--input);
+  background: var(--background);
+  color: var(--foreground);
   padding: 8px 12px;
   font-size: 14px;
   outline: none;
@@ -80,16 +80,16 @@
 }
 
 .preview-input::placeholder {
-  color: oklch(0.65 0.02 280);
+  color: var(--muted-foreground);
 }
 
 .preview-input:hover {
-  border-color: oklch(0.48 0.06 280);
+  border-color: var(--border);
 }
 
 .preview-input:focus-visible {
-  border-color: oklch(0.62 0.12 280);
-  box-shadow: 0 0 0 3px oklch(0.62 0.12 280 / 0.35);
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 35%, transparent);
 }
 
 .preview-input:disabled {
@@ -99,10 +99,10 @@
 
 .preview-card {
   border-radius: 8px;
-  border: 1px solid oklch(0.35 0.02 280);
-  background: oklch(0.2 0.03 280);
+  border: 1px solid var(--border);
+  background: var(--card);
   padding: 16px;
-  color: oklch(0.98 0 0);
+  color: var(--card-foreground);
   max-width: 320px;
   transition:
     border-color 120ms ease,
@@ -110,8 +110,8 @@
 }
 
 .preview-card:hover {
-  border-color: oklch(0.48 0.06 280);
-  box-shadow: 0 4px 16px oklch(0.1 0.02 280 / 0.45);
+  border-color: color-mix(in oklch, var(--border) 60%, var(--foreground));
+  box-shadow: 0 4px 16px color-mix(in oklch, var(--foreground) 12%, transparent);
 }
 
 .preview-card-title {
@@ -134,9 +134,9 @@
   display: inline-flex;
   align-items: center;
   border-radius: 9999px;
-  border: 1px solid oklch(0.45 0.12 280);
-  background: oklch(0.28 0.04 280);
-  color: oklch(0.92 0.02 280);
+  border: 1px solid var(--border);
+  background: var(--secondary);
+  color: var(--secondary-foreground);
   padding: 2px 10px;
   font-size: 12px;
   font-weight: 500;
@@ -147,8 +147,8 @@
 }
 
 .preview-badge:hover {
-  background: oklch(0.34 0.06 280);
-  border-color: oklch(0.55 0.14 280);
+  background: var(--muted);
+  border-color: color-mix(in oklch, var(--border) 60%, var(--foreground));
 }
 
 .preview-badge-outline {
@@ -156,8 +156,8 @@
 }
 
 .preview-badge-secondary {
-  background: oklch(0.22 0.02 280);
-  border-color: oklch(0.38 0.04 280);
+  background: var(--muted);
+  border-color: var(--border);
 }
 
 .preview-pill {
@@ -178,10 +178,10 @@
 
 .preview-shell {
   border-radius: 8px;
-  border: 1px solid #3f3f46;
-  background: #18181b;
+  border: 1px solid var(--border);
+  background: var(--card);
   padding: 16px;
-  color: #fafafa;
+  color: var(--card-foreground);
   max-width: 360px;
   transition:
     border-color 120ms ease,
@@ -189,8 +189,8 @@
 }
 
 .preview-shell:hover {
-  border-color: #52525b;
-  box-shadow: 0 4px 16px rgb(0 0 0 / 0.35);
+  border-color: color-mix(in oklch, var(--border) 60%, var(--foreground));
+  box-shadow: 0 4px 16px color-mix(in oklch, var(--foreground) 12%, transparent);
 }
 
 .preview-shell-cta {
@@ -206,7 +206,7 @@
 .preview-shell-body {
   margin: 8px 0 0;
   font-size: 14px;
-  color: #a1a1aa;
+  color: var(--muted-foreground);
 }
 
 .preview-strip {
@@ -252,7 +252,7 @@
   margin: 0;
   font-size: 1.5rem;
   font-weight: 700;
-  background: linear-gradient(to bottom right, #ffffff, #a1a1aa);
+  background: linear-gradient(to bottom right, var(--foreground), var(--muted-foreground));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -275,9 +275,9 @@
   display: inline-flex;
   align-items: center;
   border-radius: 9999px;
-  border: 1px solid oklch(0.45 0.12 280);
-  background: oklch(0.22 0.03 280);
-  color: oklch(0.95 0.01 280);
+  border: 1px solid var(--border);
+  background: var(--secondary);
+  color: var(--secondary-foreground);
   padding: 4px 12px;
   font-size: 12px;
   font-weight: 500;
@@ -288,8 +288,8 @@
 }
 
 .preview-chip:hover {
-  background: oklch(0.32 0.06 280);
-  border-color: oklch(0.58 0.14 280);
+  background: var(--muted);
+  border-color: color-mix(in oklch, var(--border) 60%, var(--foreground));
 }
 
 .preview-chip:active {

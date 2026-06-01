@@ -20,7 +20,7 @@ export function AutoDsmPropsPanel(props: AutoDsmPropsPanelProps): JSX.Element | 
     return (
       <aside
         className={cn(
-          "flex w-full shrink-0 flex-col border-t border-border/60 bg-background/95 p-3 sm:w-56 sm:border-t-0 sm:border-l",
+          "flex min-h-0 w-full flex-col overflow-y-auto bg-background p-3",
           className,
         )}
         data-testid="autodsm-props-panel"
@@ -35,7 +35,7 @@ export function AutoDsmPropsPanel(props: AutoDsmPropsPanelProps): JSX.Element | 
   return (
     <aside
       className={cn(
-        "flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-t border-border/60 bg-background/95 p-3 sm:w-56 sm:border-t-0 sm:border-l",
+        "flex min-h-0 w-full flex-col gap-3 overflow-y-auto bg-background p-3",
         className,
       )}
       data-testid="autodsm-props-panel"

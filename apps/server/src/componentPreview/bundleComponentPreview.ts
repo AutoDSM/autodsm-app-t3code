@@ -25,7 +25,7 @@ const PREVIEW_REACT_NAMESPACE = "t3-preview-react-external";
  * React whose hook dispatcher is null — that's the
  * "Cannot read properties of null (reading 'useState')" error in the iframe.
  */
-const previewReactExternalPlugin: esbuild.Plugin = {
+export const previewReactExternalPlugin: esbuild.Plugin = {
   name: PREVIEW_REACT_NAMESPACE,
   setup(build) {
     build.onResolve({ filter: PREVIEW_REACT_EXTERNAL_FILTER }, (args) => {

@@ -39,6 +39,7 @@ export const COMPONENT_PREVIEW_DETACH_CHANNEL = "desktop:component-preview:detac
 export const COMPONENT_PREVIEW_DETACH_ALL_CHANNEL = "desktop:component-preview:detach-all";
 export const COMPONENT_PREVIEW_SET_BOUNDS_CHANNEL = "desktop:component-preview:set-bounds";
 export const COMPONENT_PREVIEW_PRIME_CHANNEL = "desktop:component-preview:prime";
+export const COMPONENT_PREVIEW_SET_THEME_CHANNEL = "desktop:component-preview:set-theme";
 export const COMPONENT_PREVIEW_CAPTURE_CHANNEL = "desktop:component-preview:capture";
 export const COMPONENT_PREVIEW_STATUS_CHANNEL = "desktop:component-preview:status";
 export const SUPABASE_OAUTH_START_CHANNEL = "desktop:supabase-oauth:start";

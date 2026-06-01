@@ -23,6 +23,7 @@ export function createEnvironmentApi(rpcClient: WsRpcClient): EnvironmentApi {
       analyzeReactComponent: rpcClient.projects.analyzeReactComponent,
       buildComponentPreview: rpcClient.projects.buildComponentPreview,
       buildComponentVariantShowcase: rpcClient.projects.buildComponentVariantShowcase,
+      buildComponentPropVariantShowcase: rpcClient.projects.buildComponentPropVariantShowcase,
     },
     autodsm: {
       getProjectProfile: rpcClient.autodsm.getProjectProfile,

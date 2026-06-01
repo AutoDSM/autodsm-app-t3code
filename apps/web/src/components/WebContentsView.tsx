@@ -25,8 +25,10 @@ import {
   COMPONENT_PREVIEW_RENDERED,
   COMPONENT_PREVIEW_RUNTIME_ERROR,
   COMPONENT_PREVIEW_STATUS,
+  COMPONENT_PREVIEW_THEME,
   type ComponentPreviewStatusPayload,
 } from "~/lib/componentPreviewMessages";
+import { useTheme } from "~/hooks/useTheme";
 import { randomUUID } from "~/lib/utils";
 import { autodsmWorkspaceQueryKeys } from "~/lib/autodsmWorkspaceReactQuery";
 import {
@@ -248,7 +250,12 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
     workspaceCwd.length > 0 &&
     environmentId !== null;
 
-  const productQueryOptions = isProductVariant ? { staleTime: 0 } : {};
+  // Cache product preview pipeline results so switching back to a recently
+  // viewed component is an instant cache hit (no re-analyze/bundle, no loader).
+  // Keyed by (env, cwd, path, exportName, propsJson) — props edits still refetch.
+  const productQueryOptions = isProductVariant
+    ? { staleTime: 5 * 60_000, gcTime: 10 * 60_000 }
+    : {};
 
   const manifestQuery = useQuery({
     queryKey: ["component-preview-manifest", environmentId, workspaceCwd, trimmed],
@@ -292,6 +299,8 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
     },
   });
   const workspaceStyleCss = workspacePreviewCssQuery.data?.css ?? "";
+
+  const { resolvedTheme } = useTheme();
 
   const matchedRegistryEntry = useMemo(() => {
     if (!normalizedCatalogPath || !registryQuery.data) {
@@ -525,17 +534,38 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
   // behind it. Compute the boolean here; the effect at the next step
   // toggles bounds when it flips.
   const exportMissingInManifest = manifest !== undefined && !bundleDepsReady(manifest, exportName);
+  // True whenever the product preview is loading or recompiling — including the
+  // window where new javascript is ready but the (native or iframe) surface
+  // hasn't repainted the current path yet. Drives both the opaque DOM skeleton
+  // and the native-view collapse so the OS-composited preview can't bleed
+  // through the loader.
+  const showProductLoading =
+    isProductVariant &&
+    (analyzePending ||
+      registryPending ||
+      bundleLoading ||
+      nativePriming ||
+      (bridgeNative &&
+        Boolean(previewJavascript && previewJavascript.length > 0) &&
+        nativeRenderedPath !== trimmed) ||
+      (!bridgeNative &&
+        Boolean(previewJavascript && previewJavascript.length > 0) &&
+        renderedPathRef.current !== trimmed &&
+        !iframeRendered));
   const shouldHideNativeView =
     bridgeNative &&
-    !previewJavascript &&
-    !bundlePending &&
-    !analyzePending &&
-    (compileErrors.length > 0 ||
-      bundleRpcFailed ||
-      runtimeError !== null ||
-      nativePrimeTimedOut ||
-      exportMissingInManifest ||
-      manifestQuery.isError);
+    // Collapse the native view while the loading skeleton is up so it can't
+    // paint over it, in addition to the existing diagnostic-banner cases.
+    (showProductLoading ||
+      (!previewJavascript &&
+        !bundlePending &&
+        !analyzePending &&
+        (compileErrors.length > 0 ||
+          bundleRpcFailed ||
+          runtimeError !== null ||
+          nativePrimeTimedOut ||
+          exportMissingInManifest ||
+          manifestQuery.isError)));
 
   useEffect(() => {
     childReadyRef.current = false;
@@ -623,6 +653,7 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
           payload: {
             javascript: js,
             propsJson: stablePropsJson,
+            resolvedTheme,
             ...(workspaceStyleCss.trim().length > 0
               ? { workspaceStyleCss: workspaceStyleCss }
               : {}),
@@ -637,7 +668,7 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
       console.error("[component-preview] push failed", err);
       setRuntimeError("Failed to post preview payload to iframe.");
     }
-  }, [previewJavascript, stablePropsJson, workspaceStyleCss]);
+  }, [previewJavascript, stablePropsJson, workspaceStyleCss, resolvedTheme]);
 
   const pushStatusToChild = useCallback((payload: ComponentPreviewStatusPayload) => {
     const iframe = iframeRef.current;
@@ -897,6 +928,7 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
           viewId: nativeViewId,
           javascript: js,
           propsJson: stablePropsJson,
+          resolvedTheme,
           ...(workspaceStyleCss.trim().length > 0 ? { workspaceStyleCss } : {}),
         });
         if (
@@ -927,7 +959,31 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
     stablePropsJson,
     trimmed,
     workspaceStyleCss,
+    resolvedTheme,
   ]);
+
+  // Push live theme toggles into an already-mounted preview (iframe + native).
+  // The INIT payload covers first paint; this effect covers toggles after that.
+  // Skip when no preview is rendered yet — INIT will carry the current theme.
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    if (iframe?.contentWindow) {
+      try {
+        iframe.contentWindow.postMessage(
+          { type: COMPONENT_PREVIEW_THEME, payload: { resolvedTheme } },
+          window.location.origin,
+        );
+      } catch {
+        // Iframe may be navigating away; theme updates are advisory.
+      }
+    }
+    if (bridgeNative && nativeAttached) {
+      void window.desktopBridge?.setComponentPreviewTheme?.({
+        viewId: nativeViewId,
+        resolvedTheme,
+      });
+    }
+  }, [resolvedTheme, bridgeNative, nativeAttached, nativeViewId]);
 
   const propSpecs = useMemo(
     () => (manifest ? propsForExport(manifest, exportName) : []),
@@ -1008,20 +1064,6 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
 
   const quick = (text: string) => onInjectComposerText?.(text);
 
-  const showProductLoading =
-    isProductVariant &&
-    (analyzePending ||
-      registryPending ||
-      bundleLoading ||
-      nativePriming ||
-      (bridgeNative &&
-        Boolean(previewJavascript && previewJavascript.length > 0) &&
-        nativeRenderedPath !== trimmed) ||
-      (!bridgeNative &&
-        Boolean(previewJavascript && previewJavascript.length > 0) &&
-        renderedPathRef.current !== trimmed &&
-        !iframeRendered));
-
   // Resolved-then-down to the "narrowest" stage so the skeleton label and
   // diagnostics reflect what the user is actually waiting on right now.
   const loadingStage: ComponentPreviewLoadingStage = analyzePending
@@ -1046,10 +1088,10 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
     <div
       ref={containerRef}
       className={cn(
-        "flex min-w-0 flex-col bg-background",
+        "flex min-w-0 flex-col",
         isProductVariant
           ? "h-full min-h-[240px] min-w-0 w-full flex-1 overflow-hidden bg-transparent"
-          : "min-h-[min(40vh,320px)] max-h-[50vh] shrink-0 md:h-full md:min-h-0 md:max-h-none md:w-[min(50%,42rem)] md:flex-1 md:overflow-hidden",
+          : "min-h-[min(40vh,320px)] max-h-[50vh] shrink-0 bg-background md:h-full md:min-h-0 md:max-h-none md:w-[min(50%,42rem)] md:flex-1 md:overflow-hidden",
       )}
       data-testid="web-contents-view"
       data-slot="web-contents-view"
@@ -1451,7 +1493,12 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
               <iframe
                 ref={iframeRef}
                 title="Component preview"
-                className="h-full min-h-[240px] w-full border-0"
+                className={cn(
+                  "h-full min-h-[240px] w-full border-0 transition-opacity",
+                  // Hide the previously-rendered component while loading/recompiling
+                  // so it never shows beneath the opaque skeleton.
+                  showProductLoading ? "pointer-events-none opacity-0" : "opacity-100",
+                )}
                 // `allow-same-origin` is required because the parent/child use
                 // strict `event.origin === window.location.origin` filters on
                 // every postMessage. Without it, sandbox forces the iframe into

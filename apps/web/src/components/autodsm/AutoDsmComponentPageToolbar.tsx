@@ -20,7 +20,7 @@ const TOOLBAR_TABS: ReadonlyArray<{
 }> = [
   { id: "demo", label: "Demo", alwaysEnabled: true },
   { id: "variants", label: "Variants", alwaysEnabled: false },
-  { id: "code", label: "Code", alwaysEnabled: false },
+  { id: "code", label: "Code", alwaysEnabled: true },
   { id: "documentation", label: "Documentation", alwaysEnabled: false },
 ];
 
@@ -53,11 +53,12 @@ export function AutoDsmComponentPageToolbar(props: AutoDsmComponentPageToolbarPr
               }
             }}
             className={cn(
-              "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+              "rounded-md px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               selected
-                ? "bg-neutral-800 text-foreground"
-                : "text-muted-foreground hover:text-foreground",
-              !enabled && "cursor-not-allowed opacity-40 hover:text-muted-foreground",
+                ? "bg-muted text-foreground active:bg-muted/70"
+                : "text-muted-foreground hover:bg-muted/50 hover:text-foreground active:bg-muted/70",
+              !enabled &&
+                "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-muted-foreground active:bg-transparent",
             )}
           >
             {tab.label}

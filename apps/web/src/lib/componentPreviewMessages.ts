@@ -8,11 +8,21 @@ export const COMPONENT_PREVIEW_RENDERED = `${COMPONENT_PREVIEW_MESSAGE_SOURCE}:r
 export const COMPONENT_PREVIEW_RUNTIME_ERROR = `${COMPONENT_PREVIEW_MESSAGE_SOURCE}:runtime-error`;
 export const COMPONENT_PREVIEW_INTERACTION = `${COMPONENT_PREVIEW_MESSAGE_SOURCE}:interaction`;
 export const COMPONENT_PREVIEW_STATUS = `${COMPONENT_PREVIEW_MESSAGE_SOURCE}:status`;
+export const COMPONENT_PREVIEW_THEME = `${COMPONENT_PREVIEW_MESSAGE_SOURCE}:theme`;
+
+export type ComponentPreviewTheme = "light" | "dark";
 
 export interface ComponentPreviewInitPayload {
   readonly javascript: string;
   readonly propsJson: string;
   readonly workspaceStyleCss?: string;
+  /** Resolved app theme so the iframe paints in the correct mode on first render. */
+  readonly resolvedTheme?: ComponentPreviewTheme;
+}
+
+/** Sent whenever the app theme toggles while a preview is mounted. */
+export interface ComponentPreviewThemePayload {
+  readonly resolvedTheme: ComponentPreviewTheme;
 }
 
 /**

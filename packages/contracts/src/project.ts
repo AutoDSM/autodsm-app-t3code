@@ -221,3 +221,41 @@ export class ProjectBuildComponentVariantShowcaseError extends Schema.TaggedErro
     cause: Schema.optional(Schema.Defect),
   },
 ) {}
+
+/** A single cell of the prop-based variant grid: the primary export rendered with `propsJson`. */
+export const ProjectPropVariantCell = Schema.Struct({
+  /** Grouping heading (the prop name being varied, e.g. "variant"). */
+  section: TrimmedNonEmptyString,
+  /** Cell label (the prop value, e.g. "outline"). */
+  label: TrimmedNonEmptyString,
+  /** JSON-encoded props object passed to the component for this cell. */
+  propsJson: Schema.String,
+});
+export type ProjectPropVariantCell = typeof ProjectPropVariantCell.Type;
+
+export const ProjectBuildComponentPropVariantShowcaseInput = Schema.Struct({
+  cwd: TrimmedNonEmptyString,
+  relativePath: TrimmedNonEmptyString.check(Schema.isMaxLength(PROJECT_WRITE_FILE_PATH_MAX_LENGTH)),
+  /** The export to render in every cell (named export or `default`). */
+  exportName: TrimmedNonEmptyString,
+  cells: Schema.Array(ProjectPropVariantCell).check(Schema.isMinLength(1)),
+});
+export type ProjectBuildComponentPropVariantShowcaseInput =
+  typeof ProjectBuildComponentPropVariantShowcaseInput.Type;
+
+export const ProjectBuildComponentPropVariantShowcaseResult = Schema.Struct({
+  ok: Schema.Boolean,
+  javascript: Schema.optional(Schema.String),
+  warnings: Schema.Array(TrimmedString),
+  errors: Schema.Array(TrimmedString),
+});
+export type ProjectBuildComponentPropVariantShowcaseResult =
+  typeof ProjectBuildComponentPropVariantShowcaseResult.Type;
+
+export class ProjectBuildComponentPropVariantShowcaseError extends Schema.TaggedErrorClass<ProjectBuildComponentPropVariantShowcaseError>()(
+  "ProjectBuildComponentPropVariantShowcaseError",
+  {
+    message: TrimmedNonEmptyString,
+    cause: Schema.optional(Schema.Defect),
+  },
+) {}

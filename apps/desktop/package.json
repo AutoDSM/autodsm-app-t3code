@@ -5,8 +5,9 @@
   "type": "module",
   "main": "dist-electron/main.cjs",
   "scripts": {
-    "dev": "bun run --parallel dev:bundle dev:electron",
+    "dev": "bun run --parallel dev:bundle dev:server-bundle dev:electron",
     "dev:bundle": "node scripts/tsdown-dev-watch.mjs",
+    "dev:server-bundle": "node scripts/dev-server-bundle.mjs",
     "dev:electron": "node scripts/dev-electron.mjs",
     "build": "tsdown",
     "start": "node scripts/start-electron.mjs",

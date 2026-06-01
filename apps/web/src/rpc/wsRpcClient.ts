@@ -75,6 +75,9 @@ export interface WsRpcClient {
     readonly buildComponentVariantShowcase: RpcUnaryMethod<
       typeof WS_METHODS.projectsBuildComponentVariantShowcase
     >;
+    readonly buildComponentPropVariantShowcase: RpcUnaryMethod<
+      typeof WS_METHODS.projectsBuildComponentPropVariantShowcase
+    >;
   };
   readonly autodsm: {
     readonly getProjectProfile: RpcUnaryMethod<typeof WS_METHODS.autodsmGetProjectProfile>;
@@ -279,6 +282,10 @@ export function createWsRpcClient(transport: WsTransport): WsRpcClient {
       buildComponentVariantShowcase: (input) =>
         transport.request((client) =>
           client[WS_METHODS.projectsBuildComponentVariantShowcase](input),
+        ),
+      buildComponentPropVariantShowcase: (input) =>
+        transport.request((client) =>
+          client[WS_METHODS.projectsBuildComponentPropVariantShowcase](input),
         ),
     },
     autodsm: {

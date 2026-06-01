@@ -117,6 +117,8 @@ contextBridge.exposeInMainWorld("desktopBridge", {
     ipcRenderer.invoke(IpcChannels.COMPONENT_PREVIEW_SET_BOUNDS_CHANNEL, input),
   primeComponentPreview: (input) =>
     ipcRenderer.invoke(IpcChannels.COMPONENT_PREVIEW_PRIME_CHANNEL, input),
+  setComponentPreviewTheme: (input) =>
+    ipcRenderer.invoke(IpcChannels.COMPONENT_PREVIEW_SET_THEME_CHANNEL, input),
   captureComponentPreview: (input) =>
     ipcRenderer.invoke(IpcChannels.COMPONENT_PREVIEW_CAPTURE_CHANNEL, input),
   startSupabaseOAuth: (input) =>

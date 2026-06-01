@@ -18,6 +18,7 @@
     "dev": "node --watch src/bin.ts",
     "build": "node scripts/cli.ts build",
     "build:bundle": "tsdown",
+    "dev:bundle": "tsdown --watch",
     "start": "node dist/bin.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

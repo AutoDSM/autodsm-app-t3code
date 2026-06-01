@@ -11,7 +11,10 @@ import {
   isWebContentsViewPreviewSupported,
   primePreviewView,
   setPreviewBounds,
+  setPreviewTheme,
 } from "../../componentPreview/componentPreviewViews.ts";
+
+const PreviewThemeSchema = Schema.Literals(["light", "dark"]);
 import * as IpcChannels from "../channels.ts";
 import { makeIpcMethod } from "../DesktopIpc.ts";
 
@@ -109,13 +112,35 @@ export const primeComponentPreview = makeIpcMethod({
     javascript: Schema.String,
     propsJson: Schema.String,
     workspaceStyleCss: Schema.optional(Schema.String),
+    resolvedTheme: Schema.optional(PreviewThemeSchema),
   }),
   result: Schema.Boolean,
   handler: Effect.fn("desktop.ipc.componentPreview.prime")(function* (input) {
     return yield* Effect.tryPromise({
       try: () =>
-        primePreviewView(input.viewId, input.javascript, input.propsJson, input.workspaceStyleCss),
+        primePreviewView(
+          input.viewId,
+          input.javascript,
+          input.propsJson,
+          input.workspaceStyleCss,
+          input.resolvedTheme,
+        ),
       catch: () => false,
+    });
+  }),
+});
+
+export const setComponentPreviewTheme = makeIpcMethod({
+  channel: IpcChannels.COMPONENT_PREVIEW_SET_THEME_CHANNEL,
+  payload: Schema.Struct({
+    viewId: Schema.String,
+    resolvedTheme: PreviewThemeSchema,
+  }),
+  result: Schema.Void,
+  handler: Effect.fn("desktop.ipc.componentPreview.setTheme")(function* (input) {
+    yield* Effect.tryPromise({
+      try: () => setPreviewTheme(input.viewId, input.resolvedTheme),
+      catch: () => undefined,
     });
   }),
 });
