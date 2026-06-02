@@ -19,6 +19,7 @@ Load skills based on the task, but keep all guidance aligned with the v1 constru
 - Electron preview: `electron/webcontentsview.md`, `electron/security-checklist.md`
 - Rendering: `rendering/webcontentsview-renderer.md`, `rendering/safe-runtime.md`
 - Agent context: `agent/agent-context-assembly.md`, `agent/provider-driver-integration.md`
+- Coding agent internals (turn loop, providers, models, checkpoints): `agent/coding-agent-architecture.md`
 - Change review: `changeset/changeset-lifecycle.md`, `changeset/diff-rendering.md`
 - Workflow: `workflow/coding-conventions.md`, `workflow/testing.md`, `workflow/pr-conventions.md`
 

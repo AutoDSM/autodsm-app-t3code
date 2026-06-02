@@ -8,6 +8,7 @@ import {
   type AutoDsmComponentPageToolbarTab,
 } from "~/components/autodsm/AutoDsmComponentPageToolbar";
 import { AutoDsmComponentCodeView } from "~/components/autodsm/AutoDsmComponentCodeView";
+import { AutoDsmComponentDocsView } from "~/components/autodsm/AutoDsmComponentDocsView";
 import { AutoDsmComponentVariantsGrid } from "~/components/autodsm/AutoDsmComponentVariantsGrid";
 import { WebContentsView } from "~/components/WebContentsView";
 import { hasMultipleVariants, hasPropVariants } from "~/lib/autoDsmComponentVariantFamily";
@@ -111,6 +112,20 @@ export function AutoDsmComponentPreviewCanvas(
             ) : (
               <div className="flex flex-1 items-center justify-center text-muted-foreground text-xs">
                 Loading variants…
+              </div>
+            )
+          ) : activeTab === "documentation" ? (
+            workspaceCwd ? (
+              <AutoDsmComponentDocsView
+                relativePath={relativePath}
+                environmentId={environmentId}
+                workspaceCwd={workspaceCwd}
+                manifest={manifest}
+                exportName={primaryExportName}
+              />
+            ) : (
+              <div className="flex flex-1 items-center justify-center text-muted-foreground text-xs">
+                Loading documentation…
               </div>
             )
           ) : (

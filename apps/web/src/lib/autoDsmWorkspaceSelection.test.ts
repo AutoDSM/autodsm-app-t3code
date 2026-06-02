@@ -65,13 +65,13 @@ describe("resolveAutoDsmWorkspace", () => {
     const pSecondary = stubProject({
       id: "proj-0" as ProjectId,
       environmentId: env,
-      cwd: "/first/order",
+      cwd: "/home/u/.autodsm/systems/first-order/system",
       name: "First",
     });
     const pThread = stubProject({
       id: "proj-1" as ProjectId,
       environmentId: env,
-      cwd: "/thread/workspace",
+      cwd: "/home/u/.autodsm/systems/thread-ws/system",
       name: "ThreadProj",
     });
     const ordered = [pSecondary, pThread];
@@ -83,7 +83,7 @@ describe("resolveAutoDsmWorkspace", () => {
       explicitWorkspaceProjectRef: null,
     });
 
-    expect(out.cwd).toBe("/thread/workspace");
+    expect(out.cwd).toBe("/home/u/.autodsm/systems/thread-ws/system");
     expect(out.projectName).toBe("ThreadProj");
     expect(out.environmentId).toBe(env);
   });
@@ -92,7 +92,7 @@ describe("resolveAutoDsmWorkspace", () => {
     const primary = stubProject({
       id: "p-main" as ProjectId,
       environmentId: env,
-      cwd: "/primary",
+      cwd: "/home/u/.autodsm/systems/main/system",
       name: "Main",
     });
     const out = resolveAutoDsmWorkspace({
@@ -103,7 +103,7 @@ describe("resolveAutoDsmWorkspace", () => {
       explicitWorkspaceProjectRef: null,
     });
 
-    expect(out.cwd).toBe("/primary");
+    expect(out.cwd).toBe("/home/u/.autodsm/systems/main/system");
     expect(out.projectName).toBe("Main");
   });
 
@@ -111,13 +111,13 @@ describe("resolveAutoDsmWorkspace", () => {
     const pSecondary = stubProject({
       id: "proj-0" as ProjectId,
       environmentId: env,
-      cwd: "/explicit/workspace",
+      cwd: "/home/u/.autodsm/systems/explicit-ws/system",
       name: "Explicit",
     });
     const pThread = stubProject({
       id: "proj-1" as ProjectId,
       environmentId: env,
-      cwd: "/thread/workspace",
+      cwd: "/home/u/.autodsm/systems/thread-ws/system",
       name: "ThreadProj",
     });
     const ordered = [pThread, pSecondary];
@@ -129,7 +129,7 @@ describe("resolveAutoDsmWorkspace", () => {
       explicitWorkspaceProjectRef: scopeProjectRef(env, pSecondary.id),
     });
 
-    expect(out.cwd).toBe("/explicit/workspace");
+    expect(out.cwd).toBe("/home/u/.autodsm/systems/explicit-ws/system");
     expect(out.projectName).toBe("Explicit");
   });
 
@@ -137,7 +137,7 @@ describe("resolveAutoDsmWorkspace", () => {
     const pThread = stubProject({
       id: "proj-1" as ProjectId,
       environmentId: env,
-      cwd: "/thread/workspace",
+      cwd: "/home/u/.autodsm/systems/thread-ws/system",
       name: "ThreadProj",
     });
     const ordered = [pThread];
@@ -149,7 +149,7 @@ describe("resolveAutoDsmWorkspace", () => {
       explicitWorkspaceProjectRef: scopeProjectRef(env, "proj-missing" as ProjectId),
     });
 
-    expect(out.cwd).toBe("/thread/workspace");
+    expect(out.cwd).toBe("/home/u/.autodsm/systems/thread-ws/system");
     expect(out.projectName).toBe("ThreadProj");
   });
 });

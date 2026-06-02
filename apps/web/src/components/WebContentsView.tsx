@@ -534,6 +534,17 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
   // behind it. Compute the boolean here; the effect at the next step
   // toggles bounds when it flips.
   const exportMissingInManifest = manifest !== undefined && !bundleDepsReady(manifest, exportName);
+  // The component file doesn't exist on disk yet (freshly created; the agent or
+  // the create-flow stub hasn't landed). Analyze returns no exports plus a
+  // load/not-found diagnostic. Treated as a transient "creating" state — a clean
+  // placeholder — rather than the alarming "Export default not found" error.
+  const sourceFileMissing =
+    manifest !== undefined &&
+    manifest.exports.length === 0 &&
+    manifest.diagnostics.some(
+      (diagnostic) =>
+        diagnostic.includes("Could not load source file") || diagnostic.includes("not found"),
+    );
   // True whenever the product preview is loading or recompiling — including the
   // window where new javascript is ready but the (native or iframe) surface
   // hasn't repainted the current path yet. Drives both the opaque DOM skeleton
@@ -1451,6 +1462,17 @@ export function WebContentsView(props: WebContentsViewProps): JSX.Element | null
                       {trimmed} · {exportName}
                     </p>
                   </div>
+                </div>
+              ) : sourceFileMissing ? (
+                // File not on disk yet (freshly created). Show a clean, neutral
+                // "creating" placeholder instead of the export-not-found error.
+                <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 text-xs text-muted-foreground">
+                  <div
+                    className="size-5 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-foreground/70"
+                    aria-hidden
+                  />
+                  <span>Creating component…</span>
+                  <span className="font-mono text-[10px] opacity-70">{trimmed}</span>
                 </div>
               ) : manifest && !bundleDepsReady(manifest, exportName) ? (
                 // Failure mode A from the plan: scanner-emitted exportName doesn't

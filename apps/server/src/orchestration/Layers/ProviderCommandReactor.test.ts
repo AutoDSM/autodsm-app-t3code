@@ -40,6 +40,7 @@ import {
   ProviderService,
   type ProviderServiceShape,
 } from "../../provider/Services/ProviderService.ts";
+import { ProviderRegistry } from "../../provider/Services/ProviderRegistry.ts";
 import { TextGeneration, type TextGenerationShape } from "../../textGeneration/TextGeneration.ts";
 import { RepositoryIdentityResolverLive } from "../../project/Layers/RepositoryIdentityResolver.ts";
 import { OrchestrationEngineLive } from "./OrchestrationEngine.ts";
@@ -335,6 +336,8 @@ describe("ProviderCommandReactor", () => {
       Layer.provideMerge(orchestrationLayer),
       Layer.provideMerge(projectionSnapshotLayer),
       Layer.provideMerge(Layer.succeed(ProviderService, service)),
+      // Auto model mode is not exercised here; an empty registry is sufficient.
+      Layer.provideMerge(Layer.mock(ProviderRegistry, { getProviders: Effect.succeed([]) })),
       Layer.provideMerge(
         Layer.mock(GitWorkflowService)({
           renameBranch,
@@ -355,7 +358,16 @@ describe("ProviderCommandReactor", () => {
           generateThreadTitle,
         }),
       ),
-      Layer.provideMerge(ServerSettingsService.layerTest()),
+      // Pin a concrete text-generation model so the title/branch tests don't
+      // depend on Auto resolution (the registry mock above is empty).
+      Layer.provideMerge(
+        ServerSettingsService.layerTest({
+          textGenerationModelSelection: {
+            instanceId: ProviderInstanceId.make("codex"),
+            model: "gpt-5.4-mini",
+          },
+        }),
+      ),
       Layer.provideMerge(ServerConfig.layerTest(process.cwd(), baseDir)),
       Layer.provideMerge(NodeServices.layer),
     );

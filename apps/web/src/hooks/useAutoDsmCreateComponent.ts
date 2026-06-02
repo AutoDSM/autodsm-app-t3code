@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime";
 import type { ModelSelection, ProviderDriverKind } from "@t3tools/contracts";
+import { MODEL_SLUG_ALIASES_BY_PROVIDER } from "@t3tools/contracts";
 import type { UnifiedSettings } from "@t3tools/contracts/settings";
 import { truncate } from "@t3tools/shared/String";
 import { useCallback, useMemo, useState } from "react";
@@ -18,6 +19,7 @@ import { useSettings } from "~/hooks/useSettings";
 import { useSrcComponentsCatalog } from "~/hooks/useSrcComponentsCatalog";
 import { inferCreateComponentMetadata } from "~/lib/autoDsmCreateComponentRequest";
 import { formatCreateComponentOutgoingPrompt } from "~/lib/autoDsmCreateComponentPrompt";
+import { buildCreateComponentStub } from "~/lib/autoDsmCreateComponentStub";
 import { appendBrandTokenContextToPrompt } from "~/lib/brandTokenPromptContext";
 import { autodsmBrandProfileQueryOptions } from "~/lib/autodsmWorkspaceReactQuery";
 import { formatUnknownErrorMessage } from "~/lib/formatUnknownErrorMessage";
@@ -39,8 +41,28 @@ function resolveModelSelectionForCreate(
   settings: UnifiedSettings,
   providers: ReturnType<typeof useServerProviders>,
 ): ModelSelection {
+  // Only honor the project's persisted default if the provider actually
+  // advertises that model right now. A stale/unsupported default (e.g.
+  // "gpt-5.4" on a Codex+ChatGPT account) would otherwise be dispatched and
+  // rejected with a 400, so fall through to auto-resolve a live model.
   if (projectDefault?.instanceId && projectDefault.model) {
-    return projectDefault;
+    const entry = deriveProviderInstanceEntries(providers).find(
+      (candidate) =>
+        candidate.instanceId === projectDefault.instanceId &&
+        candidate.enabled &&
+        candidate.isAvailable,
+    );
+    if (entry) {
+      const alias =
+        MODEL_SLUG_ALIASES_BY_PROVIDER[entry.driverKind]?.[projectDefault.model] ??
+        projectDefault.model;
+      const advertised = entry.models.some(
+        (model) => model.slug === projectDefault.model || model.slug === alias,
+      );
+      if (advertised) {
+        return projectDefault;
+      }
+    }
   }
   return resolveAppModelSelectionState(settings, providers);
 }
@@ -181,6 +203,22 @@ export function useAutoDsmCreateComponent(): UseAutoDsmCreateComponentResult {
           source: "user",
           status: "creating",
         });
+
+        // Scaffold a stub so the new component page renders immediately while
+        // the agent writes the real file — no "Export default not found" flash.
+        // Best-effort: a failure here must not abort the creation flow.
+        try {
+          await api.projects.writeFile({
+            cwd,
+            relativePath: metadata.componentPath.replace(/^\/+/, ""),
+            contents: buildCreateComponentStub({
+              componentName: metadata.componentFileName.replace(/\.(tsx|jsx)$/i, ""),
+              label: metadata.title,
+            }),
+          });
+        } catch {
+          // Non-fatal: the agent will still create the file on its first turn.
+        }
 
         mergePaths({
           [threadKey]: metadata.componentPath,

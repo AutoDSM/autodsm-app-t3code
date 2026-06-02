@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { useMemo, type JSX } from "react";
 
 import { useAutoDsmWorkspace } from "~/hooks/useAutoDsmWorkspace";
@@ -29,6 +30,7 @@ export function AutoDsmHomeDashboard(): JSX.Element {
   const { cwd, environmentId, projectName } = useAutoDsmWorkspace();
   const workspaceReady = Boolean(cwd && environmentId);
   const now = useMemo(() => new Date(), []);
+  const navigate = useNavigate();
 
   const projectProfileQuery = useQuery(
     autodsmProjectProfileQueryOptions({ environmentId, cwd, enabled: workspaceReady }),
@@ -224,7 +226,7 @@ export function AutoDsmHomeDashboard(): JSX.Element {
         entries={recentEntries}
         loading={activityQuery.isPending && workspaceReady}
         onViewAll={() => {
-          // TODO: route to a dedicated activity page when one exists.
+          void navigate({ to: "/activity" });
         }}
       />
     </div>

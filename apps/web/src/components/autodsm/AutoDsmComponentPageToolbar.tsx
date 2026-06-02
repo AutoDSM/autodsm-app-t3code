@@ -21,7 +21,7 @@ const TOOLBAR_TABS: ReadonlyArray<{
   { id: "demo", label: "Demo", alwaysEnabled: true },
   { id: "variants", label: "Variants", alwaysEnabled: false },
   { id: "code", label: "Code", alwaysEnabled: true },
-  { id: "documentation", label: "Documentation", alwaysEnabled: false },
+  { id: "documentation", label: "Documentation", alwaysEnabled: true },
 ];
 
 export function AutoDsmComponentPageToolbar(props: AutoDsmComponentPageToolbarProps): JSX.Element {

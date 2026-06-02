@@ -169,6 +169,43 @@ export function ComponentPreviewPropControl(input: {
     );
   }
 
+  if (spec.kind === "reactNode") {
+    // A React node slot: accept plain text and render it as children. Rich JSX
+    // isn't authorable from a control, so keep it to a simple string.
+    const text = typeof value === "string" ? value : "";
+    return (
+      <label className={`flex flex-col gap-0.5 ${textSize}`}>
+        <span className="text-muted-foreground">{label}</span>
+        <input
+          type="text"
+          placeholder="children text…"
+          className="rounded border border-border bg-background px-2 py-1 text-xs"
+          value={text}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      </label>
+    );
+  }
+
+  if (spec.kind === "function") {
+    // Callback props can't be meaningfully authored in a preview control; show a
+    // disabled affordance. The default props already supply a no-op handler so
+    // the component still renders.
+    return (
+      <label className={`flex flex-col gap-0.5 ${textSize}`}>
+        <span className="text-muted-foreground">{label}</span>
+        <input
+          type="text"
+          disabled
+          aria-disabled
+          readOnly
+          className="cursor-not-allowed rounded border border-border/60 bg-muted px-2 py-1 font-mono text-muted-foreground text-xs"
+          value="() => {} — not editable in preview"
+        />
+      </label>
+    );
+  }
+
   if (
     spec.kind === "object" ||
     spec.kind === "array" ||

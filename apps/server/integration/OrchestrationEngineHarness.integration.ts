@@ -44,6 +44,7 @@ import {
   ProviderEventLoggers,
 } from "../src/provider/Layers/ProviderEventLoggers.ts";
 import { ProviderService } from "../src/provider/Services/ProviderService.ts";
+import { ProviderRegistry } from "../src/provider/Services/ProviderRegistry.ts";
 import { AnalyticsService } from "../src/telemetry/Services/AnalyticsService.ts";
 import { CheckpointReactorLive } from "../src/orchestration/Layers/CheckpointReactor.ts";
 import { RepositoryIdentityResolverLive } from "../src/project/Layers/RepositoryIdentityResolver.ts";
@@ -325,6 +326,8 @@ export const makeOrchestrationIntegrationHarness = (
       Layer.provideMerge(gitWorkflowLayer),
       Layer.provideMerge(textGenerationLayer),
       Layer.provideMerge(serverSettingsLayer),
+      // Auto model mode is not exercised here; an empty registry is sufficient.
+      Layer.provideMerge(Layer.mock(ProviderRegistry, { getProviders: Effect.succeed([]) })),
     );
     const checkpointReactorLayer = CheckpointReactorLive.pipe(
       Layer.provideMerge(runtimeServicesLayer),

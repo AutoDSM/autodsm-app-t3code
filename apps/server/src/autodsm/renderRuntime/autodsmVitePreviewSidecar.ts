@@ -19,6 +19,17 @@ export function peekAutodsmPreviewSidecar(cwd: string): AutodsmPreviewSidecar | 
   return sidecars.get(resolvedRoot);
 }
 
+/**
+ * Dispose every running preview sidecar (Vite/Bun/HTTP). Called on server
+ * shutdown so child preview servers don't outlive the backend process — without
+ * this they leak when the desktop app quits and SIGKILLs the backend.
+ */
+export async function disposeAllAutodsmPreviewSidecars(): Promise<void> {
+  const active = [...sidecars.values()];
+  await Promise.allSettled(active.map((sidecar) => sidecar.dispose()));
+  sidecars.clear();
+}
+
 export function previewSidecarPortHint(resolvedAbsoluteCwd: string): number {
   const n = Number.parseInt(sha256Hex(resolvedAbsoluteCwd).slice(0, 8), 16);
   return 5180 + (Math.abs(n) % 10);

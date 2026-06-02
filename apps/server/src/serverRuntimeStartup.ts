@@ -37,6 +37,7 @@ import {
   sweepAutodsmStagingDirectories,
   sweepBrokenAutodsmWorkspaces,
 } from "./autodsm/autodsmWorkspaceStaging.ts";
+import { disposeAllAutodsmPreviewSidecars } from "./autodsm/renderRuntime/autodsmVitePreviewSidecar.ts";
 import {
   formatHeadlessServeOutput,
   formatHostForUrl,
@@ -296,6 +297,12 @@ export const makeServerRuntimeStartup = Effect.gen(function* () {
   const reactorScope = yield* Scope.make("sequential");
 
   yield* Effect.addFinalizer(() => Scope.close(reactorScope, Exit.void));
+
+  // Tear down any AutoDSM preview sidecars (Vite/Bun/HTTP) on shutdown so they
+  // don't outlive the backend process (e.g. when the desktop app quits).
+  yield* Effect.addFinalizer(() =>
+    Effect.promise(() => disposeAllAutodsmPreviewSidecars()).pipe(Effect.ignore),
+  );
 
   const startup = Effect.gen(function* () {
     yield* Effect.logDebug("startup phase: sweeping stale AutoDSM staging workspaces");

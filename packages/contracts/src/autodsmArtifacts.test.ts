@@ -100,10 +100,13 @@ describe("autodsmArtifacts", () => {
   });
 
   describe("design brief schemas", () => {
-    it("accepts upload input under the 32 KB cap and rejects oversize", () => {
+    it("accepts upload input under the 128 KB cap and rejects oversize", () => {
       expect(() => decodeDesignBriefUploadInput({ cwd: "/tmp/ws", markdown: "hi" })).not.toThrow();
       expect(() =>
-        decodeDesignBriefUploadInput({ cwd: "/tmp/ws", markdown: "x".repeat(32_769) }),
+        decodeDesignBriefUploadInput({ cwd: "/tmp/ws", markdown: "x".repeat(131_072) }),
+      ).not.toThrow();
+      expect(() =>
+        decodeDesignBriefUploadInput({ cwd: "/tmp/ws", markdown: "x".repeat(131_073) }),
       ).toThrow();
     });
 

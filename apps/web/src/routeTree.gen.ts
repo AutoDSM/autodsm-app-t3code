@@ -35,6 +35,7 @@ import { Route as ChatHomeRouteImport } from './routes/_chat.home'
 import { Route as ChatDesignTokensRouteImport } from './routes/_chat.design-tokens'
 import { Route as ChatDesignComponentsRouteImport } from './routes/_chat.design-components'
 import { Route as ChatComponentPreviewRuntimeRouteImport } from './routes/_chat.component-preview-runtime'
+import { Route as ChatActivityRouteImport } from './routes/_chat.activity'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
 
@@ -169,6 +170,11 @@ const ChatComponentPreviewRuntimeRoute =
     path: '/component-preview-runtime',
     getParentRoute: () => ChatRoute,
   } as any)
+const ChatActivityRoute = ChatActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
+  getParentRoute: () => ChatRoute,
+} as any)
 const ChatDraftDraftIdRoute = ChatDraftDraftIdRouteImport.update({
   id: '/draft/$draftId',
   path: '/draft/$draftId',
@@ -186,6 +192,7 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRouteWithChildren
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/activity': typeof ChatActivityRoute
   '/component-preview-runtime': typeof ChatComponentPreviewRuntimeRoute
   '/design-components': typeof ChatDesignComponentsRoute
   '/design-tokens': typeof ChatDesignTokensRoute
@@ -214,6 +221,7 @@ export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRouteWithChildren
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/activity': typeof ChatActivityRoute
   '/component-preview-runtime': typeof ChatComponentPreviewRuntimeRoute
   '/design-components': typeof ChatDesignComponentsRoute
   '/design-tokens': typeof ChatDesignTokensRoute
@@ -245,6 +253,7 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRouteWithChildren
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/_chat/activity': typeof ChatActivityRoute
   '/_chat/component-preview-runtime': typeof ChatComponentPreviewRuntimeRoute
   '/_chat/design-components': typeof ChatDesignComponentsRoute
   '/_chat/design-tokens': typeof ChatDesignTokensRoute
@@ -277,6 +286,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/pair'
     | '/settings'
+    | '/activity'
     | '/component-preview-runtime'
     | '/design-components'
     | '/design-tokens'
@@ -305,6 +315,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/pair'
     | '/settings'
+    | '/activity'
     | '/component-preview-runtime'
     | '/design-components'
     | '/design-tokens'
@@ -335,6 +346,7 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/pair'
     | '/settings'
+    | '/_chat/activity'
     | '/_chat/component-preview-runtime'
     | '/_chat/design-components'
     | '/_chat/design-tokens'
@@ -553,6 +565,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatComponentPreviewRuntimeRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/_chat/activity': {
+      id: '/_chat/activity'
+      path: '/activity'
+      fullPath: '/activity'
+      preLoaderRoute: typeof ChatActivityRouteImport
+      parentRoute: typeof ChatRoute
+    }
     '/_chat/draft/$draftId': {
       id: '/_chat/draft/$draftId'
       path: '/draft/$draftId'
@@ -571,6 +590,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface ChatRouteChildren {
+  ChatActivityRoute: typeof ChatActivityRoute
   ChatComponentPreviewRuntimeRoute: typeof ChatComponentPreviewRuntimeRoute
   ChatDesignComponentsRoute: typeof ChatDesignComponentsRoute
   ChatDesignTokensRoute: typeof ChatDesignTokensRoute
@@ -582,6 +602,7 @@ interface ChatRouteChildren {
 }
 
 const ChatRouteChildren: ChatRouteChildren = {
+  ChatActivityRoute: ChatActivityRoute,
   ChatComponentPreviewRuntimeRoute: ChatComponentPreviewRuntimeRoute,
   ChatDesignComponentsRoute: ChatDesignComponentsRoute,
   ChatDesignTokensRoute: ChatDesignTokensRoute,
