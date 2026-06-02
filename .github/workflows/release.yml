@@ -158,10 +158,18 @@ jobs:
       - name: Brand audit
         run: bun run brand:audit
 
+      # Preflight runs checks only; the web build it triggers (test → ^build)
+      # would otherwise demand VITE_SUPABASE_* because GITHUB_REF_TYPE is "tag".
+      # The real, secret-backed web build/deploy happens in the build + deploy
+      # jobs — skip the Supabase gate for these check-only builds.
       - name: Typecheck
+        env:
+          T3CODE_REQUIRE_SUPABASE: "0"
         run: bun run typecheck
 
       - name: Test
+        env:
+          T3CODE_REQUIRE_SUPABASE: "0"
         run: bun run test
 
       - id: previous_tag

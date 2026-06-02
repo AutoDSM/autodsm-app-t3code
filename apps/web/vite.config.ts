@@ -65,9 +65,15 @@ export default defineConfig(({ mode }) => {
 
   const devProxyTarget = resolveDevProxyTarget(configuredWsUrl);
 
+  // Explicit `T3CODE_REQUIRE_SUPABASE=0` opts out of the gate even on tag builds
+  // (per the error message below). Used by the Preflight check job, whose web
+  // build is for lint/test only — the shippable build/deploy jobs supply the
+  // real secrets and leave this unset so the tag gate applies there.
+  const requireSupabaseEnv = process.env.T3CODE_REQUIRE_SUPABASE;
   const isCiReleaseBuild =
     process.env.CI === "true" &&
-    (process.env.T3CODE_REQUIRE_SUPABASE === "1" || process.env.GITHUB_REF_TYPE === "tag");
+    requireSupabaseEnv !== "0" &&
+    (requireSupabaseEnv === "1" || process.env.GITHUB_REF_TYPE === "tag");
 
   if (
     isCiReleaseBuild &&
