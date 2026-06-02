@@ -3,9 +3,7 @@
 import type { JSX } from "react";
 import { getRouteApi } from "@tanstack/react-router";
 
-import { AutoDsmOnboardingCreateProject } from "~/components/autodsm/onboarding/AutoDsmOnboardingCreateProject";
 import { ElectronWorkspaceBootstrapLoading } from "~/components/autodsm/ElectronWorkspaceBootstrapLoading";
-import { shouldShowAutoDsmProjectPicker } from "~/lib/projectIntake/closeActiveWorkspaceProject";
 import {
   useAutoDsmSingleDesignSystemMode,
   useAutoDsmWorkspaceBootstrap,
@@ -22,7 +20,6 @@ const rootRouteApi = getRouteApi("__root__");
 export function ElectronAuthenticatedChatLanding(): JSX.Element {
   const { authGateState } = rootRouteApi.useRouteContext();
   const bootstrapComplete = useStore(selectBootstrapCompleteForActiveEnvironment);
-  const onboardingCompleted = useUiStateStore((state) => state.autodsmOnboarding.completed);
   const hasActiveWorkspaceProject = useUiStateStore(
     (state) => state.autoDsmWorkspaceProjectRef !== null,
   );
@@ -49,14 +46,9 @@ export function ElectronAuthenticatedChatLanding(): JSX.Element {
     return <ElectronWorkspaceBootstrapLoading authPending={false} />;
   }
 
-  if (
-    shouldShowAutoDsmProjectPicker({
-      onboardingCompleted,
-      hasDesignSystemOnDisk,
-    })
-  ) {
-    return <AutoDsmOnboardingCreateProject />;
-  }
-
+  // The "create / open a project" picker is shown as a standalone page at
+  // /onboarding/create — the route's beforeLoad redirects this case there
+  // before the product layout mounts, so we never render onboarding inline
+  // here. Until that navigation settles, show the neutral loading state.
   return <ElectronWorkspaceBootstrapLoading authPending={false} />;
 }

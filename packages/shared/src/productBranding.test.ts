@@ -7,8 +7,13 @@ describe("productBranding", () => {
     expect(PRODUCT_BASE_NAME).toBe("AutoDSM");
   });
 
-  it("builds display names from stage labels", () => {
-    expect(resolveProductDisplayName("Alpha")).toBe("AutoDSM (Alpha)");
+  it("ships the stable channel as the bare product name", () => {
+    expect(resolveProductDisplayName("Alpha")).toBe("AutoDSM");
+    expect(resolveProductDisplayName("Latest")).toBe("AutoDSM");
+    expect(resolveProductDisplayName("")).toBe("AutoDSM");
+  });
+
+  it("suffixes pre-release channels so builds stay distinguishable", () => {
     expect(resolveProductDisplayName("Dev")).toBe("AutoDSM (Dev)");
     expect(resolveProductDisplayName("Nightly")).toBe("AutoDSM (Nightly)");
   });

@@ -5,6 +5,7 @@ import { ChatLaunchEmptyState } from "~/components/autodsm/ChatLaunchEmptyState"
 import { ElectronAuthenticatedChatLanding } from "~/components/autodsm/ElectronAuthenticatedChatLanding";
 import { ElectronWorkspaceBootstrapLoading } from "~/components/autodsm/ElectronWorkspaceBootstrapLoading";
 import { resolveChatIndexOnboarding } from "~/lib/autoDsmOnboarding";
+import { shouldShowAutoDsmProjectPicker } from "~/lib/projectIntake/closeActiveWorkspaceProject";
 import {
   fetchAutoDsmDesignSystemOnDisk,
   resolveOwnerSubjectFromSupabase,
@@ -64,6 +65,18 @@ export const Route = createFileRoute("/_chat/")({
     }
     if (resolution?.kind === "home") {
       throw redirect({ to: resolution.to, replace: true });
+    }
+    // Completed onboarding but no open workspace and no design system on disk:
+    // send the user to the standalone create/open-project page rather than
+    // rendering the picker inline inside the product chrome.
+    if (
+      !hasActiveWorkspaceProject &&
+      shouldShowAutoDsmProjectPicker({
+        onboardingCompleted: onboarding.completed,
+        hasDesignSystemOnDisk,
+      })
+    ) {
+      throw redirect({ to: "/onboarding/create", replace: true });
     }
   },
   component: ChatIndexRouteView,
