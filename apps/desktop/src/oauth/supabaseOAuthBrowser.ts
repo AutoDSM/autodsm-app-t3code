@@ -42,7 +42,15 @@ export async function runSupabaseOAuthInSystemBrowser(input: {
   readonly redirectTo: string;
   readonly onMainWindowClosed?: (cancel: () => void) => void;
 }): Promise<DesktopSupabaseOAuthBrowserResult> {
-  if (process.env.AUTODSM_OAUTH_SHELL === "1") {
+  // PKCE single-context: the code_verifier is created in (and read back from) the
+  // main window's localStorage. OAuth must therefore complete inside the in-app
+  // auth shell, which only *captures* the authorization code and hands it back to
+  // the main window for `exchangeCodeForSession`. Opening the system browser
+  // (`shell.openExternal`) completes the flow in a separate context where the
+  // verifier is missing — the root cause of failed sign-ins (passkey fallback).
+  // Default to the shell; the legacy loopback path is reachable only via an
+  // explicit `AUTODSM_OAUTH_SHELL=0` opt-out for debugging.
+  if (process.env.AUTODSM_OAUTH_SHELL !== "0") {
     return runSupabaseOAuthInShell(input);
   }
 

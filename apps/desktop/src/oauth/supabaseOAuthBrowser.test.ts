@@ -38,7 +38,21 @@ describe("runSupabaseOAuthInSystemBrowser", () => {
     delete process.env.AUTODSM_OAUTH_SHELL;
   });
 
-  it("starts the callback server before opening the browser", async () => {
+  it("defaults to the in-app auth shell (PKCE single-context, no system browser)", async () => {
+    const result = await runSupabaseOAuthInSystemBrowser({
+      oauthUrl: "https://example.supabase.co/auth/v1/authorize?provider=github",
+      redirectTo: desktopOAuthRedirectUrl(),
+    });
+
+    expect(result).toEqual({ ok: true, code: "shell-code" });
+    // Never opens the system browser / loopback server by default — that path
+    // drops the PKCE verifier created in the main window.
+    expect(openExternalMock).not.toHaveBeenCalled();
+    expect(startOAuthCallbackServerMock).not.toHaveBeenCalled();
+  });
+
+  it("uses the legacy loopback/browser path only when AUTODSM_OAUTH_SHELL=0", async () => {
+    process.env.AUTODSM_OAUTH_SHELL = "0";
     const redirectTo = desktopOAuthRedirectUrl();
     const callOrder: string[] = [];
     startOAuthCallbackServerMock.mockImplementation(async ({ redirectTo: configuredRedirect }) => {

@@ -110,10 +110,14 @@ export function isGooglePasskeyChallengeUrl(url: string): boolean {
     return false;
   }
   const haystack = `${parsed.pathname}${parsed.search}`.toLowerCase();
+  // Passkey-only patterns. Avoid matching generic `/challenge/` step-ups (e.g.
+  // password or 2-step) which are completable in-shell and must NOT be treated
+  // as passkey pages.
   return (
     haystack.includes("passkey") ||
     haystack.includes("webauthn") ||
-    haystack.includes("challenge/pk")
+    haystack.includes("challenge/pk") ||
+    haystack.includes("challenge/skotp")
   );
 }
 

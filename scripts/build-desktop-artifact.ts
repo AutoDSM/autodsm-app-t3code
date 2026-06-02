@@ -568,9 +568,13 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   mockUpdateServerPort: number | undefined,
 ) {
   const buildConfig: Record<string, unknown> = {
-    appId: "com.t3tools.t3code",
+    // AutoDSM release identity. NOTE: changing the appId from the historical
+    // `com.t3tools.t3code` means electron auto-update identity does NOT carry
+    // across from any previously-installed substrate build — those users must
+    // reinstall once. Safe to do pre-alpha while installs are ~zero.
+    appId: "com.autodsm.app",
     productName: resolveDesktopProductName(version),
-    artifactName: "T3-Code-${version}-${arch}.${ext}",
+    artifactName: "AutoDSM-${version}-${arch}.${ext}",
     directories: {
       buildResources: "apps/desktop/resources",
     },
@@ -593,6 +597,11 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       target: target === "dmg" ? [target, "zip"] : [target],
       icon: "icon.icns",
       category: "public.app-category.developer-tools",
+      // Required for notarization. electron-builder auto-notarizes when the
+      // APPLE_API_KEY / APPLE_API_KEY_ID / APPLE_API_ISSUER env vars are present
+      // (release.yml supplies them when signing is enabled).
+      hardenedRuntime: true,
+      gatekeeperAssess: false,
       extendInfo: {
         CFBundleURLTypes: [
           {
@@ -607,12 +616,12 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   if (platform === "linux") {
     buildConfig.linux = {
       target: [target],
-      executableName: "t3code",
+      executableName: "autodsm",
       icon: "icon.png",
       category: "Development",
       desktop: {
         entry: {
-          StartupWMClass: "t3code",
+          StartupWMClass: "autodsm",
         },
       },
     };

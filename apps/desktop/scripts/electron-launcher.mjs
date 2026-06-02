@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL);
 const APP_DISPLAY_NAME = isDevelopment ? "AutoDSM (Dev)" : "AutoDSM (Alpha)";
-const APP_BUNDLE_ID = isDevelopment ? "com.t3tools.t3code.dev" : "com.t3tools.t3code";
+const APP_BUNDLE_ID = isDevelopment ? "com.autodsm.app.dev" : "com.autodsm.app";
 const LAUNCHER_VERSION = 4;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
