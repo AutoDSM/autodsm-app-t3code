@@ -31,7 +31,8 @@
     "GITHUB_REF_TYPE",
     "T3CODE_REQUIRE_SUPABASE",
     "VITE_SUPABASE_URL",
-    "VITE_SUPABASE_ANON_KEY"
+    "VITE_SUPABASE_ANON_KEY",
+    "ELECTRON_OVERRIDE_DIST_PATH"
   ],
   "globalPassThroughEnv": ["PATHEXT"],
   "tasks": {
