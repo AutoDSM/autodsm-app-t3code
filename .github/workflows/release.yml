@@ -692,8 +692,8 @@ jobs:
           set -euo pipefail
 
           if [[ -z "${VERCEL_TOKEN:-}" || -z "${VERCEL_ORG_ID:-}" || -z "${VERCEL_PROJECT_ID:-}" ]]; then
-            echo "Missing one or more required Vercel secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID." >&2
-            exit 1
+            echo "::notice::Skipping hosted web app deploy — Vercel secrets (VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID) are not configured. The desktop release is unaffected."
+            exit 0
           fi
 
           router_url="${T3CODE_WEB_ROUTER_URL:-https://app.t3.codes}"
