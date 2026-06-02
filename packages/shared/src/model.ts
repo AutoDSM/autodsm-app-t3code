@@ -1,4 +1,6 @@
 import {
+  AUTO_INSTANCE_ID,
+  AUTO_MODEL_SLUG,
   DEFAULT_MODEL,
   DEFAULT_MODEL_BY_PROVIDER,
   MODEL_SLUG_ALIASES_BY_PROVIDER,
@@ -364,4 +366,218 @@ export function applyClaudePromptEffortPrefix(
     return trimmed;
   }
   return `Ultrathink:\n${trimmed}`;
+}
+
+// ── Auto model mode ───────────────────────────────────────────────────
+//
+// "Auto" is a cross-provider, deterministic router: given the models the
+// user actually has (from READY provider instances) plus cheap signals about
+// the turn, it picks the best-fit model without an extra LLM round-trip. The
+// logic here is pure so it is fully unit-testable.
+
+/** Quality/cost tiers, ordered fast < balanced < frontier. */
+export type AutoModelTier = "fast" | "balanced" | "frontier";
+
+const TIER_ORDER: Record<AutoModelTier, number> = { fast: 0, balanced: 1, frontier: 2 };
+
+export interface ModelQualityRank {
+  readonly tier: AutoModelTier;
+  /** Higher = more capable. Used to pick the best model within a tier budget. */
+  readonly score: number;
+}
+
+/**
+ * Curated ranking for known model slugs. Unknown/custom slugs fall back to the
+ * substring heuristic in {@link rankForModelSlug}. Keep scores comparable
+ * across providers so cross-provider selection is meaningful.
+ */
+export const MODEL_QUALITY_RANK: Readonly<Record<string, ModelQualityRank>> = {
+  "claude-opus-4-7": { tier: "frontier", score: 100 },
+  "claude-opus-4-6": { tier: "frontier", score: 96 },
+  "claude-opus-4-5": { tier: "frontier", score: 92 },
+  "gpt-5.4": { tier: "frontier", score: 95 },
+  "gpt-5.3-codex": { tier: "frontier", score: 90 },
+  "gpt-5.3-codex-spark": { tier: "balanced", score: 64 },
+  "openai/gpt-5": { tier: "frontier", score: 88 },
+  "claude-sonnet-4-6": { tier: "balanced", score: 72 },
+  "composer-2": { tier: "balanced", score: 60 },
+  "composer-1.5": { tier: "balanced", score: 54 },
+  "claude-haiku-4-5": { tier: "fast", score: 42 },
+  "gpt-5.4-mini": { tier: "fast", score: 40 },
+};
+
+/** Rank a model slug, using the curated table first then a slug heuristic. */
+export function rankForModelSlug(slug: string): ModelQualityRank {
+  const direct = MODEL_QUALITY_RANK[slug];
+  if (direct) return direct;
+  const lower = slug.toLowerCase();
+  if (/(mini|haiku|flash|fast|spark|lite|nano|small|mini-)/.test(lower)) {
+    return { tier: "fast", score: 35 };
+  }
+  if (/(opus|gpt-5|grok-4|max|ultra|\bo1\b|\bo3\b|pro)/.test(lower)) {
+    return { tier: "frontier", score: 80 };
+  }
+  if (/(sonnet|composer|gpt-4|medium|deepseek|qwen)/.test(lower)) {
+    return { tier: "balanced", score: 60 };
+  }
+  // Unknown shape — treat as mid-capability so it can serve as a reasonable
+  // fallback without being preferred over a known frontier model.
+  return { tier: "balanced", score: 50 };
+}
+
+/** A model the user has available, as a candidate for Auto selection. */
+export interface AutoModelCandidate {
+  readonly instanceId: ProviderInstanceId;
+  readonly driverKind: ProviderDriverKind;
+  readonly model: string;
+  readonly capabilities?: ModelCapabilities | null;
+}
+
+export interface AutoSelectionSignals {
+  /** "plan" turns lean toward the strongest model. */
+  readonly interactionMode?: "default" | "plan";
+  /** Character length of the user's prompt. */
+  readonly promptLength: number;
+  /** Image attachments push toward a stronger multimodal model. */
+  readonly hasImageAttachments?: boolean;
+  /** "textgen" = commit/title/branch summarization; always fast. */
+  readonly purpose: "turn" | "textgen";
+}
+
+/** The Auto sentinel selection the UI/store persists when the user picks Auto. */
+export const AUTO_MODEL_SELECTION: ModelSelection = createModelSelection(
+  AUTO_INSTANCE_ID,
+  AUTO_MODEL_SLUG,
+);
+
+/** True when a selection is the cross-provider Auto sentinel. */
+export function isAutoModelSelection(selection: ModelSelection | null | undefined): boolean {
+  return selection?.instanceId === AUTO_INSTANCE_ID;
+}
+
+/** Map turn signals to a target capability tier. */
+export function targetTierForSignals(signals: AutoSelectionSignals): AutoModelTier {
+  if (signals.purpose === "textgen") return "fast";
+  if (
+    signals.interactionMode === "plan" ||
+    signals.hasImageAttachments === true ||
+    signals.promptLength >= 1500
+  ) {
+    return "frontier";
+  }
+  if (signals.promptLength <= 160) return "fast";
+  return "balanced";
+}
+
+// Provider tie-break order when two candidates score equally.
+const AUTO_PROVIDER_PRIORITY: ReadonlyArray<string> = [
+  "claudeAgent",
+  "codex",
+  "opencode",
+  "cursor",
+];
+
+function providerPriorityIndex(driver: ProviderDriverKind): number {
+  const index = AUTO_PROVIDER_PRIORITY.indexOf(driver as unknown as string);
+  return index === -1 ? AUTO_PROVIDER_PRIORITY.length : index;
+}
+
+// Effort-like select descriptors whose value we nudge by tier.
+const EFFORT_DESCRIPTOR_IDS: ReadonlySet<string> = new Set([
+  "effort",
+  "reasoning",
+  "reasoningEffort",
+  "variant",
+]);
+const FRONTIER_EFFORT_PREFERENCE: ReadonlyArray<string> = ["max", "xhigh", "high", "medium"];
+const FAST_EFFORT_PREFERENCE: ReadonlyArray<string> = ["minimal", "low", "medium"];
+
+function chooseEffortOptionId(
+  descriptor: ProviderOptionDescriptor,
+  tier: AutoModelTier,
+): string | undefined {
+  if (descriptor.type !== "select") return undefined;
+  if (tier === "balanced") return undefined; // keep provider defaults
+  const injected = new Set(descriptor.promptInjectedValues ?? []);
+  const available = new Set(
+    descriptor.options.map((option) => option.id).filter((id) => !injected.has(id)),
+  );
+  const preference = tier === "frontier" ? FRONTIER_EFFORT_PREFERENCE : FAST_EFFORT_PREFERENCE;
+  for (const id of preference) {
+    if (available.has(id)) return id;
+  }
+  return undefined;
+}
+
+/** Build option selections for the chosen model, nudging effort by tier. */
+function buildAutoOptionsForModel(
+  capabilities: ModelCapabilities | null | undefined,
+  tier: AutoModelTier,
+): Array<ProviderOptionSelection> | undefined {
+  if (!capabilities) return undefined;
+  const descriptors = getProviderOptionDescriptors({ caps: capabilities });
+  const selections = buildProviderOptionSelectionsFromDescriptors(descriptors) ?? [];
+  const byId = new Map(selections.map((selection) => [selection.id, selection]));
+  for (const descriptor of descriptors) {
+    if (!EFFORT_DESCRIPTOR_IDS.has(descriptor.id)) continue;
+    const override = chooseEffortOptionId(descriptor, tier);
+    if (override !== undefined) {
+      byId.set(descriptor.id, { id: descriptor.id, value: override });
+    }
+  }
+  const next = [...byId.values()];
+  return next.length > 0 ? next : undefined;
+}
+
+/**
+ * Resolve the Auto sentinel to a concrete {@link ModelSelection}.
+ *
+ * - Picks the best-scoring model whose tier fits within the target derived
+ *   from `signals`; if every candidate is stronger than the target, picks the
+ *   cheapest (lowest score) to honor cost optimization.
+ * - `lockedInstanceId` constrains candidates to a single instance — used when
+ *   a provider session is already bound to the thread and cannot switch
+ *   providers mid-session, so cross-provider routing only happens at session
+ *   start.
+ * - Returns `null` when there are no candidates; callers fall back to their
+ *   existing concrete defaults.
+ */
+export function resolveAutoModelSelection(input: {
+  readonly candidates: ReadonlyArray<AutoModelCandidate>;
+  readonly signals: AutoSelectionSignals;
+  readonly lockedInstanceId?: ProviderInstanceId | null;
+}): ModelSelection | null {
+  const pool = input.lockedInstanceId
+    ? input.candidates.filter((candidate) => candidate.instanceId === input.lockedInstanceId)
+    : input.candidates;
+  if (pool.length === 0) return null;
+
+  const target = targetTierForSignals(input.signals);
+  const targetRank = TIER_ORDER[target];
+  const ranked = pool.map((candidate) => ({
+    candidate,
+    rank: rankForModelSlug(candidate.model),
+  }));
+
+  const atOrBelow = ranked.filter(({ rank }) => TIER_ORDER[rank.tier] <= targetRank);
+  // Within budget → strongest available; otherwise everything is above the
+  // target, so take the cheapest (closest down to the target).
+  const preferStrongest = atOrBelow.length > 0;
+  const considered = preferStrongest ? atOrBelow : ranked;
+
+  const sorted = considered.toSorted((a, b) => {
+    const scoreDelta = preferStrongest
+      ? b.rank.score - a.rank.score
+      : a.rank.score - b.rank.score;
+    if (scoreDelta !== 0) return scoreDelta;
+    return (
+      providerPriorityIndex(a.candidate.driverKind) -
+      providerPriorityIndex(b.candidate.driverKind)
+    );
+  });
+
+  const chosen = sorted[0]?.candidate;
+  if (!chosen) return null;
+  const options = buildAutoOptionsForModel(chosen.capabilities, target);
+  return createModelSelection(chosen.instanceId, chosen.model, options);
 }

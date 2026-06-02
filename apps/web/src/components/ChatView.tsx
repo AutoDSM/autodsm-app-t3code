@@ -15,6 +15,7 @@ import {
   type ThreadId,
   type TurnId,
   type KeybindingCommand,
+  AUTO_INSTANCE_ID,
   OrchestrationThreadActivity,
   ProviderInteractionMode,
   ProviderDriverKind,
@@ -29,6 +30,7 @@ import {
 } from "@t3tools/client-runtime";
 import {
   applyClaudePromptEffortPrefix,
+  AUTO_MODEL_SELECTION,
   createModelSelection,
   resolvePromptInjectedEffort,
 } from "@t3tools/shared/model";
@@ -3689,6 +3691,23 @@ export default function ChatView(props: ChatViewProps) {
   const onProviderModelSelect = useCallback(
     (instanceId: ProviderInstanceId, model: string) => {
       if (!activeThread) return;
+      // The cross-provider Auto sentinel has no configured instance entry; it
+      // resolves to a concrete model at turn time. Persist it directly and
+      // skip the per-instance model resolution below. Disallowed when the
+      // composer is locked to a specific past-turn provider.
+      if (instanceId === AUTO_INSTANCE_ID) {
+        if (lockedProvider !== null) {
+          scheduleComposerFocus();
+          return;
+        }
+        setComposerDraftModelSelection(
+          scopeThreadRef(activeThread.environmentId, activeThread.id),
+          AUTO_MODEL_SELECTION,
+        );
+        setStickyComposerModelSelection(AUTO_MODEL_SELECTION);
+        scheduleComposerFocus();
+        return;
+      }
       // Look up the configured instance so model normalization and custom
       // model lookup stay scoped to that exact instance. Unknown instance ids
       // are rejected by returning early; the server remains authoritative too.

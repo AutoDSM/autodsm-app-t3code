@@ -11,6 +11,7 @@
  * @module ServerSettings
  */
 import {
+  AUTO_INSTANCE_ID,
   DEFAULT_GIT_TEXT_GENERATION_MODEL,
   DEFAULT_GIT_TEXT_GENERATION_MODEL_BY_PROVIDER,
   DEFAULT_SERVER_SETTINGS,
@@ -180,6 +181,12 @@ const getLegacyProviderSettings = (
  */
 function resolveTextGenerationProvider(settings: ServerSettings): ServerSettings {
   const selection = settings.textGenerationModelSelection;
+  // The cross-provider Auto sentinel is not a configured instance; it is
+  // resolved to a concrete model at runtime (see resolveTextGenModelSelection
+  // in ProviderCommandReactor). Preserve it as-is rather than falling back.
+  if (selection.instanceId === AUTO_INSTANCE_ID) {
+    return settings;
+  }
   const instanceConfig = settings.providerInstances[selection.instanceId];
   if (instanceConfig !== undefined) {
     return (instanceConfig.enabled ?? true) ? settings : fallbackTextGenerationProvider(settings);

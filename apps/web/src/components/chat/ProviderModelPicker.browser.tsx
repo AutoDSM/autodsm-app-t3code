@@ -1,4 +1,10 @@
-import { ProviderDriverKind, ProviderInstanceId, type ServerProvider } from "@t3tools/contracts";
+import {
+  AUTO_INSTANCE_ID,
+  AUTO_MODEL_SLUG,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  type ServerProvider,
+} from "@t3tools/contracts";
 import { EnvironmentId } from "@t3tools/contracts";
 import { createModelCapabilities } from "@t3tools/shared/model";
 import { page, userEvent } from "vitest/browser";
@@ -350,7 +356,7 @@ describe("ProviderModelPicker", () => {
     }
   });
 
-  it("shows favorites first in the provider sidebar", async () => {
+  it("shows Auto then favorites first in the provider sidebar", async () => {
     const mounted = await mountPicker({
       activeInstanceId: CLAUDE_INSTANCE_ID,
       model: "claude-opus-4-6",
@@ -361,11 +367,51 @@ describe("ProviderModelPicker", () => {
       await page.getByRole("button").click();
 
       await vi.waitFor(() => {
-        expect(getSidebarProviderOrder().slice(0, 3)).toEqual([
+        expect(getSidebarProviderOrder().slice(0, 4)).toEqual([
+          "auto",
           "favorites",
           "codex",
           "claudeAgent",
         ]);
+      });
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("commits the Auto sentinel when the Auto rail entry is clicked", async () => {
+    const mounted = await mountPicker({
+      activeInstanceId: CLAUDE_INSTANCE_ID,
+      model: "claude-opus-4-6",
+      lockedProvider: null,
+    });
+
+    try {
+      await page.getByRole("button").click();
+
+      await vi.waitFor(() => {
+        expect(document.querySelector('[data-model-picker-provider="auto"]')).not.toBeNull();
+      });
+      await page.getByRole("button", { name: "Auto", exact: true }).click();
+
+      await vi.waitFor(() => {
+        expect(mounted.onInstanceModelChange).toHaveBeenCalledWith(AUTO_INSTANCE_ID, AUTO_MODEL_SLUG);
+      });
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("renders the Auto trigger with a label when Auto is the active selection", async () => {
+    const mounted = await mountPicker({
+      activeInstanceId: AUTO_INSTANCE_ID,
+      model: AUTO_MODEL_SLUG,
+      lockedProvider: null,
+    });
+
+    try {
+      await vi.waitFor(() => {
+        expect(document.body.textContent ?? "").toContain("Auto");
       });
     } finally {
       await mounted.cleanup();

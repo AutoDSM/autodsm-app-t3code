@@ -8,7 +8,9 @@ import {
   type ServerProvider,
 } from "@t3tools/contracts";
 import {
+  AUTO_MODEL_SELECTION,
   createModelSelection,
+  isAutoModelSelection,
   normalizeModelSlug,
   resolveSelectableModel,
 } from "@t3tools/shared/model";
@@ -277,6 +279,11 @@ export function resolveAppModelSelectionState(
     instanceId: DEFAULT_TEXT_GENERATION_INSTANCE_ID,
     model: DEFAULT_GIT_TEXT_GENERATION_MODEL,
   };
+  // Auto is a cross-provider sentinel resolved at turn time; preserve it
+  // rather than dissolving it into a concrete instance/model here.
+  if (isAutoModelSelection(selection)) {
+    return AUTO_MODEL_SELECTION;
+  }
   const entries = deriveProviderInstanceEntries(providers);
   const selectedEntry = entries.find(
     (entry) => entry.instanceId === selection.instanceId && entry.enabled && entry.isAvailable,

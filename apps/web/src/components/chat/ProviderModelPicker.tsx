@@ -1,11 +1,12 @@
 import {
+  AUTO_INSTANCE_ID,
   type ProviderInstanceId,
   type ProviderDriverKind,
   type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
 import { memo, useEffect, useMemo, useState } from "react";
 import type { VariantProps } from "class-variance-authority";
-import { ChevronDownIcon } from "lucide-react";
+import { ChevronDownIcon, SparklesIcon } from "lucide-react";
 import { Button, buttonVariants } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -57,6 +58,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   }, [props.activeInstanceId, props.instanceEntries]);
 
   const activeInstanceId = props.activeInstanceId;
+  // Auto is a cross-provider sentinel with no concrete instance entry; render
+  // it with a sparkle + "Auto" rather than trying to resolve an icon/model.
+  const isAuto = activeInstanceId === AUTO_INSTANCE_ID;
   const selectedInstanceOptions = props.modelOptionsByInstance.get(activeInstanceId) ?? [];
   // If the current slug belongs to a different instance (for example after
   // a provider switch or disable), prefer the active instance's first
@@ -65,9 +69,17 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
   const selectedModel =
     selectedInstanceOptions.find((option) => option.slug === props.model) ??
     selectedInstanceOptions[0];
-  const triggerTitle = selectedModel ? getTriggerDisplayModelName(selectedModel) : props.model;
-  const triggerSubtitle = selectedModel?.subProvider;
-  const triggerLabel = selectedModel ? getTriggerDisplayModelLabel(selectedModel) : props.model;
+  const triggerTitle = isAuto
+    ? "Auto"
+    : selectedModel
+      ? getTriggerDisplayModelName(selectedModel)
+      : props.model;
+  const triggerSubtitle = isAuto ? undefined : selectedModel?.subProvider;
+  const triggerLabel = isAuto
+    ? "Auto — best available model"
+    : selectedModel
+      ? getTriggerDisplayModelLabel(selectedModel)
+      : props.model;
   const duplicateDriverCount = props.instanceEntries.filter(
     (entry) => activeEntry !== null && entry.driverKind === activeEntry.driverKind,
   ).length;
@@ -126,7 +138,9 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
             props.compact ? "max-w-36 sm:pl-1" : undefined,
           )}
         >
-          {activeEntry && !props.hideInstanceIcon ? (
+          {isAuto && !props.hideInstanceIcon ? (
+            <SparklesIcon className={cn("size-4 shrink-0", props.activeProviderIconClassName)} />
+          ) : activeEntry && !props.hideInstanceIcon ? (
             <ProviderInstanceIcon
               driverKind={activeEntry.driverKind}
               displayName={activeEntry.displayName}

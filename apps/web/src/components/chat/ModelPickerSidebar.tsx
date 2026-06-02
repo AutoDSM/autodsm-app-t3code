@@ -43,8 +43,8 @@ const PICKER_TOOLTIP_SIDE = "left" as const;
 const PICKER_TOOLTIP_CLASS = "max-w-64 text-balance font-normal leading-snug";
 
 export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
-  selectedInstanceId: ProviderInstanceId | "favorites";
-  onSelectInstance: (instanceId: ProviderInstanceId | "favorites") => void;
+  selectedInstanceId: ProviderInstanceId | "favorites" | "auto";
+  onSelectInstance: (instanceId: ProviderInstanceId | "favorites" | "auto") => void;
   /**
    * Instance entries to render as rail buttons. Each entry becomes one icon
    * keyed by `instanceId`, so the default built-in Codex and a user-authored
@@ -54,6 +54,12 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
   instanceEntries: ReadonlyArray<ProviderInstanceEntry>;
   /** Render the favorites rail entry. Hidden for locked-provider instance switching. */
   showFavorites?: boolean;
+  /**
+   * Render the cross-provider "Auto" rail entry. Selecting it commits the Auto
+   * sentinel selection (resolved to a concrete model at turn time) rather than
+   * switching the visible model list. Hidden in locked-provider mode.
+   */
+  showAuto?: boolean;
   /** Render non-configured coming-soon provider entries. Hidden in scoped rails. */
   showComingSoon?: boolean;
   /**
@@ -63,10 +69,11 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
    */
   newBadgeInstanceIds?: ReadonlySet<ProviderInstanceId>;
 }) {
-  const handleSelect = (instanceId: ProviderInstanceId | "favorites") => {
+  const handleSelect = (instanceId: ProviderInstanceId | "favorites" | "auto") => {
     props.onSelectInstance(instanceId);
   };
   const showFavorites = props.showFavorites ?? true;
+  const showAuto = props.showAuto ?? true;
   const showComingSoon = props.showComingSoon ?? true;
   const duplicateDriverCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -84,6 +91,38 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
       data-model-picker-sidebar="true"
     >
       <div className="flex min-h-full flex-col gap-1 p-1">
+        {/* Auto section — cross-provider best-model router */}
+        {showAuto ? (
+          <div className={cn("relative w-full", showFavorites ? "" : "pb-1 mb-1 border-b")}>
+            {props.selectedInstanceId === "auto" && <div className={SELECTED_INDICATOR_CLASS} />}
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    className={cn(
+                      "relative isolate flex w-full cursor-pointer aspect-square items-center justify-center rounded transition-colors hover:bg-muted",
+                      props.selectedInstanceId === "auto" && SELECTED_BUTTON_CLASS,
+                    )}
+                    onClick={() => handleSelect("auto")}
+                    type="button"
+                    data-model-picker-provider="auto"
+                    aria-label="Auto"
+                  >
+                    <SparklesIcon className="size-5 shrink-0" aria-hidden />
+                  </button>
+                }
+              />
+              <TooltipPopup
+                side={PICKER_TOOLTIP_SIDE}
+                align="center"
+                className={PICKER_TOOLTIP_CLASS}
+              >
+                Auto — picks the best available model for each task
+              </TooltipPopup>
+            </Tooltip>
+          </div>
+        ) : null}
+
         {/* Favorites section */}
         {showFavorites ? (
           <div className="pb-1 mb-1 border-b">

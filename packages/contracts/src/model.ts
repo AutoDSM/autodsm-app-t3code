@@ -2,7 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 import { TrimmedNonEmptyString } from "./baseSchemas.ts";
-import { ProviderDriverKind } from "./providerInstance.ts";
+import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 
 export const ProviderOptionDescriptorType = Schema.Literals(["select", "boolean"]);
 export type ProviderOptionDescriptorType = typeof ProviderOptionDescriptorType.Type;
@@ -134,6 +134,19 @@ const OPENCODE_DRIVER_KIND = ProviderDriverKind.make("opencode");
 
 export const DEFAULT_MODEL = "gpt-5.4";
 export const DEFAULT_GIT_TEXT_GENERATION_MODEL = "gpt-5.4-mini";
+
+/**
+ * Reserved routing key for the cross-provider "Auto" model mode. Auto is not a
+ * real provider instance; when a `ModelSelection` carries this `instanceId`
+ * the concrete model is resolved at turn time from the user's available models
+ * (see `resolveAutoModelSelection` in `@t3tools/shared/model`). The slug
+ * pattern (`/^[a-zA-Z][a-zA-Z0-9_-]*$/`) accepts `"auto"`, so no schema change
+ * is required, and it never collides with Cursor's per-instance `model:"auto"`
+ * (scoped to `instanceId:"cursor"`).
+ */
+export const AUTO_INSTANCE_ID = ProviderInstanceId.make("auto");
+/** Model slug paired with {@link AUTO_INSTANCE_ID} in the Auto sentinel selection. */
+export const AUTO_MODEL_SLUG = "auto";
 
 export const DEFAULT_MODEL_BY_PROVIDER: Partial<Record<ProviderDriverKind, string>> = {
   [CODEX_DRIVER_KIND]: DEFAULT_MODEL,

@@ -14,12 +14,19 @@ import type {
   TurnId,
 } from "@t3tools/contracts";
 import {
+  AUTO_INSTANCE_ID,
+  AUTO_MODEL_SLUG,
   ProviderDriverKind,
   ProviderInstanceId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
 } from "@t3tools/contracts";
-import { createModelSelection, normalizeModelSlug } from "@t3tools/shared/model";
+import {
+  AUTO_MODEL_SELECTION,
+  createModelSelection,
+  isAutoModelSelection,
+  normalizeModelSlug,
+} from "@t3tools/shared/model";
 import {
   memo,
   useCallback,
@@ -756,9 +763,37 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }),
     [providerStatuses, selectedProvider],
   );
+  // Whether the effective selection is the cross-provider Auto sentinel. Auto
+  // is represented separately from `selectedInstanceId` (which always resolves
+  // to a concrete instance for the composer's internal logic); when Auto is
+  // active we present it in the picker and dispatch the sentinel so the server
+  // resolves the best model per turn. New/unset threads default to Auto when a
+  // provider is available; an existing concrete thread selection is respected.
+  const isAutoModelSelected = useMemo<boolean>(() => {
+    if (lockedProvider) return false;
+    if (composerDraft.activeProvider === AUTO_INSTANCE_ID) return true;
+    if (composerDraft.activeProvider != null) return false;
+    if (activeThread?.session?.providerInstanceId) return false;
+    if (activeThreadModelSelection != null) return isAutoModelSelection(activeThreadModelSelection);
+    if (activeProjectDefaultModelSelection != null) {
+      return isAutoModelSelection(activeProjectDefaultModelSelection);
+    }
+    return providerInstanceEntries.some((entry) => entry.enabled && entry.isAvailable);
+  }, [
+    activeProjectDefaultModelSelection,
+    activeThread?.session?.providerInstanceId,
+    activeThreadModelSelection,
+    composerDraft.activeProvider,
+    lockedProvider,
+    providerInstanceEntries,
+  ]);
+
   const selectedModelSelection = useMemo<ModelSelection>(
-    () => createModelSelection(selectedInstanceId, selectedModel, selectedModelOptionsForDispatch),
-    [selectedInstanceId, selectedModel, selectedModelOptionsForDispatch],
+    () =>
+      isAutoModelSelected
+        ? AUTO_MODEL_SELECTION
+        : createModelSelection(selectedInstanceId, selectedModel, selectedModelOptionsForDispatch),
+    [isAutoModelSelected, selectedInstanceId, selectedModel, selectedModelOptionsForDispatch],
   );
   const selectedModelForPicker = selectedModel;
   // Instance-keyed option list so the picker can show each configured
@@ -2369,8 +2404,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               <div className="-m-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <ProviderModelPicker
                   compact={isComposerFooterCompact}
-                  activeInstanceId={selectedInstanceId}
-                  model={selectedModelForPickerWithCustomFallback}
+                  activeInstanceId={isAutoModelSelected ? AUTO_INSTANCE_ID : selectedInstanceId}
+                  model={isAutoModelSelected ? AUTO_MODEL_SLUG : selectedModelForPickerWithCustomFallback}
                   lockedProvider={lockedProvider}
                   lockedContinuationGroupKey={lockedContinuationGroupKey}
                   instanceEntries={providerInstanceEntries}

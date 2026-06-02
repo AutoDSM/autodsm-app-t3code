@@ -2,6 +2,7 @@ import {
   ApprovalRequestId,
   DEFAULT_MODEL,
   EventId,
+  MODEL_SLUG_ALIASES_BY_PROVIDER,
   ProviderDriverKind,
   ProviderItemId,
   type ProviderInstanceId,
@@ -250,6 +251,58 @@ function normalizeCodexModelSlug(
     return preferredId;
   }
   return normalized;
+}
+
+/**
+ * Paginate Codex's `model/list` and collect the advertised model slugs for this
+ * account. Mirrors `requestAllCodexModels` in CodexProvider but returns just the
+ * slug set used for clamping. Typed `client` param avoids self-referential
+ * inference on the paginated response.
+ */
+const requestSupportedCodexModelSlugs = Effect.fn("requestSupportedCodexModelSlugs")(function* (
+  client: CodexClient.CodexAppServerClientShape,
+) {
+  const slugs = new Set<string>();
+  let cursor: string | null | undefined = undefined;
+  do {
+    const response: EffectCodexSchema.V2ModelListResponse = yield* client.request(
+      "model/list",
+      cursor ? { cursor } : {},
+    );
+    for (const model of response.data) {
+      slugs.add(model.model);
+    }
+    cursor = response.nextCursor;
+  } while (cursor);
+  return slugs as ReadonlySet<string>;
+});
+
+/**
+ * Clamp a requested model to one Codex actually advertises for this account, so
+ * a stale/unsupported slug (e.g. "gpt-5.4" on a ChatGPT account) never reaches
+ * `turn/start` / `thread/start` and triggers a 400. Tries the alias map first
+ * (e.g. gpt-5.4 → gpt-5-codex), then falls back to the first advertised model.
+ *
+ * Conservative by design: when the supported set is empty/unknown (the live
+ * model list was unavailable), the requested model passes through unchanged so
+ * behavior is never worse than before.
+ */
+export function clampCodexModelSlug(
+  requested: string | undefined,
+  supported: ReadonlySet<string>,
+): { readonly model: string | undefined; readonly clampedFrom?: string } {
+  if (requested === undefined || supported.size === 0 || supported.has(requested)) {
+    return { model: requested };
+  }
+  const alias = MODEL_SLUG_ALIASES_BY_PROVIDER[PROVIDER]?.[requested];
+  if (alias && supported.has(alias)) {
+    return { model: alias, clampedFrom: requested };
+  }
+  const firstAdvertised = supported.values().next().value;
+  if (typeof firstAdvertised === "string") {
+    return { model: firstAdvertised, clampedFrom: requested };
+  }
+  return { model: requested };
 }
 
 function readResumeCursorThreadId(
@@ -761,6 +814,42 @@ export const makeCodexSessionRuntime = (
       updatedAt: sessionCreatedAt,
     } satisfies ProviderSession;
     const sessionRef = yield* Ref.make<ProviderSession>(initialSession);
+
+    // Lazily-fetched + cached set of model slugs Codex actually advertises for
+    // this account, used to clamp unsupported requested models before dispatch.
+    // `null` = not yet fetched; an empty set (after a failed/unavailable fetch)
+    // means "unknown" and clamping is skipped (passthrough).
+    const supportedModelSlugsRef = yield* Ref.make<ReadonlySet<string> | null>(null);
+    const getSupportedModelSlugs = Effect.fn("CodexSessionRuntime.getSupportedModelSlugs")(
+      function* () {
+        const cached = yield* Ref.get(supportedModelSlugsRef);
+        if (cached !== null) {
+          return cached;
+        }
+        // Live list unavailable (e.g. account needs auth) → cache an empty set so
+        // clamping is skipped and we don't retry every turn.
+        const slugs = yield* requestSupportedCodexModelSlugs(client).pipe(
+          Effect.orElseSucceed(() => new Set<string>() as ReadonlySet<string>),
+        );
+        yield* Ref.set(supportedModelSlugsRef, slugs);
+        return slugs;
+      },
+    );
+
+    const resolveDispatchModel = Effect.fn("CodexSessionRuntime.resolveDispatchModel")(function* (
+      requested: string | undefined,
+    ) {
+      const supported = yield* getSupportedModelSlugs();
+      const { model, clampedFrom } = clampCodexModelSlug(requested, supported);
+      if (clampedFrom !== undefined && model !== undefined) {
+        yield* Effect.logWarning("codex model clamped to a supported model", {
+          requested: clampedFrom,
+          chosen: model,
+        });
+      }
+      return model;
+    });
+
     const offerEvent = (event: ProviderEvent) => Queue.offer(events, event).pipe(Effect.asVoid);
 
     const emitEvent = (event: Omit<ProviderEvent, "id" | "provider" | "createdAt">) =>
@@ -1182,7 +1271,7 @@ export const makeCodexSessionRuntime = (
       yield* client.request("initialize", buildCodexInitializeParams());
       yield* client.notify("initialized", undefined);
 
-      const requestedModel = normalizeCodexModelSlug(options.model);
+      const requestedModel = yield* resolveDispatchModel(normalizeCodexModelSlug(options.model));
 
       const opened = yield* openCodexThread({
         client,
@@ -1241,8 +1330,8 @@ export const makeCodexSessionRuntime = (
       sendTurn: (input) =>
         Effect.gen(function* () {
           const providerThreadId = yield* readProviderThreadId;
-          const normalizedModel = normalizeCodexModelSlug(
-            input.model ?? (yield* Ref.get(sessionRef)).model,
+          const normalizedModel = yield* resolveDispatchModel(
+            normalizeCodexModelSlug(input.model ?? (yield* Ref.get(sessionRef)).model),
           );
           const params = yield* buildTurnStartParams({
             threadId: providerThreadId,

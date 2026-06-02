@@ -2,8 +2,10 @@ import {
   type ChatAttachment,
   CommandId,
   EventId,
+  isProviderAvailable,
   type ModelSelection,
   type OrchestrationEvent,
+  type ProviderInstanceId,
   ProviderDriverKind,
   type ProjectId,
   type OrchestrationSession,
@@ -13,6 +15,12 @@ import {
   type TurnId,
 } from "@t3tools/contracts";
 import { isTemporaryWorktreeBranch, WORKTREE_BRANCH_PREFIX } from "@t3tools/shared/git";
+import {
+  type AutoModelCandidate,
+  type AutoSelectionSignals,
+  isAutoModelSelection,
+  resolveAutoModelSelection,
+} from "@t3tools/shared/model";
 import * as Cache from "effect/Cache";
 import * as Cause from "effect/Cause";
 import * as Duration from "effect/Duration";
@@ -30,6 +38,7 @@ import { ProviderAdapterRequestError } from "../../provider/Errors.ts";
 import type { ProviderServiceError } from "../../provider/Errors.ts";
 import { TextGeneration } from "../../textGeneration/TextGeneration.ts";
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
+import { ProviderRegistry } from "../../provider/Services/ProviderRegistry.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import {
@@ -181,6 +190,7 @@ const make = Effect.gen(function* () {
   const orchestrationEngine = yield* OrchestrationEngineService;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const providerService = yield* ProviderService;
+  const providerRegistry = yield* ProviderRegistry;
   const gitWorkflow = yield* GitWorkflowService;
   const vcsStatusBroadcaster = yield* VcsStatusBroadcaster;
   const textGeneration = yield* TextGeneration;
@@ -512,6 +522,69 @@ const make = Effect.gen(function* () {
     return startedSession.threadId;
   });
 
+  // Enumerate the models the user actually has, as Auto candidates. Only
+  // ready, enabled, installed, available instances with at least one model
+  // qualify — the same gate the picker uses to mark an instance selectable.
+  const buildAutoModelCandidates = Effect.fnUntraced(function* () {
+    const providers = yield* providerRegistry.getProviders;
+    const candidates: Array<AutoModelCandidate> = [];
+    for (const provider of providers) {
+      if (
+        !provider.enabled ||
+        !provider.installed ||
+        provider.status !== "ready" ||
+        !isProviderAvailable(provider)
+      ) {
+        continue;
+      }
+      for (const model of provider.models) {
+        candidates.push({
+          instanceId: provider.instanceId,
+          driverKind: provider.driver,
+          model: model.slug,
+          capabilities: model.capabilities,
+        });
+      }
+    }
+    return candidates;
+  });
+
+  // Resolve the cross-provider Auto sentinel to a concrete selection. Returns
+  // the resolved selection, or null when there are no available models (caller
+  // decides how to surface that). `purpose` is "turn" for chat turns.
+  const resolveAutoSelection = Effect.fnUntraced(function* (input: {
+    readonly signals: AutoSelectionSignals;
+    readonly lockedInstanceId?: ProviderInstanceId | null;
+  }) {
+    const candidates = yield* buildAutoModelCandidates();
+    return resolveAutoModelSelection({
+      candidates,
+      signals: input.signals,
+      lockedInstanceId: input.lockedInstanceId ?? null,
+    });
+  });
+
+  // Resolve a text-generation selection (commit/title/branch). Auto always maps
+  // to the fast tier here. Returns null when Auto has no available models, so
+  // the (best-effort) text-gen step is skipped rather than erroring.
+  const resolveTextGenModelSelection = Effect.fnUntraced(function* (input: {
+    readonly modelSelection: ModelSelection;
+    readonly messageText: string;
+    readonly hasImageAttachments: boolean;
+  }) {
+    if (!isAutoModelSelection(input.modelSelection)) {
+      return input.modelSelection;
+    }
+    return yield* resolveAutoSelection({
+      signals: {
+        purpose: "textgen",
+        promptLength: input.messageText.trim().length,
+        hasImageAttachments: input.hasImageAttachments,
+      },
+      lockedInstanceId: null,
+    });
+  });
+
   const buildSendTurnRequestForThread = Effect.fnUntraced(function* (input: {
     readonly threadId: ThreadId;
     readonly messageText: string;
@@ -526,11 +599,69 @@ const make = Effect.gen(function* () {
         new Error(`Thread '${input.threadId}' was not found in read model.`),
       );
     }
+
+    // The user's intended selection — explicit per-turn override, then the
+    // thread-sticky pick, then the thread default. Any of these can be the
+    // cross-provider Auto sentinel.
+    const intendedSelection =
+      input.modelSelection ?? threadModelSelections.get(input.threadId) ?? thread.modelSelection;
+
+    // Resolve Auto to a concrete selection up-front: session routing requires a
+    // real provider instance, and once a session is bound to a provider that
+    // cannot switch models mid-session, Auto must stay within that instance.
+    let autoResolvedSelection: ModelSelection | undefined;
+    if (isAutoModelSelection(intendedSelection)) {
+      const existingSession = yield* providerService
+        .listSessions()
+        .pipe(
+          Effect.map((sessions) =>
+            sessions.find((session) => session.threadId === input.threadId),
+          ),
+        );
+      let lockedInstanceId: ProviderInstanceId | null = null;
+      if (existingSession?.providerInstanceId !== undefined) {
+        const switchCapability = (yield* providerService.getCapabilities(
+          existingSession.providerInstanceId,
+        )).sessionModelSwitch;
+        if (switchCapability === "unsupported") {
+          lockedInstanceId = existingSession.providerInstanceId;
+        }
+      }
+      const resolved = yield* resolveAutoSelection({
+        signals: {
+          purpose: "turn",
+          ...(input.interactionMode !== undefined
+            ? { interactionMode: input.interactionMode }
+            : {}),
+          promptLength: input.messageText.trim().length,
+          hasImageAttachments: (input.attachments?.length ?? 0) > 0,
+        },
+        lockedInstanceId,
+      });
+      if (resolved === null) {
+        return yield* new ProviderAdapterRequestError({
+          provider: "Auto",
+          method: "thread.turn.start",
+          detail:
+            "Auto model mode has no available models. Configure and authenticate at least one provider.",
+        });
+      }
+      autoResolvedSelection = resolved;
+    }
+
+    // Concrete selection fed to session binding + the provider. When Auto
+    // resolved, use the concrete pick; otherwise preserve the original
+    // per-turn override semantics (undefined => keep the session's model).
+    const effectiveModelSelection = autoResolvedSelection ?? input.modelSelection;
+
     yield* ensureSessionForThread(
       input.threadId,
       input.createdAt,
-      input.modelSelection !== undefined ? { modelSelection: input.modelSelection } : {},
+      effectiveModelSelection !== undefined ? { modelSelection: effectiveModelSelection } : {},
     );
+    // Keep the user's *intended* selection sticky (so Auto stays Auto across
+    // turns in the UI); only persist a concrete per-turn override the user
+    // actually sent.
     if (input.modelSelection !== undefined) {
       threadModelSelections.set(input.threadId, input.modelSelection);
     }
@@ -553,16 +684,18 @@ const make = Effect.gen(function* () {
           : (yield* providerService.getCapabilities(activeSession.providerInstanceId))
               .sessionModelSwitch;
     const requestedModelSelection =
-      input.modelSelection ?? threadModelSelections.get(input.threadId) ?? thread.modelSelection;
+      effectiveModelSelection ?? threadModelSelections.get(input.threadId) ?? thread.modelSelection;
     const modelForTurn =
-      sessionModelSwitch === "unsupported" && input.modelSelection === undefined
-        ? activeSession?.model !== undefined
-          ? {
-              ...requestedModelSelection,
-              model: activeSession.model,
-            }
-          : requestedModelSelection
-        : input.modelSelection;
+      autoResolvedSelection !== undefined
+        ? autoResolvedSelection
+        : sessionModelSwitch === "unsupported" && input.modelSelection === undefined
+          ? activeSession?.model !== undefined
+            ? {
+                ...requestedModelSelection,
+                model: activeSession.model,
+              }
+            : requestedModelSelection
+          : input.modelSelection;
 
     return {
       threadId: input.threadId,
@@ -593,8 +726,13 @@ const make = Effect.gen(function* () {
     const cwd = input.worktreePath;
     const attachments = input.attachments ?? [];
     yield* Effect.gen(function* () {
-      const { textGenerationModelSelection: modelSelection } =
-        yield* serverSettingsService.getSettings;
+      const { textGenerationModelSelection } = yield* serverSettingsService.getSettings;
+      const modelSelection = yield* resolveTextGenModelSelection({
+        modelSelection: textGenerationModelSelection,
+        messageText: input.messageText,
+        hasImageAttachments: attachments.length > 0,
+      });
+      if (!modelSelection) return;
 
       const generated = yield* textGeneration.generateBranchName({
         cwd,
@@ -638,8 +776,13 @@ const make = Effect.gen(function* () {
     }) {
       const attachments = input.attachments ?? [];
       yield* Effect.gen(function* () {
-        const { textGenerationModelSelection: modelSelection } =
-          yield* serverSettingsService.getSettings;
+        const { textGenerationModelSelection } = yield* serverSettingsService.getSettings;
+        const modelSelection = yield* resolveTextGenModelSelection({
+          modelSelection: textGenerationModelSelection,
+          messageText: input.messageText,
+          hasImageAttachments: attachments.length > 0,
+        });
+        if (!modelSelection) return;
 
         const generated = yield* textGeneration.generateThreadTitle({
           cwd: input.cwd,

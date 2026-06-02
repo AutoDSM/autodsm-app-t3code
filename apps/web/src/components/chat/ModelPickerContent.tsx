@@ -1,11 +1,13 @@
 import {
+  AUTO_INSTANCE_ID,
+  AUTO_MODEL_SLUG,
   type ProviderInstanceId,
   type ProviderDriverKind,
   type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
 import { resolveSelectableModel } from "@t3tools/shared/model";
 import { memo, useMemo, useState, useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import { SearchIcon } from "lucide-react";
+import { SearchIcon, SparklesIcon } from "lucide-react";
 import { ModelListRow } from "./ModelListRow";
 import { ModelPickerSidebar } from "./ModelPickerSidebar";
 import { isModelPickerNewModel } from "./modelPickerModelHighlights";
@@ -94,16 +96,21 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   const listRegionRef = useRef<HTMLDivElement>(null);
   const highlightedModelKeyRef = useRef<string | null>(null);
   const favorites = useSettings((s) => s.favorites ?? []);
-  const [selectedInstanceId, setSelectedInstanceId] = useState<ProviderInstanceId | "favorites">(
-    () => {
-      if (props.lockedProvider !== null) {
-        // When locked, prime the sidebar to the currently-active instance
-        // so jumping into the picker keeps the focused instance visible.
-        return props.activeInstanceId;
-      }
-      return favorites.length > 0 ? "favorites" : props.activeInstanceId;
-    },
-  );
+  const [selectedInstanceId, setSelectedInstanceId] = useState<
+    ProviderInstanceId | "favorites" | "auto"
+  >(() => {
+    if (props.lockedProvider !== null) {
+      // When locked, prime the sidebar to the currently-active instance
+      // so jumping into the picker keeps the focused instance visible.
+      return props.activeInstanceId;
+    }
+    // When Auto is the active selection, prime the rail to the Auto entry so
+    // the explainer (not an empty list) shows on open.
+    if (props.activeInstanceId === AUTO_INSTANCE_ID) {
+      return "auto";
+    }
+    return favorites.length > 0 ? "favorites" : props.activeInstanceId;
+  });
   const keybindings = useMemo<ResolvedKeybindingsConfig>(
     () => providedKeybindings ?? [],
     [providedKeybindings],
@@ -115,13 +122,19 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   }, []);
 
   const handleSelectInstance = useCallback(
-    (instanceId: ProviderInstanceId | "favorites") => {
+    (instanceId: ProviderInstanceId | "favorites" | "auto") => {
+      // Auto is a commit, not a list switch: pick the sentinel and close.
+      if (instanceId === "auto") {
+        onInstanceModelChange(AUTO_INSTANCE_ID, AUTO_MODEL_SLUG);
+        props.onRequestClose?.();
+        return;
+      }
       setSelectedInstanceId(instanceId);
       window.requestAnimationFrame(() => {
         focusSearchInput();
       });
     },
-    [focusSearchInput],
+    [focusSearchInput, onInstanceModelChange, props],
   );
 
   useLayoutEffect(() => {
@@ -538,6 +551,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
             onSelectInstance={handleSelectInstance}
             instanceEntries={sidebarInstanceEntries}
             showFavorites={!isLocked}
+            showAuto={!isLocked}
             showComingSoon={!isLocked}
           />
         )}
@@ -606,41 +620,65 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               />
             </div>
 
-            {/* Model list */}
-            <div
-              ref={listRegionRef}
-              className="relative min-h-0 flex-1 before:pointer-events-none before:absolute before:inset-0 before:bg-muted/40"
-            >
-              <ComboboxList className="model-picker-list size-full divide-y px-2 py-1">
-                {filteredModelKeys.map((modelKey, index) => {
-                  const model = filteredModelByKey.get(modelKey);
-                  if (!model) {
-                    return null;
-                  }
-                  return (
-                    <ModelListRow
-                      key={modelKey}
-                      index={index}
-                      model={model}
-                      instanceId={model.instanceId}
-                      driverKind={model.driverKind}
-                      providerDisplayName={model.instanceDisplayName}
-                      providerAccentColor={model.instanceAccentColor}
-                      isFavorite={favoritesSet.has(modelKey)}
-                      showProvider={!isLocked || showLockedInstanceSidebar}
-                      preferShortName={!isLocked}
-                      useTriggerLabel={isLocked && !showLockedInstanceSidebar}
-                      showNewBadge={isModelPickerNewModel(model.driverKind, model.slug)}
-                      jumpLabel={modelJumpLabelByKey.get(modelKey) ?? null}
-                      onToggleFavorite={() => toggleFavorite(model.instanceId, model.slug)}
-                    />
-                  );
-                })}
-              </ComboboxList>
-            </div>
-            <ComboboxEmpty className="not-empty:py-6 empty:h-0 text-xs font-normal leading-snug">
-              No models found
-            </ComboboxEmpty>
+            {selectedInstanceId === "auto" && !isSearching ? (
+              /* Auto explainer — shown instead of a model list. */
+              <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <SparklesIcon className="size-4 shrink-0" aria-hidden />
+                  Auto
+                </div>
+                <p className="mt-2 text-xs leading-snug text-muted-foreground">
+                  Automatically picks the best available model for each task across your connected
+                  providers.
+                </p>
+                <ul className="mt-3 space-y-1 text-xs leading-snug text-muted-foreground">
+                  <li>· Planning, long, or image prompts → strongest model</li>
+                  <li>· Everyday edits → balanced model</li>
+                  <li>· Short, simple prompts → fast model</li>
+                </ul>
+                <p className="mt-3 text-xs leading-snug text-muted-foreground/70">
+                  Search above to pin a specific model instead.
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Model list */}
+                <div
+                  ref={listRegionRef}
+                  className="relative min-h-0 flex-1 before:pointer-events-none before:absolute before:inset-0 before:bg-muted/40"
+                >
+                  <ComboboxList className="model-picker-list size-full divide-y px-2 py-1">
+                    {filteredModelKeys.map((modelKey, index) => {
+                      const model = filteredModelByKey.get(modelKey);
+                      if (!model) {
+                        return null;
+                      }
+                      return (
+                        <ModelListRow
+                          key={modelKey}
+                          index={index}
+                          model={model}
+                          instanceId={model.instanceId}
+                          driverKind={model.driverKind}
+                          providerDisplayName={model.instanceDisplayName}
+                          providerAccentColor={model.instanceAccentColor}
+                          isFavorite={favoritesSet.has(modelKey)}
+                          showProvider={!isLocked || showLockedInstanceSidebar}
+                          preferShortName={!isLocked}
+                          useTriggerLabel={isLocked && !showLockedInstanceSidebar}
+                          showNewBadge={isModelPickerNewModel(model.driverKind, model.slug)}
+                          jumpLabel={modelJumpLabelByKey.get(modelKey) ?? null}
+                          onToggleFavorite={() => toggleFavorite(model.instanceId, model.slug)}
+                        />
+                      );
+                    })}
+                  </ComboboxList>
+                </div>
+                <ComboboxEmpty className="not-empty:py-6 empty:h-0 text-xs font-normal leading-snug">
+                  No models found
+                </ComboboxEmpty>
+              </>
+            )}
           </div>
         </Combobox>
       </div>
