@@ -10,15 +10,22 @@ Get up and running in three steps:
 
 Grab the latest macOS build from the [**Releases**](https://github.com/AutoDSM/autodsm-app-t3code/releases) page:
 
-- **Apple Silicon (M1–M4):** `AutoDSM-<version>-arm64.dmg`
-- **Intel:** `AutoDSM-<version>-x64.dmg`
+- **Apple Silicon (M1–M4):** `AutoDSM-<version>-arm64.zip`
+- **Intel:** `AutoDSM-<version>-x64.zip`
 
-Open the `.dmg` and drag **AutoDSM** into your **Applications** folder.
+Unzip it (double-click) and move **AutoDSM.app** into your **Applications** folder.
 
-> [!NOTE]
-> The beta build isn't notarized yet, so on first launch macOS may warn it's from an
-> unidentified developer. Right-click **AutoDSM** → **Open** (once), or run
-> `xattr -dr com.apple.quarantine /Applications/AutoDSM.app`.
+> [!IMPORTANT]
+> This is an **unsigned build**, so macOS Gatekeeper quarantines it on download. Clearing that
+> is one Terminal command (takes ~2 seconds):
+>
+> ```bash
+> xattr -dr com.apple.quarantine /Applications/AutoDSM.app
+> ```
+>
+> Then open **AutoDSM** normally (double-click). If you skip this, macOS shows *“AutoDSM is
+> damaged and can’t be opened.”* — that’s just the unsigned-app warning, not a real problem; the
+> command above removes the download-quarantine attribute so it launches.
 
 **2. Connect a coding agent** (required — AutoDSM drives your own local AI CLI)
 

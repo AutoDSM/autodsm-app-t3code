@@ -17,15 +17,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
 const master = join(repoRoot, "assets", "AppIcon.png");
 
-// Apple's macOS app-icon grid: the rounded-rectangle body fills 824px of the
-// 1024px canvas (≈80%), centred, leaving ~100px transparent margin per side. The
-// supplied AppIcon.png is full-bleed, so for macOS-facing assets (.icns + dock
-// PNGs) we down-scale the art to MAC_BODY px on a transparent 1024 canvas so it
-// renders at the same size as stock macOS apps in the dock. Web favicons, the
-// Windows .ico, and the Linux/universal PNGs stay full-bleed (their platforms do
-// not use the macOS inset convention).
-const MAC_CANVAS = 1024;
-const MAC_BODY = 824;
+// `assets/AppIcon.png` is a full-bleed icon (glyph on a background that fills the
+// whole canvas, no baked rounded corners or shadow). macOS applies its own
+// rounded-rect mask + shadow, so every macOS asset is rendered straight from the
+// full-bleed master — NO inset (a previous inset produced a shrunken "tile in a
+// tile" that looked cut).
 
 if (!existsSync(master)) {
   console.error(`Master icon missing at ${master}`);
@@ -87,25 +83,6 @@ function icns(dest, src = master) {
   }
 }
 
-/** Build the macOS-inset master: art scaled to MAC_BODY, centred on a transparent
- *  MAC_CANVAS, written to `dest`. Returns `dest`. */
-function buildMacMaster(dest) {
-  run("magick", [
-    master,
-    "-resize",
-    `${MAC_BODY}x${MAC_BODY}`,
-    "-background",
-    "none",
-    "-gravity",
-    "center",
-    "-extent",
-    `${MAC_CANVAS}x${MAC_CANVAS}`,
-    dest,
-  ]);
-  console.log(`  mac master ${MAC_BODY}/${MAC_CANVAS}  ${rel(dest)}`);
-  return dest;
-}
-
 /** WebP from a freshly-resized square PNG. */
 function webp(size, dest) {
   mkdirSync(dirname(dest), { recursive: true });
@@ -158,30 +135,22 @@ function prodNames() {
 
 console.log("Regenerating channel assets from assets/AppIcon.png");
 
-// macOS-inset master (shared by every macOS .icns + dock PNG) built once.
-const macWork = mkdtempSync(join(tmpdir(), "autodsm-mac-master-"));
-const macMaster = buildMacMaster(join(macWork, "mac-master.png"));
-
-try {
-  for (const { dir, names } of channels) {
-    console.log(`assets/${dir}/`);
-    png(1024, a(dir, names.macos), macMaster); // macOS source → inset
-    png(1024, a(dir, names.universal)); // Linux → full-bleed
-    png(1024, a(dir, names.ios));
-    png(180, a(dir, names.appleTouch));
-    png(32, a(dir, names.favicon32));
-    png(16, a(dir, names.favicon16));
-    ico(a(dir, names.windowsIco));
-    ico(a(dir, names.faviconIco));
-  }
-
-  console.log("apps/desktop/resources/");
-  png(512, app("desktop", "resources", "icon.png"), macMaster); // mac dock/fallback → inset
-  icns(app("desktop", "resources", "icon.icns"), macMaster); // mac .icns → inset
-  ico(app("desktop", "resources", "icon.ico"));
-} finally {
-  rmSync(macWork, { recursive: true, force: true });
+for (const { dir, names } of channels) {
+  console.log(`assets/${dir}/`);
+  png(1024, a(dir, names.macos));
+  png(1024, a(dir, names.universal));
+  png(1024, a(dir, names.ios));
+  png(180, a(dir, names.appleTouch));
+  png(32, a(dir, names.favicon32));
+  png(16, a(dir, names.favicon16));
+  ico(a(dir, names.windowsIco));
+  ico(a(dir, names.faviconIco));
 }
+
+console.log("apps/desktop/resources/");
+png(512, app("desktop", "resources", "icon.png"));
+icns(app("desktop", "resources", "icon.icns"));
+ico(app("desktop", "resources", "icon.ico"));
 
 console.log("apps/marketing/public/");
 const pub = (...p) => app("marketing", "public", ...p);
