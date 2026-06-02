@@ -536,15 +536,11 @@ jobs:
     if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.build.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # Use the built-in GITHUB_TOKEN to create the release (the RELEASE_APP_ID /
+    # RELEASE_APP_PRIVATE_KEY GitHub App secrets are not configured in this repo).
+    permissions:
+      contents: write
     steps:
-      - id: app_token
-        name: Mint release app token
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: ${{ secrets.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
       - name: Checkout
         uses: actions/checkout@v6
         with:
@@ -629,7 +625,7 @@ jobs:
             release-assets/*.blockmap
             release-assets/*.yml
           fail_on_unmatched_files: true
-          token: ${{ steps.app_token.outputs.token }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish first release
         if: needs.preflight.outputs.previous_tag == ''
@@ -649,7 +645,7 @@ jobs:
             release-assets/*.blockmap
             release-assets/*.yml
           fail_on_unmatched_files: true
-          token: ${{ steps.app_token.outputs.token }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   deploy_web:
     name: Deploy hosted web app
@@ -749,32 +745,24 @@ jobs:
     needs: [preflight, release]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # Built-in token (no GitHub App secrets configured); commit the version bump
+    # back to main with the standard actions bot identity.
+    permissions:
+      contents: write
     steps:
-      - id: app_token
-        name: Mint release app token
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: ${{ secrets.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-
       - name: Checkout
         uses: actions/checkout@v6
         with:
           ref: main
           fetch-depth: 0
-          token: ${{ steps.app_token.outputs.token }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           persist-credentials: true
 
       - id: app_bot
-        name: Resolve GitHub App bot identity
-        env:
-          GH_TOKEN: ${{ steps.app_token.outputs.token }}
-          APP_SLUG: ${{ steps.app_token.outputs.app-slug }}
+        name: Resolve bot identity
         run: |
-          user_id="$(gh api "/users/${APP_SLUG}[bot]" --jq .id)"
-          echo "name=${APP_SLUG}[bot]" >> "$GITHUB_OUTPUT"
-          echo "email=${user_id}+${APP_SLUG}[bot]@users.noreply.github.com" >> "$GITHUB_OUTPUT"
+          echo "name=github-actions[bot]" >> "$GITHUB_OUTPUT"
+          echo "email=41898282+github-actions[bot]@users.noreply.github.com" >> "$GITHUB_OUTPUT"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
