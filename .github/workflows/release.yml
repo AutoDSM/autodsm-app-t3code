@@ -98,25 +98,6 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      # bun does not always run electron's binary-download lifecycle script on
-      # hosted runners, leaving node_modules/electron with no `path.txt` so any
-      # `require("electron")` throws "Electron failed to install correctly" and
-      # the desktop unit tests fail at import. Run electron's installer
-      # explicitly to materialize the binary + path file.
-      - name: Ensure electron binary is installed
-        shell: bash
-        run: |
-          electron_dir="$(find node_modules/.bun -maxdepth 3 -type d -path '*node_modules/electron' 2>/dev/null | head -n1)"
-          if [[ -z "$electron_dir" && -d node_modules/electron ]]; then
-            electron_dir="node_modules/electron"
-          fi
-          if [[ -n "$electron_dir" && -f "$electron_dir/install.js" ]]; then
-            echo "Installing electron binary in $electron_dir"
-            (cd "$electron_dir" && node install.js)
-          else
-            echo "electron package not found; skipping (no desktop binary needed)."
-          fi
-
       - id: release_meta
         name: Resolve release version
         shell: bash
@@ -189,6 +170,12 @@ jobs:
       - name: Test
         env:
           T3CODE_REQUIRE_SUPABASE: "0"
+          # Desktop unit tests `require("electron")` for types/paths but never
+          # launch the binary. Setting this makes electron's index.js resolve a
+          # path without a downloaded binary (it returns early, no throw), so the
+          # tests run without depending on electron's binary install on hosted
+          # runners. The real desktop *build* job still installs the binary.
+          ELECTRON_OVERRIDE_DIST_PATH: /tmp/electron-stub
         run: bun run test
 
       - id: previous_tag
