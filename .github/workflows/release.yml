@@ -423,18 +423,34 @@ jobs:
             exit 0
           fi
           shopt -s nullglob
-          app_paths=(release/mac*/*.app)
-          if [[ ${#app_paths[@]} -eq 0 ]]; then
-            echo "No .app bundle found under release/ to verify." >&2
+          # Only published files are copied into release/ (the .app lives inside
+          # the mac update .zip, not as a loose bundle), so verify the real
+          # notarized artifact by extracting the .app from each release zip.
+          zips=(release/*.zip)
+          if [[ ${#zips[@]} -eq 0 ]]; then
+            echo "No mac .zip found under release/ to verify." >&2
             exit 1
           fi
-          for app in "${app_paths[@]}"; do
-            echo "Verifying Gatekeeper acceptance for: $app"
-            # electron-builder staples the notarization ticket during the build;
-            # assess the runtime execution policy the way macOS will at launch.
-            spctl --assess --type execute --verbose=4 "$app"
-            codesign --verify --deep --strict --verbose=2 "$app"
+          workdir="$(mktemp -d)"
+          verified=0
+          for zip in "${zips[@]}"; do
+            dest="$workdir/$(basename "${zip%.zip}")"
+            mkdir -p "$dest"
+            ditto -x -k "$zip" "$dest"
+            for app in "$dest"/*.app; do
+              echo "Verifying Gatekeeper acceptance for: $app (from $(basename "$zip"))"
+              # electron-builder staples the notarization ticket during the build;
+              # assess the runtime execution policy the way macOS will at launch.
+              spctl --assess --type execute --verbose=4 "$app"
+              codesign --verify --deep --strict --verbose=2 "$app"
+              xcrun stapler validate "$app"
+              verified=1
+            done
           done
+          if [[ "$verified" -eq 0 ]]; then
+            echo "No .app bundle found inside release zips to verify." >&2
+            exit 1
+          fi
           echo "macOS notarization verified."
 
       - name: Collect release assets
