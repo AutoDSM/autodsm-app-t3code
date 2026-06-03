@@ -51,4 +51,36 @@ describe("AutoDsmComponentAgentSidebarTree", () => {
     expect(html).toContain("Button");
     expect(html).toContain("Theme card");
   });
+
+  it("renders a render-health badge only on groups with preview issues", () => {
+    const starterAgents = getStarterComponentAgents("shadcn-ui");
+    const lookup = buildComponentAgentGroupLookup(starterAgents);
+    const tabs = starterAgents.map((agent, index) =>
+      tab(`thr-${index}`, agent.title, agent.componentPath.replace(/^\//, "")),
+    );
+    const groups = buildAutoDsmComponentAgentGroups(tabs, lookup);
+    const healthByGroupId = new Map(
+      groups.map((group) => [
+        group.groupId,
+        group.groupId === "Buttons"
+          ? { status: "warning" as const, affectedCount: 2, firstDiagnostic: "could not load" }
+          : { status: "ok" as const, affectedCount: 0, firstDiagnostic: null },
+      ]),
+    );
+
+    const html = renderToStaticMarkup(
+      <SidebarProvider>
+        <AutoDsmComponentAgentSidebarTree
+          workspaceKey={WORKSPACE}
+          groups={groups}
+          activeThreadRef={tabs[0]!.threadRef}
+          healthByGroupId={healthByGroupId}
+          onSelectTab={() => {}}
+        />
+      </SidebarProvider>,
+    );
+
+    expect(html).toContain('data-testid="autodsm-component-agent-group-health:Buttons"');
+    expect(html).not.toContain('data-testid="autodsm-component-agent-group-health:Cards"');
+  });
 });

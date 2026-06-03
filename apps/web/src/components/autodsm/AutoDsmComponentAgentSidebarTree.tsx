@@ -5,6 +5,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent
 import { memo, useCallback, useMemo } from "react";
 
 import { AutoDsmComponentAgentTabBar } from "~/components/autodsm/AutoDsmComponentAgentTabBar";
+import { Badge } from "~/components/ui/badge";
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -14,6 +15,7 @@ import {
   SidebarMenuSub,
 } from "~/components/ui/sidebar";
 import type { AutoDsmComponentAgentGroup } from "~/lib/autoDsmComponentAgentGroups";
+import type { GroupRenderHealth } from "~/lib/autoDsmComponentRenderHealth";
 import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
 
@@ -22,15 +24,30 @@ export interface AutoDsmComponentAgentSidebarTreeProps {
   readonly groups: readonly AutoDsmComponentAgentGroup[];
   readonly activeThreadRef: Parameters<typeof AutoDsmComponentAgentTabBar>[0]["activeThreadRef"];
   readonly activeComponentPath?: string | null;
+  /** Per-group render-health, keyed by groupId. Absent groups render no badge. */
+  readonly healthByGroupId?: ReadonlyMap<string, GroupRenderHealth>;
   readonly onSelectTab: Parameters<typeof AutoDsmComponentAgentTabBar>[0]["onSelectTab"];
   readonly onDeleteTab?: Parameters<typeof AutoDsmComponentAgentTabBar>[0]["onDeleteTab"];
+}
+
+function renderHealthBadgeTitle(health: GroupRenderHealth): string {
+  const noun = health.affectedCount === 1 ? "component" : "components";
+  const summary = `${health.affectedCount} ${noun} with preview issues`;
+  return health.firstDiagnostic ? `${summary} — e.g. ${health.firstDiagnostic}` : summary;
 }
 
 export const AutoDsmComponentAgentSidebarTree = memo(function AutoDsmComponentAgentSidebarTree(
   props: AutoDsmComponentAgentSidebarTreeProps,
 ) {
-  const { workspaceKey, groups, activeThreadRef, activeComponentPath, onSelectTab, onDeleteTab } =
-    props;
+  const {
+    workspaceKey,
+    groups,
+    activeThreadRef,
+    activeComponentPath,
+    healthByGroupId,
+    onSelectTab,
+    onDeleteTab,
+  } = props;
   const expandedByWorkspace = useUiStateStore(
     (state) => state.autoDsmComponentAgentGroupExpandedByWorkspaceKey,
   );
@@ -76,6 +93,8 @@ export const AutoDsmComponentAgentSidebarTree = memo(function AutoDsmComponentAg
     () =>
       groups.map((group) => {
         const expanded = isGroupExpanded(group.groupId);
+        const health = healthByGroupId?.get(group.groupId);
+        const showHealthBadge = health !== undefined && health.status !== "ok";
         return (
           <SidebarMenuItem key={group.groupId} className="list-none">
             <SidebarMenuButton
@@ -92,10 +111,21 @@ export const AutoDsmComponentAgentSidebarTree = memo(function AutoDsmComponentAg
                 <FolderIcon className="size-3.5 shrink-0 opacity-70" />
               )}
               <span className="min-w-0 flex-1 truncate font-medium">{group.label}</span>
+              {showHealthBadge ? (
+                <Badge
+                  size="sm"
+                  variant={health.status === "error" ? "error" : "warning"}
+                  className="shrink-0 tabular-nums"
+                  title={renderHealthBadgeTitle(health)}
+                  data-testid={`autodsm-component-agent-group-health:${group.groupId}`}
+                >
+                  {health.affectedCount}
+                </Badge>
+              ) : null}
               <ChevronRightIcon
                 aria-hidden
                 className={cn(
-                  "ml-auto size-3.5 shrink-0 transition-transform",
+                  "size-3.5 shrink-0 transition-transform",
                   expanded && "rotate-90",
                 )}
               />
@@ -121,6 +151,7 @@ export const AutoDsmComponentAgentSidebarTree = memo(function AutoDsmComponentAg
       groups,
       handleGroupClick,
       handleGroupKeyDown,
+      healthByGroupId,
       isGroupExpanded,
       onDeleteTab,
       onSelectTab,

@@ -19,9 +19,16 @@ import {
   buildAutoDsmComponentAgentGroups,
   buildComponentAgentGroupLookup,
 } from "~/lib/autoDsmComponentAgentGroups";
+import {
+  buildGroupRenderHealth,
+  buildRenderHealthByPath,
+} from "~/lib/autoDsmComponentRenderHealth";
 import { getStarterComponentAgents } from "~/lib/autoDsmStarterComponentAgents";
 import { isAutoDsmStarterId } from "~/lib/autoDsmStarterCatalog";
-import { autodsmComponentAgentsQueryOptions } from "~/lib/autodsmWorkspaceReactQuery";
+import {
+  autodsmComponentAgentsQueryOptions,
+  autodsmComponentRegistryQueryOptions,
+} from "~/lib/autodsmWorkspaceReactQuery";
 import { isAutodsmMaterializedSystemCwd } from "~/lib/autodsmMaterializedWorkspace";
 import { resolveThreadRouteRef } from "~/threadRoutes";
 import { parseDiffRouteSearch } from "~/diffRouteSearch";
@@ -102,6 +109,22 @@ export const AutoDsmComponentAgentSidebarSection = memo(
       [groupLookup, tabs],
     );
 
+    const componentRegistryQuery = useQuery(
+      autodsmComponentRegistryQueryOptions({
+        environmentId,
+        cwd,
+        enabled: isMaterialized,
+      }),
+    );
+
+    const healthByGroupId = useMemo(() => {
+      const entries = componentRegistryQuery.data?.entries ?? [];
+      if (entries.length === 0) {
+        return undefined;
+      }
+      return buildGroupRenderHealth(groups, buildRenderHealthByPath(entries));
+    }, [componentRegistryQuery.data?.entries, groups]);
+
     const closeMobileSidebar = useCallback(() => {
       if (isMobile) {
         setOpenMobile(false);
@@ -156,6 +179,7 @@ export const AutoDsmComponentAgentSidebarSection = memo(
         groups={groups}
         activeThreadRef={routeThreadRef}
         activeComponentPath={componentPreviewPath}
+        {...(healthByGroupId ? { healthByGroupId } : {})}
         onSelectTab={handleSelectTab}
         onDeleteTab={handleDeleteTab}
       />
