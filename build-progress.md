@@ -153,12 +153,13 @@ Status values: `not_started` · `in_progress` · `done` · `deferred_v1.1`.
 
 ## Phase 12 — Ship
 
-- **Status:** not_started
+- **Status:** unblocked (signed build exists); ship tasks pending a human.
 - **Last verified:** N/A.
-- **Evidence:** none.
+- **Evidence:** v0.0.29 is signed + notarized (Phase 11). Hero-path smoke + ship-task
+  runbook captured in `.plans/24-ship-and-smoke-runbook.md`.
 - **Acceptance:** ⬜ Hero demo recorded · ⬜ Landing page + screenshots updated · ⬜ Beta invites prepared · ⬜ Submission packets drafted.
-- **Blockers:** depends on Phase 11 producing a stable signed build.
-- **Next:** Day 8 — record hero demo on the v1.0.0-alpha.1 build.
+- **Blockers:** none technical — needs product/marketing assets + interactive sign-in smoke.
+- **Next:** Run the hero-path smoke on AutoDSM-0.0.29-arm64.dmg per the runbook.
 
 ---
 
@@ -206,14 +207,18 @@ Status values: `not_started` · `in_progress` · `done` · `deferred_v1.1`.
 
 ### P1 — launch-critical (close before announce, can slip 24–48h)
 
-13. Brand-cutover Phase 2 — visible copy sweep.
-14. Brand-cutover Phase 3 — release identity (artifact prefix, Linux desktop entry, WM class, Discord notifier).
-15. Brand-cutover Phase 4 — persistence migration with legacy fallback.
-16. Brand-cutover Phase 6 — marketing + docs cutover.
-17. Hero demo recording + landing-page screenshots.
-18. Token usage tracking shows affected components (criterion 12).
-19. Sidebar render-health status badges (criterion 8).
-20. PR #89 follow-up: C019 event race on SessionId routing.
+> **2026-06-02 update:** brand cutover 13/14/16 ✅ done (`bun run brand:audit` green;
+> AutoDSM-* artifacts + app id). 15 partially done — localStorage/userdata migrated;
+> the `AUTODSM_*`/`T3CODE_*` env-var bridge landed in DesktopConfig. 18 & 19 ✅ shipped.
+
+13. ✅ Brand-cutover Phase 2 — visible copy sweep.
+14. ✅ Brand-cutover Phase 3 — release identity (artifact prefix, Linux desktop entry, WM class, Discord notifier).
+15. 🟡 Brand-cutover Phase 4 — persistence migration with legacy fallback (env-var bridge done; remaining: branch/temp prefixes).
+16. ✅ Brand-cutover Phase 6 — marketing + docs cutover.
+17. Hero demo recording + landing-page screenshots. ⬜ (needs a human)
+18. ✅ Token usage tracking shows affected components (criterion 12).
+19. ✅ Sidebar render-health status badges (criterion 8).
+20. PR #89 follow-up: C019 event race on SessionId routing. ⬜
 
 ### P2 — defer to v1.0.1 if time tight
 
