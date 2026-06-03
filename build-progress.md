@@ -144,12 +144,12 @@ Status values: `not_started` · `in_progress` · `done` · `deferred_v1.1`.
 
 ## Phase 11 — Polish and hardening
 
-- **Status:** in_progress (signing) / not_started (most polish)
-- **Last verified:** N/A.
-- **Evidence:** dev-electron supervisor lockfile + ppid watchdog landed this session (crash/orphan fix); release.yml exists with placeholders for signing creds.
-- **Acceptance:** ⬜ No orphaned subprocesses on quit (criterion 20) · ⬜ Signed build passes Gatekeeper (criterion 22) · ⬜ App id finalised before first signed build.
-- **Blockers:** Apple Developer creds not yet confirmed populated in CI secrets; app id rename decision (`com.t3tools.t3code` → `com.autodsm.app`) outstanding.
-- **Next:** Day 2 — sign + notarize dress rehearsal.
+- **Status:** signing/notarization done; remaining polish in_progress
+- **Last verified:** 2026-06-02 — v0.0.29 release.
+- **Evidence:** dev-electron supervisor lockfile + ppid watchdog landed (crash/orphan fix); all 5 Apple signing secrets set in CI; **v0.0.29 ships signed + notarized** — `codesign` shows `Developer ID Application: Sebastian Mendo (F3NM4HTMW8)` (not adhoc), `spctl --assess` → `accepted / Notarized Developer ID`, `.app` notarization ticket stapled. Auto-update (electron-updater/Squirrel) now functional for installed users.
+- **Acceptance:** ✅ Signed build passes Gatekeeper (criterion 22) · ✅ App id finalised (`com.autodsm.app`) · ⬜ No orphaned subprocesses on quit (criterion 20).
+- **Blockers:** none for signing; remaining is subprocess-on-quit hardening + interactive hero-path smoke.
+- **Next:** Hero-path smoke on the signed DMG.
 
 ## Phase 12 — Ship
 
@@ -167,12 +167,12 @@ Status values: `not_started` · `in_progress` · `done` · `deferred_v1.1`.
 | Phase                                         | Status        | Notes                                                |
 | --------------------------------------------- | ------------- | ---------------------------------------------------- |
 | 1 — Centralize brand constants                | done          | per commit `a0811c89`                                |
-| 2 — User-facing copy sweep                    | in_progress   | needs `rg "T3 Code\|t3 code"` audit                  |
-| 3 — Desktop release identity                  | in_progress   | `build-desktop-artifact.ts` strings + app id pending |
-| 4 — Persistence + env compatibility migration | not_started   | `autodsm:*` reads with `t3code:*` fallback           |
+| 2 — User-facing copy sweep                    | done          | `bun run brand:audit` passes clean                   |
+| 3 — Desktop release identity                  | done          | `AutoDSM-*` artifacts, app id `com.autodsm.app`      |
+| 4 — Persistence + env compatibility migration | mostly_done   | localStorage/userdata migrated; env-var `AUTODSM_*`/`T3CODE_*` bridge in progress |
 | 5 — Package namespace decision                | deferred_v1.1 | keep `@t3tools/*` as private substrate               |
-| 6 — Marketing + documentation cutover         | not_started   | landing page + READMEs                               |
-| 7 — Guardrail                                 | not_started   | `bun run brand:audit` or oxlint rule                 |
+| 6 — Marketing + documentation cutover         | done          | landing page + user docs say AutoDSM                 |
+| 7 — Guardrail                                 | done          | `scripts/brand-audit.ts` + `bun run brand:audit`     |
 
 ---
 
@@ -189,18 +189,20 @@ Status values: `not_started` · `in_progress` · `done` · `deferred_v1.1`.
 
 ### P0 — ship blockers (must close before tag)
 
-1. Hero path smoke on a clean DMG.
-2. macOS signing + notarization works in `release.yml`.
-3. App id finalised before signing (`com.autodsm.app` decision locked).
-4. GitHub/Google OAuth sign-in + Supabase beta gate end-to-end.
-5. Workspace creation timing (Modern Starter ≤ 10s, shadcn/ui ≤ 30s).
-6. Diff slide-over hunk approve / reject / discard.
-7. Local PR creates an activity entry.
-8. Publish pipeline outputs a typed npm package (round-trip into fresh Vite).
-9. App quit stops Storybook and agent subprocesses.
-10. Brand-cutover Phase 7 guardrail (`bun run brand:audit` or oxlint rule).
-11. Land or shelve the 29 uncommitted files (Home, Design Tokens, supervisor lock).
-12. Resurrect / maintain this file as the rolling status log.
+> **2026-06-02 update:** items 2, 3, 10, 11 are ✅ resolved (v0.0.29 signed+notarized; app id `com.autodsm.app`; `brand:audit` guard live & green; working tree clean). Item 4 is blocked only by the OAuth PKCE passkey bug (`.plans/23`). Items 1, 5–9 remain (mostly interactive smoke on the now-available signed DMG).
+
+1. Hero path smoke on a clean DMG. ⬜ (now unblocked — signed v0.0.29 exists)
+2. ✅ macOS signing + notarization works in `release.yml`.
+3. ✅ App id finalised before signing (`com.autodsm.app`).
+4. GitHub/Google OAuth sign-in + Supabase beta gate end-to-end. ⬜ (passkey path: `.plans/23`)
+5. Workspace creation timing (Modern Starter ≤ 10s, shadcn/ui ≤ 30s). ⬜
+6. Diff slide-over hunk approve / reject / discard. ✅ built; ⬜ needs app smoke.
+7. Local PR creates an activity entry. ✅ built; ⬜ needs app smoke.
+8. Publish pipeline outputs a typed npm package (round-trip into fresh Vite). ✅ built; ⬜ needs app smoke.
+9. App quit stops Storybook and agent subprocesses. ⬜
+10. ✅ Brand-cutover Phase 7 guardrail (`bun run brand:audit`).
+11. ✅ Land or shelve the uncommitted files (working tree clean).
+12. ✅ Resurrect / maintain this file as the rolling status log.
 
 ### P1 — launch-critical (close before announce, can slip 24–48h)
 

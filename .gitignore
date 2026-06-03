@@ -26,3 +26,8 @@ squashfs-root/
 .gstack/
 dist-electron/
 .electron-runtime/
+# Stray packaged installers (the release/ dir is already ignored above, but
+# loose builds sometimes land at the repo root).
+*.dmg
+# Local Claude Code agent working directory.
+.claude/

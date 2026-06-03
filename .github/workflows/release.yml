@@ -468,6 +468,9 @@ jobs:
             "release/*.blockmap" \
             "release/*.yml"; do
             for file in $pattern; do
+              # builder-debug.yml is electron-builder's internal debug dump, not
+              # an update manifest — never publish it as a release asset.
+              [[ "$(basename "$file")" == builder-debug* ]] && continue
               cp "$file" release-publish/
             done
           done
