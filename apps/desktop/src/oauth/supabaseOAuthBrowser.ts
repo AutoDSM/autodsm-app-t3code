@@ -42,15 +42,16 @@ export async function runSupabaseOAuthInSystemBrowser(input: {
   readonly redirectTo: string;
   readonly onMainWindowClosed?: (cancel: () => void) => void;
 }): Promise<DesktopSupabaseOAuthBrowserResult> {
-  // PKCE single-context: the code_verifier is created in (and read back from) the
-  // main window's localStorage. OAuth must therefore complete inside the in-app
-  // auth shell, which only *captures* the authorization code and hands it back to
-  // the main window for `exchangeCodeForSession`. Opening the system browser
-  // (`shell.openExternal`) completes the flow in a separate context where the
-  // verifier is missing — the root cause of failed sign-ins (passkey fallback).
-  // Default to the shell; the legacy loopback path is reachable only via an
-  // explicit `AUTODSM_OAUTH_SHELL=0` opt-out for debugging.
-  if (process.env.AUTODSM_OAUTH_SHELL !== "0") {
+  // Default: complete sign-in in the system default browser. The loopback server
+  // below only *captures* the returned `?code=` and hands it to the main window;
+  // the main window still runs `exchangeCodeForSession` with the PKCE
+  // `code_verifier` it created in its own localStorage. The browser never does the
+  // exchange, so this stays single-context and PKCE-safe — and the system browser
+  // (unlike the sandboxed in-app shell) supports WebAuthn, so Google passkey
+  // accounts work. The legacy in-app auth shell is kept as an opt-in fallback via
+  // `AUTODSM_OAUTH_SHELL=1` (e.g. environments where loopback/`openExternal` is
+  // blocked); `AUTODSM_OAUTH_SHELL=0` is the explicit "browser" value.
+  if (process.env.AUTODSM_OAUTH_SHELL === "1") {
     return runSupabaseOAuthInShell(input);
   }
 

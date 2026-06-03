@@ -10,6 +10,16 @@
 > pass (`apps/desktop/src/oauth/`, `apps/web/.../auth.oauth.test.ts`). Remaining: the
 > *interactive* sign-in smoke (GitHub + Google password/passkey) on the signed DMG — tracked
 > with the hero-path smoke, needs a human.
+>
+> **Update (2026-06-02): system browser is now the DEFAULT.** `runSupabaseOAuthInSystemBrowser`
+> (`supabaseOAuthBrowser.ts`) now opens the IdP in the user's **default browser** via the
+> loopback callback server (`127.0.0.1:53682`) by default; the in-app auth shell is an opt-in
+> fallback via `AUTODSM_OAUTH_SHELL=1`. This is PKCE-safe — the browser only returns the
+> `?code=` (captured by the loopback server) and the main window still runs
+> `exchangeCodeForSession` with its verifier. Side benefit: Google **passkey** accounts now
+> work, since the system browser supports WebAuthn (the sandboxed shell could not). No OAuth
+> details changed — same `oauthUrl`, redirect (`…:53682/auth/callback`, already in
+> `supabase/config.toml`), provider, scopes, and PKCE flow.
 
 ## What you're seeing
 
