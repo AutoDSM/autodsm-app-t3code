@@ -18,11 +18,13 @@ import { useAutoDsmWorkspace } from "~/hooks/useAutoDsmWorkspace";
 import {
   autodsmAddBrandToken,
   autodsmBrandProfileQueryOptions,
+  autodsmComponentRegistryQueryOptions,
   autodsmRemoveBrandToken,
   autodsmResyncBrandTokens,
   autodsmUpdateBrandToken,
   autodsmWorkspaceQueryKeys,
 } from "~/lib/autodsmWorkspaceReactQuery";
+import { buildTokenUsageCountById } from "~/lib/autoDsmTokenUsage";
 import { filterBrandingColorTokens } from "~/lib/brandingColorTokens";
 import {
   DESIGN_TOKEN_CATEGORIES,
@@ -98,6 +100,14 @@ export function AutoDsmDesignTokensWorkspace(): JSX.Element {
 
   const brandQuery = useQuery(autodsmBrandProfileQueryOptions({ environmentId, cwd }));
   const brandKey = autodsmWorkspaceQueryKeys.brandProfile(environmentId, cwd);
+
+  const componentRegistryQuery = useQuery(
+    autodsmComponentRegistryQueryOptions({ environmentId, cwd }),
+  );
+  const usageCountByTokenId = useMemo(
+    () => buildTokenUsageCountById(componentRegistryQuery.data?.entries ?? []),
+    [componentRegistryQuery.data?.entries],
+  );
 
   const addMutation = useMutation({
     mutationFn: (draft: AutoDsmBrandTokenDraft) => {
@@ -221,6 +231,7 @@ export function AutoDsmDesignTokensWorkspace(): JSX.Element {
             tokens={displayedTokens}
             colorResolutionScope={activeGroup.tokens}
             onEditToken={openEditDialog}
+            usageCountByTokenId={usageCountByTokenId}
           />
         );
       case "typography":

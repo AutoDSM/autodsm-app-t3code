@@ -244,6 +244,12 @@ export const AutoDsmComponentRegistryEntry = Schema.Struct({
   providerHints: Schema.Array(TrimmedNonEmptyString),
   dependencyEdges: Schema.Array(AutoDsmRegistryDependencyEdge),
   usageImports: Schema.Record(AutoDsmWorkspaceRelativePath, Schema.Array(AutoDsmSourceSpan)),
+  /**
+   * Distinct design-token names this component references via `var(--name)`
+   * (names exclude the leading `--`; token id is `css-var:<name>`). Optional for
+   * back-compat with registries serialized before token-usage tracking landed.
+   */
+  tokenReferences: Schema.optional(Schema.Array(TrimmedNonEmptyString)),
   manifest: ComponentPreviewManifest,
 });
 export type AutoDsmComponentRegistryEntry = typeof AutoDsmComponentRegistryEntry.Type;

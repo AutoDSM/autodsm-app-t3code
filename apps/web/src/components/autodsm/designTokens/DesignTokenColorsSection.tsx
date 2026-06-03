@@ -9,20 +9,25 @@ import { DESIGN_TOKEN_COLOR_ROLE_LABEL, groupColorTokensByRole } from "~/lib/des
 import { tokenDisplayName } from "~/lib/designTokenGroups";
 
 import { DesignTokenSubSection } from "./DesignTokenSubSection";
+import { TokenUsageHint } from "./TokenUsageHint";
 
 export interface DesignTokenColorsSectionProps {
   readonly tokens: readonly AutoDsmBrandToken[];
   readonly colorResolutionScope: readonly AutoDsmBrandToken[];
   readonly onEditToken: (token: AutoDsmBrandToken) => void;
+  /** token id → number of components referencing it (optional). */
+  readonly usageCountByTokenId?: ReadonlyMap<string, number> | undefined;
 }
 
 function ColorSwatchCard({
   token,
   scope,
+  usageCountByTokenId,
   onEdit,
 }: {
   readonly token: AutoDsmBrandToken;
   readonly scope: ReadonlyMap<string, AutoDsmBrandToken>;
+  readonly usageCountByTokenId?: ReadonlyMap<string, number> | undefined;
   readonly onEdit: () => void;
 }): JSX.Element {
   const resolved = resolveColorTokenValue(token, scope, "light");
@@ -44,6 +49,7 @@ function ColorSwatchCard({
       <div className="space-y-0.5 px-3 py-2.5">
         <p className="font-mono text-sm text-foreground">{name}</p>
         <p className="font-mono text-xs text-muted-foreground">{displayValue}</p>
+        <TokenUsageHint token={token} usageCountByTokenId={usageCountByTokenId} />
       </div>
     </button>
   );
@@ -53,6 +59,7 @@ export function DesignTokenColorsSection({
   tokens,
   colorResolutionScope,
   onEditToken,
+  usageCountByTokenId,
 }: DesignTokenColorsSectionProps): JSX.Element {
   const scope = useMemo(() => buildColorTokenScope(colorResolutionScope), [colorResolutionScope]);
   const roleGroups = useMemo(() => groupColorTokensByRole(tokens), [tokens]);
@@ -77,6 +84,7 @@ export function DesignTokenColorsSection({
                 key={token.id}
                 token={token}
                 scope={scope}
+                usageCountByTokenId={usageCountByTokenId}
                 onEdit={() => {
                   onEditToken(token);
                 }}

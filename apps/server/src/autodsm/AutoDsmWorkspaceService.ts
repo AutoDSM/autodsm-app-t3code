@@ -198,6 +198,7 @@ import {
   resyncComponentAgentsFromTemplate,
   updateComponentAgent as updateComponentAgentRecord,
 } from "./componentAgentStore.ts";
+import { extractCssVarTokenNames } from "./componentTokenUsage.ts";
 import { appendComponentConversation, loadComponentConversation } from "./conversationStore.ts";
 import {
   hydrateChangeSetFromDisk,
@@ -779,6 +780,7 @@ export const AutoDsmWorkspaceLive = Layer.effect(
 
         const workspaceEntries = yield* WorkspaceEntries;
         const workspacePaths = yield* WorkspacePaths;
+        const workspaceFileSystem = yield* WorkspaceFileSystem;
         const profile = yield* getProjectProfile(input);
 
         const buildResult = yield* resolveWorkspaceBuild({
@@ -861,8 +863,33 @@ export const AutoDsmWorkspaceLive = Layer.effect(
           durationMs: Date.now() - analyzeStartedAtMs,
         });
 
+        // Scan each component's source for `var(--token)` references so the
+        // Design Tokens workspace can show how many components use each token.
+        // A failed/oversized read just yields no references for that component.
+        const tokenRefsByRelativePath = new Map<string, readonly string[]>();
+        yield* Effect.forEach(
+          resolved,
+          (r) =>
+            workspaceFileSystem
+              .readFile({
+                cwd: input.cwd,
+                relativePath: r.relativePath.replace(/\\/g, "/").replace(/^\//, ""),
+              })
+              .pipe(
+                Effect.map((read) => {
+                  tokenRefsByRelativePath.set(
+                    r.registryRelativePath,
+                    extractCssVarTokenNames(read.contents),
+                  );
+                }),
+                Effect.orElseSucceed(() => undefined),
+              ),
+          { concurrency: 4 },
+        );
+
         const entries: AutoDsmComponentRegistryEntry[] = resolved.map((r, idx) => {
           const manifest = manifests[idx]!;
+          const tokenReferences = tokenRefsByRelativePath.get(r.registryRelativePath) ?? [];
           const entryId = AutoDsmRegistryEntryId.make(
             sha256Hex(`${r.relativePath}:${manifest.exports.map((e) => e.name).join(",")}`),
           );
@@ -882,6 +909,7 @@ export const AutoDsmWorkspaceLive = Layer.effect(
             providerHints: [],
             dependencyEdges: [],
             usageImports: {},
+            tokenReferences: [...tokenReferences],
             manifest,
           };
         });
