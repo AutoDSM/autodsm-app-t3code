@@ -1,5 +1,16 @@
 # Electron OAuth PKCE Fix — Diagnosis & Resolution Plan
 
+> **Status (2026-06-02): RESOLVED in code.** All three phases shipped:
+> Phase 1 — `supabaseOAuthWindow.ts` no longer calls `shell.openExternal`, keeps the
+> auth shell open on passkey pages, retries `GOOGLE_PASSKEY_BYPASS_SCRIPT` on an
+> interval, and injects the "Try another way" hint banner; `isGooglePasskeyChallengeUrl`
+> matches passkey-only patterns (`passkey`, `webauthn`, `challenge/pk`, `challenge/skotp`)
+> instead of generic `/challenge/`. Phase 2 — `oauthCallbackServer.ts` exists. Phase 3 —
+> `autodsmAuthProtocol.ts` registers the `autodsm://` callback scheme. 38 oauth unit tests
+> pass (`apps/desktop/src/oauth/`, `apps/web/.../auth.oauth.test.ts`). Remaining: the
+> *interactive* sign-in smoke (GitHub + Google password/passkey) on the signed DMG — tracked
+> with the hero-path smoke, needs a human.
+
 ## What you're seeing
 
 | Screen | Message | Meaning |

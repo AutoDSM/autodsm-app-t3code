@@ -13,9 +13,6 @@ import {
 
 export const OAUTH_SHELL_PARTITION = "persist:autodsm-oauth";
 
-/** @deprecated Use OAUTH_SHELL_PARTITION */
-export const OAUTH_MODAL_PARTITION = OAUTH_SHELL_PARTITION;
-
 const OAUTH_SHELL_TITLE = "Sign in — AutoDSM";
 const OAUTH_SHELL_TABBING_ID = "autodsm-auth";
 const OAUTH_REQUEST_FILTER = { urls: ["http://*/*", "https://*/*"] };
@@ -62,9 +59,6 @@ function closeActiveOAuthWindow(): void {
 export function closeSupabaseOAuthShell(): void {
   closeActiveOAuthWindow();
 }
-
-/** @deprecated Use closeSupabaseOAuthShell */
-export const closeSupabaseOAuthModal = closeSupabaseOAuthShell;
 
 function shellWindowOptions(): Electron.BrowserWindowConstructorOptions {
   return {
@@ -248,24 +242,5 @@ export async function runSupabaseOAuthInShell(input: {
         message: cause instanceof Error ? cause.message : "Failed to open the sign-in page.",
       });
     });
-  });
-}
-
-/** @deprecated Use runSupabaseOAuthInShell */
-export async function runSupabaseOAuthInModal(input: {
-  readonly parent: BrowserWindow;
-  readonly oauthUrl: string;
-  readonly redirectTo: string;
-}): Promise<DesktopSupabaseOAuthResult> {
-  if (!isBrowserWindowAlive(input.parent)) {
-    return { ok: false, reason: "failed", message: "Main window is unavailable." };
-  }
-
-  return runSupabaseOAuthInShell({
-    oauthUrl: input.oauthUrl,
-    redirectTo: input.redirectTo,
-    onMainWindowClosed: (cancel) => {
-      input.parent.once("closed", cancel);
-    },
   });
 }
