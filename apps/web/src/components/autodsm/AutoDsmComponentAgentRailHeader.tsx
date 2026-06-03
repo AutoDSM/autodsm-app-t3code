@@ -2,10 +2,8 @@
 
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
-import { AutoDsmPullRequestDialog } from "~/components/autodsm/AutoDsmPullRequestDialog";
-import { Button } from "~/components/ui/button";
 import { autodsmComponentAgentsQueryOptions } from "~/lib/autodsmWorkspaceReactQuery";
 import { cn } from "~/lib/utils";
 
@@ -20,7 +18,6 @@ export interface AutoDsmComponentAgentRailHeaderProps {
 
 export function AutoDsmComponentAgentRailHeader(props: AutoDsmComponentAgentRailHeaderProps) {
   const { environmentId, cwd, componentTitle, addedLines = 0, removedLines = 0, className } = props;
-  const [pullRequestOpen, setPullRequestOpen] = useState(false);
 
   const agentsQuery = useQuery(
     autodsmComponentAgentsQueryOptions({ environmentId, cwd, enabled: true }),
@@ -35,41 +32,24 @@ export function AutoDsmComponentAgentRailHeader(props: AutoDsmComponentAgentRail
     return match?.title ?? componentTitle;
   }, [agentsQuery.data?.manifest.agents, componentTitle]);
 
+  // NOTE: the "Create PR" button (opening AutoDsmPullRequestDialog) was removed for
+  // now and will be brought back later; AutoDsmPullRequestDialog is still available.
   return (
-    <>
-      <div
-        className={cn(
-          "flex items-center justify-between gap-3 border-b border-border px-3 py-2.5 sm:px-4",
-          className,
-        )}
-        data-testid="autodsm-component-agent-rail-header"
-      >
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-foreground">{activeAgentTitle}</p>
-          <p className="text-[11px] text-muted-foreground">
-            <span className="text-emerald-500">+{addedLines}</span>
-            {" / "}
-            <span className="text-rose-500">−{removedLines}</span>
-          </p>
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="shrink-0"
-          onClick={() => {
-            setPullRequestOpen(true);
-          }}
-        >
-          Create PR
-        </Button>
+    <div
+      className={cn(
+        "flex items-center justify-between gap-3 border-b border-border px-3 py-2.5 sm:px-4",
+        className,
+      )}
+      data-testid="autodsm-component-agent-rail-header"
+    >
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-foreground">{activeAgentTitle}</p>
+        <p className="text-[11px] text-muted-foreground">
+          <span className="text-emerald-500">+{addedLines}</span>
+          {" / "}
+          <span className="text-rose-500">−{removedLines}</span>
+        </p>
       </div>
-      <AutoDsmPullRequestDialog
-        open={pullRequestOpen}
-        onOpenChange={setPullRequestOpen}
-        environmentId={environmentId}
-        cwd={cwd}
-      />
-    </>
+    </div>
   );
 }
